@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -8,4 +8,4 @@ RUN pip3 install -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "package_name.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "enzyme_tk_app.app.main:app", "--host", "0.0.0.0", "--port", "8000"]

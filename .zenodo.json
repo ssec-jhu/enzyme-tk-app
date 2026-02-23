@@ -49,17 +49,12 @@
             "affiliation": "Scientific Software Engineering Center at JHU",
             "name": "Arik Mitschang",
             "orcid": "0000-0001-9239-012X"
-        },
-        {
-            "affiliation": "Scientific Software Engineering Center at JHU",
-            "name": "James Noss",
-            "orcid": "0000-0002-0922-5770"
         }
     ],
-    "references": [
-        "https://github.com/ssec-jhu/base-template 10.5281/zenodo.14052740."
-    ],
-    "description": "Accelerating Software Development for Science Research",
+    // "references": [
+    //     "https://github.com/ssec-jhu/base-template 10.5281/zenodo.14052740."
+    // ],
+    "description": "Enzyme Toolkit Dash Application",
     "license": "bsd-3-clause",
     "upload_type": "software",
     "access_right": "open"

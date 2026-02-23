@@ -1,9 +1,9 @@
-# SSEC-JHU <package_name>
+# SSEC-JHU enzyme-tk-app
 
-[![CI](https://github.com/ssec-jhu/base-template/actions/workflows/ci.yml/badge.svg)](https://github.com/ssec-jhu/base-template/actions/workflows/ci.yml)
-[![Documentation Status](https://readthedocs.org/projects/ssec-jhu-base-template/badge/?version=latest)](https://ssec-jhu-base-template.readthedocs.io/en/latest/?badge=latest)
-[![codecov](https://codecov.io/gh/ssec-jhu/base-template/branch/main/graph/badge.svg?token=0KPNKHRC2V)](https://codecov.io/gh/ssec-jhu/base-template)
-[![Security](https://github.com/ssec-jhu/base-template/actions/workflows/security.yml/badge.svg)](https://github.com/ssec-jhu/base-template/actions/workflows/security.yml)
+[![CI](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/ci.yml/badge.svg)](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/ci.yml)
+[![Documentation Status](https://readthedocs.org/projects/ssec-jhu-enzyme-tk-app/badge/?version=latest)](https://ssec-jhu-enzyme-tk-app.readthedocs.io/en/latest/?badge=latest)
+[![codecov](https://codecov.io/gh/ssec-jhu/enzyme-tk-app/branch/main/graph/badge.svg?token=wQvM7PcGbX)](https://codecov.io/gh/ssec-jhu/enzyme-tk-app)
+[![Security](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/security.yml/badge.svg)](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/security.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.14052740.svg)](https://doi.org/10.5281/zenodo.14052740)
 
 
@@ -40,9 +40,9 @@ viewing this README from GitHub.com, assuming a repo context might be best, wher
 Alternatively, if this package is distributed on PyPi, perhaps just ``pip install <package-name>``, followed by quick
 user instructions, will suffice.
 
-  * ``git clone https://github.com/ssec-jhu/base-template``
-  * ``conda create -n package_name python pip``
-  * ``conda activate package_name``
+  * ``git clone https://github.com/ssec-jhu/enzyme-tk-app``
+  * ``conda create -n enzyme_tk_app python pip``
+  * ``conda activate enzyme_tk_app``
   * ``pip pinstall -e .``
   * Add user instructions.
 
@@ -56,7 +56,7 @@ For additional cmds see the [Conda cheat-sheet](https://docs.conda.io/projects/c
  * Create new environment (env) and install ``conda create -n <environment_name>``
  * Activate/switch to new env ``conda activate <environment_name>``
  * ``cd`` into repo dir.
- * Install ``python`` and ``pip`` ``conda install python=3.11 pip``
+ * Install ``python`` and ``pip`` ``conda install python=3.12 pip``
  * Install all required dependencies (assuming local dev work), there are two ways to do this
    * If working with tox (recommended) ``pip install -r requirements/dev.txt``.
    * If you would like to setup an environment with all requirements to run outside of tox ``pip install -r requirements/all.txt``.
@@ -83,11 +83,11 @@ For additional cmds see the [Conda cheat-sheet](https://docs.conda.io/projects/c
   #### with Docker:
   * Follow the above [Build with Docker instructions](#with-docker).
   * Run container from image: ``docker run -d -p 8000:8000 <image_name>``. _NOTE: ``-p 8000:8000`` is specific to the example application using port 8000._
-  * Alternatively, images can be pulled from ``ghcr.io/ssec-jhu/`` e.g., ``docker pull ghcr.io/ssec-jhu/base-template:pr-1``.
+  * Alternatively, images can be pulled from ``ghcr.io/ssec-jhu/`` e.g., ``docker pull ghcr.io/ssec-jhu/enzyme-tk-app:pr-1``.
 
   #### with Python ecosystem:
   * Follow the above [Build with Python ecosystem instructions](#with-python-ecosystem).
-  * Run ``uvicorn package_name.app.main:app --host 0.0.0.0 --port", "8000``. _NOTE: This is just an example and is obviously application dependent._
+  * Run ``uvicorn enzyme_tk_app.app.main:app --host 0.0.0.0 --port 8000``. _NOTE: This is just an example and is obviously application dependent._
 
 ### Usage:
 To be completed by child repo.
@@ -101,7 +101,7 @@ _NOTE: The following steps require ``pip install -r requirements/dev.txt``._
 * Run tox ``tox``. This will run all of linting, security, test, docs and package building within tox virtual environments.
 * To run an individual step, use ``tox -e {step}`` for example, ``tox -e test``, ``tox -e build-docs``, etc.
 
-Typically, the CI tests run in github actions will use tox to run as above. See also [ci.yml](https://github.com/ssec-jhu/base-template/blob/main/.github/workflows/ci.yml).
+Typically, the CI tests run in github actions will use tox to run as above. See also [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
 
 ## Outside of tox:
 
@@ -121,7 +121,7 @@ Facilitates in testing typos, syntax, style, and other simple code analysis test
 ### Security Checks:
 Facilitates in checking for security concerns using [Bandit](https://bandit.readthedocs.io/en/latest/index.html).
  * ``cd`` into repo dir.
- * ``bandit --severity-level=medium -r package_name``
+ * ``bandit --severity-level=medium -r enzyme_tk_app``
 
 ### Unit Tests:
 Facilitates in testing core package functionality at a modular level.

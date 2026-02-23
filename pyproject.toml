@@ -1,14 +1,14 @@
 [project]
-name = "package_name"  # Replace package_name with actual name (it's just a template).
+name = "enzyme-tk-app"
 dynamic = ["version"]
 authors = [
     {name = "Scientifc Software Engineering Center at JHU", email = "ssec@jhu.edu"},
 ]
-description = ""
+description = "Enzyme Toolkit Dash Application"
 readme = "README.md"
 license = {file = "LICENSE"}
 
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi[all]",
 ]
@@ -33,9 +33,9 @@ docs = [
 ]
 
 [project.urls]
-homepage = "https://github.com/ssec-jhu/base-template"
-documentation = "https://github.com/ssec-jhu/base-template"
-repository = "https://github.com/ssec-jhu/base-template"
+homepage = "https://github.com/ssec-jhu/enzyme-tk-app"
+documentation = "https://github.com/ssec-jhu/enzyme-tk-app"
+repository = "https://github.com/ssec-jhu/enzyme-tk-app"
 
 [build-system]
 requires = ["setuptools>=61.2", "setuptools_scm[toml]>=8.0"]
@@ -47,11 +47,11 @@ include-package-data = true
 exclude-package-data = {"*" = ["tests/*"]}
 
 [tool.setuptools.packages.find]
-include = ["package_name*"]
+include = ["enzyme_tk_app*"]
 exclude = ["*.tests*"]
 
 [tool.setuptools_scm]
-write_to = "package_name/_version.py"  # Replace package_name with actual name (it's just a template).
+write_to = "enzyme_tk_app/_version.py"
 
 [tool.bandit]
 exclude_dirs = ["tests"]
@@ -97,7 +97,7 @@ exclude = [
     "venv",
     "_version.py"
 ]
-target-version = "py311"
+target-version = "py312"
 
 [tool.ruff.lint.pydocstyle] # https://docs.astral.sh/ruff/settings/#lint_pydocstyle_convention
 convention = "google"
