@@ -4,4 +4,4 @@ API
 .. autosummary::
    :toctree: generated
 
-   <package_name>
+   enzyme_tk_app
