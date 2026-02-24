@@ -6,6 +6,8 @@ The active link is highlighted based on the current URL pathname via a callback.
 
 from dash import Input, Output, callback, dcc, html
 
+from enzyme_tk_app.app.components.icons import ICON_LOGO
+
 # Central list of navigation links displayed in the navbar.
 # Each entry maps a visible label to its target href.
 NAV_LINKS = [
@@ -66,7 +68,7 @@ def Navbar():
                     html.Div(
                         style={"fontWeight": "700", "fontSize": "1.25rem", "color": "var(--primary-color)"},
                         children=[
-                            html.I(className="fa-solid fa-flask", style={"marginRight": "0.5rem"}),
+                            html.I(className=ICON_LOGO, style={"marginRight": "0.5rem"}),
                             "EnzymeTK Tool Suite",
                         ],
                     ),

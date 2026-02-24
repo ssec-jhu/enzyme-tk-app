@@ -1,3 +1,5 @@
+"""Main Dash application entry point for the EnzymeTK Tool Suite."""
+
 import dash
 from dash import Dash, html
 
