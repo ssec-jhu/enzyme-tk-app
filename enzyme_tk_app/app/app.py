@@ -4,7 +4,6 @@ from dash import Dash, html
 from enzyme_tk_app.app.components.footer import Footer
 from enzyme_tk_app.app.components.navbar import Navbar
 
-
 # Initialize the app
 # We'll include FontAwesome for icons
 external_stylesheets = [

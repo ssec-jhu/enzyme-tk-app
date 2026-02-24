@@ -6,12 +6,11 @@ The active link is highlighted based on the current URL pathname via a callback.
 
 from dash import Input, Output, callback, dcc, html
 
-
 # Central list of navigation links displayed in the navbar.
 # Each entry maps a visible label to its target href.
 NAV_LINKS = [
     {"label": "Home", "href": "/"},
-    {"label": "Tools", "href": "#id-div-tools"},
+    {"label": "Tools", "href": "/#id-div-tools"},
     {"label": "My Jobs", "href": "/my-jobs"},
     {"label": "About", "href": "#"},
 ]
