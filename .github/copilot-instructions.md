@@ -13,6 +13,11 @@
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
 
+## Inline Styles
+- Group related styles into constants at the top of the file (e.g., `STYLE_NAVBAR`, `STYLE_FOOTER`).
+- Use descriptive names for style constants that indicate where they are applied.
+- Keep inline styles in the component file, but if styles are shared across similar components in the file, consider refatoring into a shared style constant so changeing the style in one place will update all components that use it.
+
 ## Icons
 - All FontAwesome icon class strings should be defined as constants in `enzyme_tk_app/app/components/icons.py` with a descriptive name relative to where they are used (e.g., `ICON_LOGO = "fa-solid fa-flask"`).
 - Components should import icon constants from `icons.py` rather than hardcoding class strings.

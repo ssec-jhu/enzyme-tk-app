@@ -16,11 +16,15 @@ app = Dash(__name__, use_pages=True, external_stylesheets=external_stylesheets, 
 
 app.title = "EnzymeTK Tool Suite"
 
-app.layout = html.Div([Navbar(), dash.page_container, Footer()])
+
+# Using a function for layout ensures all page modules are fully loaded before
+# the layout is evaluated, which prevents UnboundLocalError with the hot reloader.
+def layout():
+    """Return the top-level app layout."""
+    return html.Div([Navbar(), dash.page_container, Footer()])
+
+
+app.layout = layout
 
 if __name__ == "__main__":
-    # use_reloader=False prevents UnboundLocalError on page layouts during hot-reload.
-    # The reloader spawns a subprocess that re-imports modules, and if a request arrives
-    # before the layout variable/function is defined, Python raises UnboundLocalError.
-    app.run(port=8050)
-    # app.run(port=8050, debug=True, use_reloader=False)
+    app.run(port=8050, debug=True)
