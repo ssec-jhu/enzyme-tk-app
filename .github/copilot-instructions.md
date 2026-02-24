@@ -10,12 +10,13 @@
 - Only assign an `id` to a component if it is used in a **callback** (`Input`, `Output`, or `State`). HTML anchor targets are an exception.
 
 ## Callback Naming
-- Callback functions should be named descriptively: `update_<what>` (e.g., `update_active_link`).
+- Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
 
 ## Icons
 - All FontAwesome icon class strings should be defined as constants in `enzyme_tk_app/app/components/icons.py` with a descriptive name relative to where they are used (e.g., `ICON_LOGO = "fa-solid fa-flask"`).
 - Components should import icon constants from `icons.py` rather than hardcoding class strings.
+- Icons should be free icons from FontAwesome's free collection, not pro icons.
 
 ## Code Style
 - Add **docstrings** (Google style) to all modules, functions, and classes.
