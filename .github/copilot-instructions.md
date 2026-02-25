@@ -84,6 +84,5 @@
 - Production requirements are in `requirements/prd.txt` (not `pyproject.toml` optional-dependencies).
 
 ## Final Checks Before Committing
-- Run 'tox' to format and check style.
-- Verify the app starts without errors.
 - Ensure new code has appropriate docstrings and comments.
+- For full verification (format, lint, security, tests, app & Docker smoke tests), ask the agent to **"run the verify agent"** — see `AGENTS.md`.

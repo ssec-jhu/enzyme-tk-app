@@ -12,7 +12,7 @@ from enzyme_tk_app.app.components.icons import ICON_LOGO
 # Each entry maps a visible label to its target href.
 NAV_LINKS = [
     {"label": "Home", "href": "/"},
-    {"label": "Tools", "href": "/#id-div-tools"},
+    {"label": "Tools", "href": "/#tools"},
     {"label": "My Jobs", "href": "/my-jobs"},
     {"label": "About", "href": "#"},
 ]
@@ -24,7 +24,7 @@ def make_nav_link(link: dict, pathname: str = None, url_hash: str = None) -> htm
     Args:
         link: Dict with "label" (display text) and "href" (target URL).
         pathname: The current URL pathname (e.g., "/", "/my-jobs").
-        url_hash: The current URL fragment (e.g., "#id-div-tools"), or empty string.
+        url_hash: The current URL fragment (e.g., "#tools"), or empty string.
 
     Returns:
         An ``html.A`` Dash component styled as a nav link.

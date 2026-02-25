@@ -64,7 +64,8 @@ def test_tool_card_no_badges_when_no_libraries(sample_tool_card_no_libs):
 
 
 def test_tool_grid_has_tools_anchor_id(tool_grid):
-    assert tool_grid.id == "id-div-tools"
+    grid_heading = find_components(tool_grid, html.H2)
+    assert any(getattr(h, "id", None) == "tools" for h in grid_heading)
 
 
 def test_tool_grid_renders_one_card_per_registry_tool(tool_grid):

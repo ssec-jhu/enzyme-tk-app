@@ -60,14 +60,13 @@ def ToolGrid():
         An ``html.Div`` containing a heading and a grid of ``ToolCard`` components.
     """
     return html.Div(
-        id="id-div-tools",
         className="container",
         children=[
             html.Div(
                 className="text-center",
                 style={"marginBottom": "var(--spacing-lg)"},
                 children=[
-                    html.H2("Available Tools"),
+                    html.H2("Available Tools", id="tools"),
                     html.P("Select a tool to configure parameters and run analysis."),
                 ],
             ),

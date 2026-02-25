@@ -54,7 +54,7 @@ def Hero():
                         children=[
                             html.A(
                                 children=["Explore Tools  →"],
-                                href="/#id-div-tools",
+                                href="/#tools",
                                 className="btn btn-primary",
                             ),
                             html.A(

@@ -42,10 +42,10 @@ def test_make_nav_link_active_class():
 
 
 def test_make_nav_link_active_with_hash():
-    link = make_nav_link({"label": "Tools", "href": "/#id-div-tools"}, pathname="/", url_hash="#id-div-tools")
+    link = make_nav_link({"label": "Tools", "href": "/#tools"}, pathname="/", url_hash="#tools")
     assert "active" in link.className
 
-    link_wrong_hash = make_nav_link({"label": "Tools", "href": "/#id-div-tools"}, pathname="/", url_hash="")
+    link_wrong_hash = make_nav_link({"label": "Tools", "href": "/#tools"}, pathname="/", url_hash="")
     assert "active" not in link_wrong_hash.className
 
 
@@ -84,7 +84,7 @@ def test_hero_headline_text(hero):
 def test_hero_cta_buttons(hero):
     links = find_components(hero, html.A)
     hrefs = {a.href for a in links}
-    assert "/#id-div-tools" in hrefs, "Missing 'Explore Tools' CTA"
+    assert "/#tools" in hrefs, "Missing 'Explore Tools' CTA"
 
 
 def test_hero_feature_pills_present(hero):
