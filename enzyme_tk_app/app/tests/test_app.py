@@ -34,11 +34,19 @@ def test_navbar_renders_all_nav_links(navbar):
 
 
 def test_make_nav_link_active_class():
-    link = make_nav_link({"label": "Home", "href": "/"}, active_href="/")
+    link = make_nav_link({"label": "Home", "href": "/"}, pathname="/")
     assert "active" in link.className
 
-    link_inactive = make_nav_link({"label": "Home", "href": "/"}, active_href="/other")
+    link_inactive = make_nav_link({"label": "Home", "href": "/"}, pathname="/other")
     assert "active" not in link_inactive.className
+
+
+def test_make_nav_link_active_with_hash():
+    link = make_nav_link({"label": "Tools", "href": "/#id-div-tools"}, pathname="/", url_hash="#id-div-tools")
+    assert "active" in link.className
+
+    link_wrong_hash = make_nav_link({"label": "Tools", "href": "/#id-div-tools"}, pathname="/", url_hash="")
+    assert "active" not in link_wrong_hash.className
 
 
 # -- Footer --

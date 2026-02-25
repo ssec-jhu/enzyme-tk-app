@@ -57,6 +57,32 @@
 - After making changes, always **run the app** to verify it starts without errors.
 - Kill any existing process on the port before restarting.
 
+## Dependencies
+- **Two systems, distinct roles:**
+  - `pyproject.toml` — loose/minimum version constraints (`dash>=2.0`). Used by `pip install .` and `pip install .[dev]`. This is the library-style declaration.
+  - `requirements/*.txt` — exact-pinned versions (`dash==4.0.0`). Used by Docker, tox, and CI for **reproducible** environments.
+- **Requirements file layout** (`requirements/`):
+  | File | Purpose | Consumers |
+  |------|---------|-----------|
+  | `prd.txt` | Runtime deps (dash, gunicorn) | Dockerfile, tox `test` |
+  | `test.txt` | Linting + testing (ruff, pytest, bandit) | tox `check-style`, `format`, `test` |
+  | `dev.txt` | Local dev orchestration (tox) | `all.txt` |
+  | `build.txt` | Package build (setuptools, build) | tox `build-dist` |
+  | `docs.txt` | Sphinx doc generation | tox `build-docs` |
+  | `all.txt` | Umbrella — includes all of the above | Developer local install |
+- **Adding a new dependency:**
+  1. Add the loose pin to the appropriate section in `pyproject.toml` (`dependencies` for runtime, `[project.optional-dependencies]` for dev/docs).
+  2. Add the exact pin to the matching `requirements/*.txt` file.
+  3. Keep `requirements/*.txt` files **self-contained** — each file only lists its own packages (no `-r` cross-references except `all.txt`).
+- **Never duplicate a package** across requirements files — pick the one file where it belongs. `all.txt` composes them all.
+
+## Docker
+- The app runs in Docker with **gunicorn** as the production WSGI server.
+- Build: `docker build -t enzyme-tk-app .`
+- Run: `docker run -p 8050:8050 enzyme-tk-app`
+- The Dockerfile uses `gunicorn enzyme_tk_app.app.app:server` — the `server` variable in `app.py` exposes the underlying Flask server.
+- Production requirements are in `requirements/prd.txt` (not `pyproject.toml` optional-dependencies).
+
 ## Final Checks Before Committing
 - Run 'tox' to format and check style.
 - Verify the app starts without errors.

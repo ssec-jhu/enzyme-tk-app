@@ -10,7 +10,9 @@ license = {file = "LICENSE"}
 
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi[all]",
+    "dash>=2.0",
+    "dash-bootstrap-components",
+    "gunicorn",
 ]
 
 [project.optional-dependencies]

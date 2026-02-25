@@ -26,5 +26,8 @@ def layout():
 
 app.layout = layout
 
+# Expose the underlying Flask server for production WSGI servers (e.g., gunicorn).
+server = app.server
+
 if __name__ == "__main__":
     app.run(port=8050, debug=True)

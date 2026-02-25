@@ -42,10 +42,10 @@ def test_tool_card_displays_title_and_description(sample_tool_card):
     assert "A test description" in text
 
 
-def test_tool_card_has_launch_link(sample_tool_card):
-    links = find_components(sample_tool_card, html.A)
-    assert len(links) == 1
-    assert links[0].href == "/test-tool"
+def test_tool_card_has_launch_action(sample_tool_card):
+    spans = find_components(sample_tool_card, html.Span)
+    launch_spans = [s for s in spans if getattr(s, "children", None) == "Launch →"]
+    assert len(launch_spans) == 1
 
 
 def test_tool_card_renders_library_badges(sample_tool_card):
@@ -56,7 +56,7 @@ def test_tool_card_renders_library_badges(sample_tool_card):
 
 
 def test_tool_card_no_badges_when_no_libraries(sample_tool_card_no_libs):
-    badges = find_components(sample_tool_card_no_libs, html.Span)
+    badges = [s for s in find_components(sample_tool_card_no_libs, html.Span) if "badge" in (s.className or "")]
     assert len(badges) == 0
 
 

@@ -11,7 +11,7 @@ from dash import html
 from enzyme_tk_app.app.components.tool_registry import TOOLS
 
 
-def ToolCard(title, description, icon_class, libraries=None, link="/"):
+def ToolCard(title, description, icon_class, libraries=None):
     """Build a single tool card.
 
     Args:
@@ -19,7 +19,6 @@ def ToolCard(title, description, icon_class, libraries=None, link="/"):
         description: Short description of the tool.
         icon_class: FontAwesome class string for the card icon.
         libraries: Optional list of library/package names shown as badges.
-        link: URL the "Launch Tool" button points to.
 
     Returns:
         An ``html.Div`` Dash component styled as a card.
@@ -48,8 +47,8 @@ def ToolCard(title, description, icon_class, libraries=None, link="/"):
             ),
             # --- Card body: description ---
             html.P(description, className="card-desc"),
-            # --- Card footer: text link ---
-            html.A("Launch →", href=link, className="card-launch"),
+            # --- Card footer: launch action ---
+            html.Span("Launch →", className="card-launch"),
         ],
     )
 
@@ -80,7 +79,6 @@ def ToolGrid():
                         tool["desc"],
                         tool["icon"],
                         tool.get("libraries"),
-                        tool.get("link", "/"),
                     )
                     for tool in TOOLS
                 ],

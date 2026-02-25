@@ -18,18 +18,19 @@ NAV_LINKS = [
 ]
 
 
-def make_nav_link(link: dict, active_href: str = None) -> html.A:
+def make_nav_link(link: dict, pathname: str = None, url_hash: str = None) -> html.A:
     """Create a single navigation link element.
 
     Args:
         link: Dict with "label" (display text) and "href" (target URL).
-        active_href: The currently active pathname. If it matches
-            ``link["href"]``, the link receives the "active" CSS class.
+        pathname: The current URL pathname (e.g., "/", "/my-jobs").
+        url_hash: The current URL fragment (e.g., "#id-div-tools"), or empty string.
 
     Returns:
         An ``html.A`` Dash component styled as a nav link.
     """
-    is_active = active_href == link["href"]
+    current_url = (pathname or "") + (url_hash or "")
+    is_active = current_url == link["href"]
     return html.A(
         link["label"],
         href=link["href"],
@@ -87,7 +88,8 @@ def Navbar():
 @callback(
     Output("id-div-nav-links", "children"),
     Input("id-location", "pathname"),
+    Input("id-location", "hash"),
 )
-def update_active_link(pathname):
-    """Re-render nav links whenever the URL changes, marking the active one."""
-    return [make_nav_link(link, active_href=pathname) for link in NAV_LINKS]
+def update_active_link(pathname, url_hash):
+    """Re-render nav links whenever the URL or fragment changes, marking the active one."""
+    return [make_nav_link(link, pathname=pathname, url_hash=url_hash) for link in NAV_LINKS]

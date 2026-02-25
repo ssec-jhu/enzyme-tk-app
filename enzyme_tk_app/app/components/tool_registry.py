@@ -9,10 +9,9 @@ Each entry is a ``ToolDef`` with the following fields:
 - ``desc``      (required) — Short description of what the tool does.
 - ``icon``      (required) — FontAwesome icon class from ``icons.py``.
 - ``libraries`` (optional) — List of Python package names shown as badges.
-- ``link``      (optional) — URL the "Launch Tool" button navigates to. Defaults to "/".
 """
 
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from enzyme_tk_app.app.components.icons import (
     ICON_TOOL_REACTION,
@@ -21,14 +20,13 @@ from enzyme_tk_app.app.components.icons import (
 )
 
 
-class ToolDef(TypedDict, total=False):
+class ToolDef(TypedDict):
     """Schema for a single tool card entry."""
 
-    title: str  # required
-    desc: str  # required
-    icon: str  # required — FontAwesome class string from icons.py
-    libraries: list[str]  # optional — package names shown as monospace badges
-    link: str  # optional — launch URL, defaults to "/"
+    title: str
+    desc: str
+    icon: str  # FontAwesome class string from icons.py
+    libraries: NotRequired[list[str]]  # package names shown as monospace badges
 
 
 # ---------------------------------------------------------------------------

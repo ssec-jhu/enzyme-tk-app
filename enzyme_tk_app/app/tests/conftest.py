@@ -35,7 +35,6 @@ def sample_tool_card():
         description="A test description",
         icon_class="fa-solid fa-wrench",
         libraries=["numpy", "pandas"],
-        link="/test-tool",
     )
 
 
