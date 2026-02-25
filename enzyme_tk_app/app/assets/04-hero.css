@@ -1,11 +1,147 @@
 /* ==========================================================================
-   Hero — Full-width hero banner gradient
+   Hero — Full-width hero banner
    ========================================================================== */
 
 .hero {
-    background-color: #ffffff;
-    background-image: linear-gradient(135deg,
-            hsla(215, 30%, 97%, 1) 0%,
-            hsla(210, 25%, 98%, 1) 50%,
-            hsla(40, 15%, 99%, 1) 100%);
+   background-color: #ffffff;
+   background-image: linear-gradient(135deg,
+         hsla(215, 30%, 97%, 1) 0%,
+         hsla(210, 25%, 98%, 1) 50%,
+         hsla(40, 15%, 99%, 1) 100%);
+   padding: 1rem 1.5rem 1rem;
+   min-height: 480px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   text-align: center;
+   position: relative;
+   overflow: hidden;
+   margin-bottom: 1rem;
+}
+
+/* Decorative side blobs to fill the empty flanks */
+.hero::before,
+.hero::after {
+   content: "";
+   position: absolute;
+   border-radius: 50%;
+   pointer-events: none;
+   z-index: 0;
+}
+
+.hero::before {
+   width: 420px;
+   height: 420px;
+   top: -8%;
+   left: -6%;
+   background: radial-gradient(circle, hsla(215, 60%, 82%, 0.25) 0%, transparent 70%);
+}
+
+.hero::after {
+   width: 360px;
+   height: 360px;
+   bottom: -10%;
+   right: -4%;
+   background: radial-gradient(circle, hsla(40, 50%, 85%, 0.22) 0%, transparent 70%);
+}
+
+/* --- Centred content overlay --------------------------------------------- */
+
+.hero-content {
+   position: relative;
+   z-index: 1;
+   max-width: 680px;
+}
+
+/* --- Headline ------------------------------------------------------------ */
+
+.hero-headline {
+   font-size: 2.75rem;
+   font-weight: 800;
+   line-height: 1.15;
+   letter-spacing: -0.03em;
+   color: var(--text-primary);
+   margin-bottom: 1.25rem;
+}
+
+.hero-headline .accent {
+   background: linear-gradient(135deg, var(--hero-accent), var(--primary-color));
+   -webkit-background-clip: text;
+   background-clip: text;
+   -webkit-text-fill-color: transparent;
+}
+
+/* --- Subtitle ------------------------------------------------------------ */
+
+.hero-subtitle {
+   font-size: 1.05rem;
+   line-height: 1.7;
+   color: var(--text-secondary);
+   margin-bottom: 1.5rem;
+}
+
+/* --- CTA buttons row ----------------------------------------------------- */
+
+.hero-actions {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 1rem;
+   margin-bottom: 1.25rem;
+   flex-wrap: wrap;
+}
+
+/* --- Feature pills row --------------------------------------------------- */
+
+.hero-features {
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   gap: 1.25rem;
+   flex-wrap: wrap;
+}
+
+.hero-feature-pill {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.4rem;
+   font-size: 0.82rem;
+   font-weight: 500;
+   color: var(--text-secondary);
+}
+
+/* --- Protein background image -------------------------------------------- */
+
+.hero-protein-bg {
+   position: absolute;
+   inset: 0;
+   background-image: url('bg.png');
+   background-size: 90%;
+   background-repeat: no-repeat;
+   background-position: center;
+   opacity: 0.12;
+   filter: grayscale(0.55) brightness(1.2) saturate(0.3);
+   pointer-events: none;
+   z-index: 0;
+}
+
+/* --- Responsive ---------------------------------------------------------- */
+
+@media (max-width: 768px) {
+   .hero {
+      padding: 3rem 1rem 2rem;
+      min-height: auto;
+   }
+
+   .hero-headline {
+      font-size: 2rem;
+   }
+
+   .hero-protein-bg {
+      opacity: 0.08;
+   }
+
+   .hero-features {
+      gap: 0.75rem;
+   }
 }

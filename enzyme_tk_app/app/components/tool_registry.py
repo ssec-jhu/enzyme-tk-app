@@ -64,12 +64,12 @@ TOOLS: list[ToolDef] = [
         "title": "Sequence and Structure-Based Similarity",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,
-        "libraries": ["numpy", "scipy"],
+        "libraries": ["foldseek"],
     },
     {
         "title": "TBD Tool 2",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,
-        "libraries": ["numpy", "scipy"],
+        "libraries": ["foldseek"],
     },
 ]
