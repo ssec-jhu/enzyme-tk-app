@@ -39,9 +39,25 @@
 ## Formatting & Linting
 - This project uses **ruff** for formatting and linting, configured in `pyproject.toml`.
 - After making code changes, always run: `tox run -e format` to auto-format, then `tox run -e check-style` to verify.
+- `tox run -e format` auto-formats code, sorts imports, **and removes unused imports** (F401).
 - All code must pass `tox run -e check-style` before being considered done.
 - No need for permission to run tox commands — they are part of the development workflow.
+- If an import is needed for its **side effect** (e.g., `from enzyme_tk_app.app.app import app` to satisfy `dash.register_page()`), add a `# noqa: F401` comment with a reason to prevent auto-removal.
+
+## Writing Tests
+- Tests live in `enzyme_tk_app/app/tests/` and use **pytest**.
+- Test files should be named `test_*.py` and test functions should be named `test_*`.
+- Write **flat test functions**, not test classes. One test per distinct behavior — avoid multiple tests that verify the same thing.
+- Use fixtures in `conftest.py` for shared setup (component instances, helpers like `find_components` and `get_text`).
+- Focus on testing the **functionality** of components and callbacks, not implementation details.
+- **File organization**: UI/layout tests (app config, navbar, footer, hero, home page) go in `test_app.py`. Tool registry and tool card tests go in `test_tool_cards.py`.
+- **Import order matters**: always import `app` before importing any page module (e.g., `home.py`) — `dash.register_page()` requires the Dash app to be instantiated first. See `test_app.py` for the pattern.
 
 ## Running & Testing
 - After making changes, always **run the app** to verify it starts without errors.
 - Kill any existing process on the port before restarting.
+
+## Final Checks Before Committing
+- Run 'tox' to format and check style.
+- Verify the app starts without errors.
+- Ensure new code has appropriate docstrings and comments.
