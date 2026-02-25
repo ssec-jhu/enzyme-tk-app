@@ -16,7 +16,13 @@
 ## Inline Styles
 - Group related styles into constants at the top of the file (e.g., `STYLE_NAVBAR`, `STYLE_FOOTER`).
 - Use descriptive names for style constants that indicate where they are applied.
-- Keep inline styles in the component file, but if styles are shared across similar components in the file, consider refatoring into a shared style constant so changeing the style in one place will update all components that use it.
+- Keep inline styles in the component file, but if styles are shared across similar components in the file, consider refactoring into a shared style constant so changing the style in one place will update all components that use it.
+
+## When to Use CSS vs Inline Styles
+- **Use CSS** for styles that require pseudo-classes (`:hover`, `:focus`, `::after`), media queries, animations, or are shared across multiple components/pages.
+- **Use inline styles** (Python dicts) for one-off styles scoped to a single component that don't need pseudo-classes — keep the style co-located with the element it applies to.
+- When converting a CSS class to inline, merge all cascading rules into one flat `STYLE_*` constant (e.g., `.badge` + `.badge-lib` → `STYLE_BADGE_LIB`).
+- CSS files live in `enzyme_tk_app/app/assets/` and are split by concern (`00-variables.css` … `06-footer.css`). Only add a new CSS class when the style truly needs CSS features or is reused across files.
 
 ## Icons
 - All FontAwesome icon class strings should be defined as constants in `enzyme_tk_app/app/components/icons.py` with a descriptive name relative to where they are used (e.g., `ICON_LOGO = "fa-solid fa-flask"`).

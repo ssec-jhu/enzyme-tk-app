@@ -1,0 +1,47 @@
+/* ==========================================================================
+   Cards — Tool cards, icon boxes, and hover effects
+   ========================================================================== */
+
+.card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+}
+
+.card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-xl);
+    border-color: var(--accent-color);
+}
+
+/* --- Icon box inside cards ----------------------------------------------- */
+
+.icon-box {
+    width: 56px;
+    height: 56px;
+    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    color: var(--primary-color);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.6rem;
+    margin-bottom: var(--spacing-sm);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 40%, transparent);
+    box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.8);
+    transition: all 0.2s ease;
+}
+
+.card:hover .icon-box {
+    background: color-mix(in srgb, var(--accent-color) 20%, transparent);
+    color: var(--accent-color);
+    border-color: var(--accent-color);
+    transform: scale(1.05);
+}

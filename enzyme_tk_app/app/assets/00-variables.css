@@ -1,0 +1,48 @@
+/* ==========================================================================
+   Design Tokens
+   Loaded first — every other stylesheet references these variables.
+   ========================================================================== */
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+:root {
+    /* --- Colors ---------------------------------------------------------- */
+    --primary-color: #1E3A5F;
+    /* Royal Blue 600 */
+    --primary-dark: #162C48;
+    /* Royal Blue 700 */
+    --secondary-color: #2C5282;
+    /* Blue 500 */
+    --accent-color: #D69E2E;
+    /* Amber 500 */
+
+    --text-primary: #1A202C;
+    /* Blue 900 */
+    --text-secondary: #4A5568;
+    --text-tertiary: #2C5282;
+
+    --bg-body: #F8FAFC;
+    /* Blue 50 */
+    --bg-surface: #FFFFFF;
+
+    --border-color: #E2E8F0;
+
+    /* --- Spacing --------------------------------------------------------- */
+    --spacing-xs: 0.5rem;
+    --spacing-sm: 1rem;
+    --spacing-md: 1.5rem;
+    --spacing-lg: 2rem;
+    --spacing-xl: 5rem;
+
+    /* --- Border Radius --------------------------------------------------- */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+
+    /* --- Shadows (Elevation System) -------------------------------------- */
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}

@@ -1,0 +1,19 @@
+/* ==========================================================================
+   Footer — Partner logos and social link hover effects
+   ========================================================================== */
+
+/* Partner logos: grayscale → full colour on hover */
+.partner-logo {
+    transition: filter 0.3s ease, opacity 0.3s ease;
+}
+
+.partner-logo:hover {
+    filter: grayscale(0) !important;
+    opacity: 1 !important;
+}
+
+/* Social link hover */
+.footer-social:hover {
+    color: var(--primary-color) !important;
+    transition: color 0.2s ease;
+}
