@@ -9,7 +9,6 @@ Each entry is a ``ToolDef`` with the following fields:
 - ``desc``      (required) — Short description of what the tool does.
 - ``icon``      (required) — FontAwesome icon class from ``icons.py``.
 - ``libraries`` (optional) — List of Python package names shown as badges.
-- ``est_time``  (optional) — Human-readable estimated runtime (e.g. "~5 min").
 - ``link``      (optional) — URL the "Launch Tool" button navigates to. Defaults to "/".
 """
 
@@ -29,7 +28,6 @@ class ToolDef(TypedDict, total=False):
     desc: str  # required
     icon: str  # required — FontAwesome class string from icons.py
     libraries: list[str]  # optional — package names shown as monospace badges
-    est_time: str  # optional — estimated runtime e.g. "~20-30 min"
     link: str  # optional — launch URL, defaults to "/"
 
 
@@ -40,12 +38,19 @@ TOOLS: list[ToolDef] = [
     {
         "title": "Reaction Similarity",
         "desc": (
-            "Compare and analyze chemical reactions using fingerprint-based "
-            "similarity metrics and substructure matching."
+            "Reaction similarity search using RDKit structural reaction fingerprints "
+            "with Tanimoto, Russell, and Cosine scoring."
         ),
         "icon": ICON_TOOL_REACTION,
-        "libraries": ["rdkit", "rxnfp"],
-        "est_time": "~20-30 min",
+        "libraries": ["rdkit"],
+    },
+    {
+        "title": "Substrate/Product Similarity",
+        "desc": (
+            "Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring."
+        ),
+        "icon": ICON_TOOL_REACTION,
+        "libraries": ["rdkit"],
     },
     {
         "title": "Sequence Similarity",
@@ -53,21 +58,18 @@ TOOLS: list[ToolDef] = [
             "High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms."
         ),
         "icon": ICON_TOOL_SEQUENCE,
-        "libraries": ["blast", "foldseek", "biopython"],
-        "est_time": "~1-2 min",
+        "libraries": ["diamand-blastp"],
     },
     {
-        "title": "TBD Tool",
+        "title": "Sequence and Structure-Based Similarity",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,
         "libraries": ["numpy", "scipy"],
-        "est_time": "~5-10 min",
     },
     {
         "title": "TBD Tool 2",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,
         "libraries": ["numpy", "scipy"],
-        "est_time": "~5-10 min",
     },
 ]

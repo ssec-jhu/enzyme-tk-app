@@ -8,24 +8,10 @@ To add or edit tool cards, see ``tool_registry.py`` — no changes needed here.
 
 from dash import html
 
-from enzyme_tk_app.app.components.icons import ICON_CARD_TIMER
 from enzyme_tk_app.app.components.tool_registry import TOOLS
 
-# Merged .badge + .badge-lib styles (library name pills on each card).
-STYLE_BADGE_LIB = {
-    "display": "inline-block",
-    "padding": "2px 8px",
-    "fontSize": "0.7rem",
-    "fontWeight": "500",
-    "borderRadius": "4px",
-    "background": "color-mix(in srgb, var(--accent-color) 12%, transparent)",
-    "color": "var(--accent-color)",
-    "border": "1px solid color-mix(in srgb, var(--accent-color) 35%, transparent)",
-    "fontFamily": "monospace",
-}
 
-
-def ToolCard(title, description, icon_class, libraries=None, est_time=None, link="/"):
+def ToolCard(title, description, icon_class, libraries=None, link="/"):
     """Build a single tool card.
 
     Args:
@@ -33,7 +19,6 @@ def ToolCard(title, description, icon_class, libraries=None, est_time=None, link
         description: Short description of the tool.
         icon_class: FontAwesome class string for the card icon.
         libraries: Optional list of library/package names shown as badges.
-        est_time: Optional estimated runtime string (e.g. "~20-30 min").
         link: URL the "Launch Tool" button points to.
 
     Returns:
@@ -41,8 +26,8 @@ def ToolCard(title, description, icon_class, libraries=None, est_time=None, link
     """
     library_badges = (
         html.Div(
-            style={"display": "flex", "flexWrap": "wrap", "gap": "0.4rem", "marginTop": "0.5rem"},
-            children=[html.Span(lib, style=STYLE_BADGE_LIB) for lib in libraries],
+            className="card-badges",
+            children=[html.Span(lib, className="badge-lib") for lib in libraries],
         )
         if libraries
         else None
@@ -51,52 +36,20 @@ def ToolCard(title, description, icon_class, libraries=None, est_time=None, link
     return html.Div(
         className="card",
         children=[
+            # --- Card header: inline icon + title | badges right-aligned ---
             html.Div(
-                style={"display": "flex", "alignItems": "flex-start", "marginBottom": "1rem"},
+                className="card-top",
                 children=[
-                    html.Div(
-                        className="icon-box",
-                        style={"marginBottom": "0", "marginRight": "1rem", "flexShrink": "0"},
-                        children=[html.I(className=icon_class)],
+                    html.H3(
+                        children=[html.I(className=icon_class), f" {title}"],
                     ),
-                    html.Div(
-                        style={"flex": "1"},
-                        children=[
-                            html.H3(
-                                title, style={"marginBottom": "0.2rem", "fontSize": "1.25rem", "lineHeight": "1.2"}
-                            ),
-                            library_badges,
-                        ],
-                    ),
+                    library_badges,
                 ],
             ),
-            html.P(description, style={"minHeight": "60px", "flex": "1"}),
-            html.Div(
-                style={
-                    "display": "flex",
-                    "alignItems": "center",
-                    "gap": "1rem",
-                    "marginBottom": "0.75rem",
-                    "fontSize": "0.75rem",
-                    "color": "var(--text-secondary)",
-                    "opacity": "0.8",
-                },
-                children=[
-                    html.Span(
-                        style={"display": "flex", "alignItems": "center", "gap": "0.4rem"},
-                        children=[
-                            html.I(className=ICON_CARD_TIMER, style={"fontSize": "0.7rem"}),
-                            html.Span(est_time or "TBD"),
-                        ],
-                    ),
-                ],
-            ),
-            html.A(
-                "Launch Tool",
-                href=link,
-                className="btn btn-outline",
-                style={"fontSize": "0.85rem", "width": "100%", "textAlign": "center", "marginTop": "auto"},
-            ),
+            # --- Card body: description ---
+            html.P(description, className="card-desc"),
+            # --- Card footer: text link ---
+            html.A("Launch →", href=link, className="card-launch"),
         ],
     )
 
@@ -120,14 +73,13 @@ def ToolGrid():
                 ],
             ),
             html.Div(
-                className="grid-3",
+                className="card-grid",
                 children=[
                     ToolCard(
                         tool["title"],
                         tool["desc"],
                         tool["icon"],
                         tool.get("libraries"),
-                        tool.get("est_time"),
                         tool.get("link", "/"),
                     )
                     for tool in TOOLS

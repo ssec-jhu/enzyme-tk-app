@@ -8,7 +8,6 @@ Components import these constants instead of hardcoding icon strings.
 ICON_LOGO = "fa-solid fa-flask"
 
 # --- Tool Cards ---
-ICON_CARD_TIMER = "fa-regular fa-hourglass-half"
 ICON_TOOL_REACTION = "fa-solid fa-flask-vial"
 ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
 ICON_TOOL_TBD = "fa-solid fa-gears"
