@@ -32,11 +32,11 @@ class TestAppImports:
         hero = Hero()
         assert hero is not None
 
-    def test_import_algorithm_cards(self) -> None:
-        """Test that algorithm cards component can be imported."""
-        from enzyme_tk_app.app.components.algorithm_cards import AlgorithmGrid
+    def test_import_tool_cards(self) -> None:
+        """Test that tool cards component can be imported."""
+        from enzyme_tk_app.app.components.tool_cards import ToolGrid
 
-        grid = AlgorithmGrid()
+        grid = ToolGrid()
         assert grid is not None
 
 
