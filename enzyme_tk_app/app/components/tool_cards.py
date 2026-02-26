@@ -3,13 +3,14 @@
 Provides ``ToolCard`` for individual tool cards and ``ToolGrid``
 for the full grid section on the home page.
 
-To add or edit tool cards, see ``tool_registry.py`` — no changes needed here.
+To add or edit tools, create a new sub-package under ``tools/`` — no
+changes needed here.  See ``enzyme_tk_app.app.tools`` for details.
 """
 
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.tool_registry import TOOLS
+from enzyme_tk_app.app.tools import TOOLS
 
 # Matches the old .badge-lib CSS — kept co-located with the only consumer.
 # Explicit hex values (accent #D69E2E at 12%/35% mixed with white) because

@@ -9,6 +9,21 @@
 - All Dash component IDs must follow the pattern: `id-<component-type>-<name>` (e.g., `id-div-nav-links`, `id-location`).
 - Only assign an `id` to a component if it is used in a **callback** (`Input`, `Output`, or `State`). HTML anchor targets are an exception.
 
+## Adding a New Tool (Algorithm)
+- Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`.
+- Auto-discovery in `tools/__init__.py` scans sub-packages at import time — **no central file to edit**.
+- To add a tool, create a folder with:
+
+  | File | Required? | Must export | Purpose |
+  |------|-----------|-------------|---------|
+  | `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, libraries) |
+  | `modal.py` | No | `Modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
+  | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
+
+- The `slug` in `TOOL_DEF` must be URL-safe with hyphens (e.g., `"my-new-tool"`). Folder names use underscores (e.g., `my_new_tool/`).
+- Tool card appears automatically from `TOOL_DEF`. Modal appears automatically if `modal.py` exists. Callbacks register automatically if `callbacks.py` exists.
+- Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
+
 ## Callback Naming
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
