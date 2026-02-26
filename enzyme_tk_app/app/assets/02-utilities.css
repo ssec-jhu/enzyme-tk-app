@@ -62,16 +62,5 @@
     background: color-mix(in srgb, var(--accent-color) 8%, white);
 }
 
-/* --- Badges -------------------------------------------------------------- */
-
-.badge-lib {
-    display: inline-block;
-    padding: 2px 8px;
-    font-size: 0.7rem;
-    font-weight: 500;
-    border-radius: 4px;
-    background: color-mix(in srgb, var(--accent-color) 12%, transparent);
-    color: var(--accent-color);
-    border: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
-    font-family: monospace;
-}
+/* Badges are rendered via dbc.Badge(pill=True) with inline styles
+   in tool_cards.py — no CSS class needed. */

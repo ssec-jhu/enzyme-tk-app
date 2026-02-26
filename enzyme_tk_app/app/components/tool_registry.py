@@ -5,6 +5,7 @@ No frontend code needs to be changed.
 
 Each entry is a ``ToolDef`` with the following fields:
 
+- ``slug``      (required) — URL-safe identifier used in component IDs.
 - ``title``     (required) — Display name shown in the card heading.
 - ``desc``      (required) — Short description of what the tool does.
 - ``icon``      (required) — FontAwesome icon class from ``icons.py``.
@@ -23,6 +24,7 @@ from enzyme_tk_app.app.components.icons import (
 class ToolDef(TypedDict):
     """Schema for a single tool card entry."""
 
+    slug: str  # URL-safe identifier (e.g., "reaction-similarity")
     title: str
     desc: str
     icon: str  # FontAwesome class string from icons.py
@@ -34,6 +36,7 @@ class ToolDef(TypedDict):
 # ---------------------------------------------------------------------------
 TOOLS: list[ToolDef] = [
     {
+        "slug": "reaction-similarity",
         "title": "Reaction Similarity",
         "desc": (
             "Reaction similarity search using RDKit structural reaction fingerprints "
@@ -43,6 +46,7 @@ TOOLS: list[ToolDef] = [
         "libraries": ["rdkit"],
     },
     {
+        "slug": "substrate-product-similarity",
         "title": "Substrate/Product Similarity",
         "desc": (
             "Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring."
@@ -51,6 +55,7 @@ TOOLS: list[ToolDef] = [
         "libraries": ["rdkit"],
     },
     {
+        "slug": "sequence-similarity",
         "title": "Sequence Similarity",
         "desc": (
             "High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms."
@@ -59,12 +64,14 @@ TOOLS: list[ToolDef] = [
         "libraries": ["diamand-blastp"],
     },
     {
+        "slug": "sequence-structure-similarity",
         "title": "Sequence and Structure-Based Similarity",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,
         "libraries": ["foldseek"],
     },
     {
+        "slug": "tbd-tool-2",
         "title": "TBD Tool 2",
         "desc": "Experimental tool module. Features and capabilities are under active development.",
         "icon": ICON_TOOL_TBD,

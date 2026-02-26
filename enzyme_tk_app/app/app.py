@@ -1,14 +1,17 @@
 """Main Dash application entry point for the EnzymeTK Tool Suite."""
 
 import dash
+import dash_bootstrap_components as dbc
 from dash import Dash, html
 
 from enzyme_tk_app.app.components.footer import Footer
 from enzyme_tk_app.app.components.navbar import Navbar
 
 # Initialize the app
-# We'll include FontAwesome for icons
+# We include FontAwesome for icons and Bootstrap for dbc component functionality.
+# Bootstrap CSS is loaded FIRST so our custom CSS in assets/ overrides it.
 external_stylesheets = [
+    dbc.themes.BOOTSTRAP,
     "https://use.fontawesome.com/releases/v6.4.0/css/all.css",
 ]
 

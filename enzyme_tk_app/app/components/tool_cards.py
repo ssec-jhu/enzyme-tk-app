@@ -6,15 +6,30 @@ for the full grid section on the home page.
 To add or edit tool cards, see ``tool_registry.py`` — no changes needed here.
 """
 
+import dash_bootstrap_components as dbc
 from dash import html
 
 from enzyme_tk_app.app.components.tool_registry import TOOLS
 
+# Matches the old .badge-lib CSS — kept co-located with the only consumer.
+# Explicit hex values (accent #D69E2E at 12%/35% mixed with white) because
+# dbc.Badge sets background via Bootstrap !important — we override with className="".
+STYLE_BADGE_LIB = {
+    "backgroundColor": "#FBF5E4",
+    "color": "#D69E2E",
+    "border": "1px solid #F0D78C",
+    "fontFamily": "monospace",
+    "fontSize": "0.7rem",
+    "fontWeight": "500",
+    "padding": "2px 8px",
+}
 
-def ToolCard(title, description, icon_class, libraries=None):
+
+def ToolCard(slug, title, description, icon_class, libraries=None):
     """Build a single tool card.
 
     Args:
+        slug: URL-safe identifier used for the launch button ID.
         title: Card heading text.
         description: Short description of the tool.
         icon_class: FontAwesome class string for the card icon.
@@ -26,7 +41,7 @@ def ToolCard(title, description, icon_class, libraries=None):
     library_badges = (
         html.Div(
             className="card-badges",
-            children=[html.Span(lib, className="badge-lib") for lib in libraries],
+            children=[dbc.Badge(lib, pill=True, color="", style=STYLE_BADGE_LIB) for lib in libraries],
         )
         if libraries
         else None
@@ -48,7 +63,12 @@ def ToolCard(title, description, icon_class, libraries=None):
             # --- Card body: description ---
             html.P(description, className="card-desc"),
             # --- Card footer: launch action ---
-            html.Span("Launch →", className="card-launch"),
+            dbc.Button(
+                "Launch →",
+                id=f"id-btn-launch-{slug}",
+                color="link",
+                className="card-launch",
+            ),
         ],
     )
 
@@ -74,6 +94,7 @@ def ToolGrid():
                 className="card-grid",
                 children=[
                     ToolCard(
+                        tool["slug"],
                         tool["title"],
                         tool["desc"],
                         tool["icon"],

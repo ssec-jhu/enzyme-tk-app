@@ -18,3 +18,6 @@ ICON_HERO_ASYNC = "fa-solid fa-bolt"
 
 # --- Footer: Social Links ---
 ICON_SOCIAL_GITHUB = "fa-brands fa-github"
+
+# --- Modals ---
+ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
