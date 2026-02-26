@@ -4,8 +4,10 @@ WORKDIR /app
 
 COPY requirements/prd.txt requirements.txt
 
-RUN pip3 install -r requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-CMD ["uvicorn", "enzyme_tk_app.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8050
+
+CMD ["gunicorn", "enzyme_tk_app.app.app:server", "--bind", "0.0.0.0:8050", "--workers", "4"]
