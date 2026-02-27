@@ -564,3 +564,124 @@ def test_validate_form_disabled_when_whitespace_only():
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
     assert validate_reaction_form("   ", "   ") is True
+
+
+# ---------------------------------------------------------------------------
+# 8. Substrate/Product Similarity callbacks
+# ---------------------------------------------------------------------------
+
+
+def test_subprod_toggle_modal_opens_on_launch_click():
+    """The substrate/product modal must open when the launch button is clicked."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-launch-substrate-product-similarity"
+        result = toggle_substrate_product_similarity_modal(1, 0, 0)
+
+    assert result is True
+
+
+def test_subprod_toggle_modal_closes_on_cancel_click():
+    """The substrate/product modal must close when the cancel button is clicked."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-subprod-cancel"
+        result = toggle_substrate_product_similarity_modal(0, 1, 0)
+
+    assert result is False
+
+
+def test_subprod_toggle_modal_closes_on_submit_click():
+    """The substrate/product modal must close when the submit button is clicked."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-subprod-submit"
+        result = toggle_substrate_product_similarity_modal(0, 0, 1)
+
+    assert result is False
+
+
+def test_subprod_populate_example_sets_smiles_and_role():
+    """Selecting an example must populate both the SMILES field and the role selector."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    # Encoded as "role||smiles"
+    smiles, role = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
+
+    assert smiles == "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
+    assert role == "substrate"
+
+
+def test_subprod_populate_example_sets_product_role():
+    """A product example must set the role to 'product'."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role = populate_example_smiles("product||CCO")
+
+    assert smiles == "CCO"
+    assert role == "product"
+
+
+def test_subprod_populate_example_returns_defaults_for_none():
+    """Clearing the example dropdown must return empty SMILES and default role."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role = populate_example_smiles(None)
+
+    assert smiles == ""
+    assert role == "substrate"
+
+
+def test_subprod_populate_example_returns_defaults_for_invalid_value():
+    """A value without the '||' separator must return empty SMILES and default role."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role = populate_example_smiles("no-separator-here")
+
+    assert smiles == ""
+    assert role == "substrate"
+
+
+def test_subprod_validate_form_disabled_when_both_empty():
+    """Submit must be disabled when both fields are empty."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+
+    assert validate_substrate_product_form("", "") is True
+    assert validate_substrate_product_form(None, None) is True
+
+
+def test_subprod_validate_form_disabled_when_name_missing():
+    """Submit must be disabled when query name is empty."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+
+    assert validate_substrate_product_form("", "CCO") is True
+
+
+def test_subprod_validate_form_disabled_when_smiles_missing():
+    """Submit must be disabled when SMILES is empty."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+
+    assert validate_substrate_product_form("My Query", "") is True
+
+
+def test_subprod_validate_form_enabled_when_both_filled():
+    """Submit must be enabled when both fields have content."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+
+    assert validate_substrate_product_form("Glucose search", "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O") is False
+
+
+def test_subprod_validate_form_disabled_when_whitespace_only():
+    """Submit must be disabled when fields contain only whitespace."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+
+    assert validate_substrate_product_form("   ", "   ") is True
