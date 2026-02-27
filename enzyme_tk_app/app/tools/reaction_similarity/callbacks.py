@@ -6,7 +6,7 @@ This module defines callbacks that:
 - Handle the form submission (TODO)
 """
 
-from dash import Input, Output, State, callback
+from dash import Input, Output, callback, ctx
 
 
 @callback(
@@ -16,22 +16,26 @@ from dash import Input, Output, State, callback
         Input("id-btn-reaction-cancel", "n_clicks"),
         Input("id-btn-reaction-submit", "n_clicks"),
     ],
-    State("id-modal-reaction-similarity", "is_open"),
     prevent_initial_call=True,
 )
-def toggle_reaction_similarity_modal(launch_clicks, cancel_clicks, submit_clicks, is_open):
-    """Toggle the Reaction Similarity modal open/closed.
+def toggle_reaction_similarity_modal(launch_clicks, cancel_clicks, submit_clicks):
+    """Open or close the Reaction Similarity modal based on the triggering button.
+
+    Opens the modal when the launch button is clicked, and closes it
+    when the cancel or submit button is clicked.
 
     Args:
         launch_clicks: Number of clicks on the launch button.
         cancel_clicks: Number of clicks on the cancel button.
         submit_clicks: Number of clicks on the submit button.
-        is_open: Current open state of the modal.
 
     Returns:
-        Boolean indicating whether the modal should be open.
+        True to open the modal (launch), False to close it (cancel/submit).
     """
-    return not is_open
+    # Determine which button was clicked and act accordingly
+    if ctx.triggered_id == "id-btn-launch-reaction-similarity":
+        return True
+    return False
 
 
 @callback(

@@ -65,8 +65,16 @@
 - Write **flat test functions**, not test classes. One test per distinct behavior — avoid multiple tests that verify the same thing.
 - Use fixtures in `conftest.py` for shared setup (component instances, helpers like `find_components` and `get_text`).
 - Focus on testing the **functionality** of components and callbacks, not implementation details.
-- **File organization**: UI/layout tests (app config, navbar, footer, hero, home page) go in `test_app.py`. Tool registry and tool card tests go in `test_tool_cards.py`.
+- **File organization**:
+  | File | Scope |
+  |------|-------|
+  | `test_app.py` | App config, navbar, footer, hero, home page layout |
+  | `test_tool_cards.py` | `ToolCard` / `ToolGrid` rendering, tool registry data |
+  | `test_tools.py` | Tool auto-discovery, `ToolDef` schema, modals, callbacks |
 - **Import order matters**: always import `app` before importing any page module (e.g., `home.py`) — `dash.register_page()` requires the Dash app to be instantiated first. See `test_app.py` for the pattern.
+- **Write for scientists**: test code should be readable by developers who are not Python experts. Use descriptive variable names (`_tool_folder_names`, not `_SUBPKGS`), plain-English docstrings, explicit loops over clever comprehensions, and inline comments that explain *why*. See `test_tools.py` for the style.
+- **Resilient to change**: tests for registries or auto-discovered components (e.g., tools, icons) must **scan the source at runtime** rather than hard-coding names or counts. This way adding or removing a tool folder doesn't break existing tests. See the `_tool_folder_names` pattern in `test_tools.py`.
+- **Numbered section headers**: in larger test files, group related tests under comment banners with numbers (e.g., `# 1. Discovery`, `# 2. Schema`) so the logical flow is easy to follow.
 
 ## Running & Testing
 - After making changes, always **run the app** to verify it starts without errors.

@@ -21,13 +21,28 @@ logger = logging.getLogger(__name__)
 
 
 class ToolDef(TypedDict):
-    """Schema for a single tool card entry."""
+    """Schema for a single tool card entry.
 
-    slug: str  # URL-safe identifier (e.g., "reaction-similarity")
+    Attributes:
+        slug: URL-safe identifier used in routes and component IDs.
+            Must use hyphens, not underscores (e.g., ``"reaction-similarity"``).
+        title: Human-readable name shown as the card heading
+            (e.g., ``"Reaction Similarity"``).
+        desc: Short description displayed beneath the title on the tool card.
+            One or two sentences that explain what the tool does.
+        icon: FontAwesome class string for the card icon.  Must be a free
+            icon imported from ``enzyme_tk_app.app.components.icons``
+            (e.g., ``ICON_SIMILARITY``).
+        libraries: Optional list of Python package names shown as monospace
+            badges on the card (e.g., ``["rdkit", "scipy"]``).  Omit if the
+            tool has no noteworthy dependencies.
+    """
+
+    slug: str
     title: str
     desc: str
-    icon: str  # FontAwesome class string from icons.py
-    libraries: NotRequired[list[str]]  # package names shown as monospace badges
+    icon: str
+    libraries: NotRequired[list[str]]
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +84,24 @@ def _discover_tools() -> None:
             logger.warning("Tool package %s has no TOOL_DEF — skipping", full_name)
             continue
 
+        # --- Validate required keys before accepting the definition ---
+        # ``ToolDef`` is a TypedDict, which is only enforced by static type
+        # checkers — not at runtime.  This guard catches typos or missing
+        # fields early (at import time) instead of letting a broken card
+        # surface as a cryptic KeyError during layout rendering.
+        # ``__required_keys__`` is a frozenset maintained by Python's
+        # TypedDict machinery — it automatically reflects any additions or
+        # removals of required fields in ``ToolDef``, so this check never
+        # drifts out of sync with the schema.
+        missing_keys = ToolDef.__required_keys__ - tool_def.keys()
+        if missing_keys:
+            logger.warning(
+                "Tool package %s TOOL_DEF is missing required key(s): %s — skipping",
+                full_name,
+                ", ".join(sorted(missing_keys)),
+            )
+            continue
+
         TOOLS.append(tool_def)
 
         # --- Step 2: Import callbacks.py (optional) ---
@@ -77,8 +110,18 @@ def _discover_tools() -> None:
         # the Dash app instance.  We don't need to capture any return value.
         try:
             importlib.import_module(f"{full_name}.callbacks")
-        except ModuleNotFoundError:
-            pass  # No callbacks module — tool has no interactivity yet
+        except ModuleNotFoundError as exc:
+            # Only silence the error when callbacks.py itself is absent.
+            # If callbacks.py exists but imports a missing dependency, that
+            # is a real bug and must not be silently swallowed.
+            expected_module = f"{full_name}.callbacks"
+            if exc.name != expected_module:
+                logger.warning(
+                    "callbacks module for %s failed: missing dependency %r",
+                    full_name,
+                    exc.name,
+                    exc_info=True,
+                )
         except Exception:
             logger.warning("Failed to import callbacks for %s", full_name, exc_info=True)
 
@@ -92,8 +135,17 @@ def _discover_tools() -> None:
             modal_fn = getattr(modal_mod, "Modal", None)
             if modal_fn is not None:
                 _modal_funcs.append(modal_fn)
-        except ModuleNotFoundError:
-            pass  # No modal module — tool card will have no "Launch →" dialog
+        except ModuleNotFoundError as exc:
+            # Only silence the error when modal.py itself is absent.
+            # A missing dependency inside an existing modal.py is a real bug.
+            expected_module = f"{full_name}.modal"
+            if exc.name != expected_module:
+                logger.warning(
+                    "modal module for %s failed: missing dependency %r",
+                    full_name,
+                    exc.name,
+                    exc_info=True,
+                )
         except Exception:
             logger.warning("Failed to import modal for %s", full_name, exc_info=True)
 
