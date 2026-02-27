@@ -33,6 +33,9 @@ class ToolDef(TypedDict):
         icon: FontAwesome class string for the card icon.  Must be a free
             icon imported from ``enzyme_tk_app.app.components.icons``
             (e.g., ``ICON_SIMILARITY``).
+        order: Display position in the tool card grid (lower numbers appear
+            first).  Keeps the grid deterministic regardless of filesystem
+            directory listing order.
         libraries: Optional list of Python package names shown as monospace
             badges on the card (e.g., ``["rdkit", "scipy"]``).  Omit if the
             tool has no noteworthy dependencies.
@@ -42,6 +45,7 @@ class ToolDef(TypedDict):
     title: str
     desc: str
     icon: str
+    order: int
     libraries: NotRequired[list[str]]
 
 
@@ -155,6 +159,10 @@ def _discover_tools() -> None:
 # subsequent ``from enzyme_tk_app.app.tools import TOOLS`` simply reuses the
 # already-populated ``TOOLS`` list.
 _discover_tools()
+
+# Sort tools by explicit ``order`` field so the card grid is deterministic
+# regardless of filesystem directory listing order.
+TOOLS.sort(key=lambda t: t["order"])
 
 
 def ToolModals() -> html.Div:

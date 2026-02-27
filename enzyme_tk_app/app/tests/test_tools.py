@@ -121,8 +121,8 @@ def test_required_keys_present():
 
 
 def test_no_unknown_keys():
-    """Tools should only use recognised keys (slug, title, desc, icon, libraries)."""
-    allowed_keys = {"slug", "title", "desc", "icon", "libraries"}
+    """Tools should only use recognised keys (slug, title, desc, icon, order, libraries)."""
+    allowed_keys = {"slug", "title", "desc", "icon", "order", "libraries"}
 
     for tool in TOOLS:
         extra = set(tool.keys()) - allowed_keys
@@ -280,9 +280,9 @@ def test_reimport_does_not_duplicate_tools():
 
 
 def test_tool_def_type_has_expected_fields():
-    """The ToolDef TypedDict must declare slug, title, desc, icon, and libraries."""
+    """The ToolDef TypedDict must declare slug, title, desc, icon, order, and libraries."""
     fields = ToolDef.__annotations__
-    for key in ("slug", "title", "desc", "icon", "libraries"):
+    for key in ("slug", "title", "desc", "icon", "order", "libraries"):
         assert key in fields, f"ToolDef is missing the '{key}' field"
 
 
@@ -403,6 +403,7 @@ def test_discover_accepts_tool_with_all_required_keys(monkeypatch):
         "title": "Fake Tool",
         "desc": "A fake tool for testing.",
         "icon": "fa-solid fa-flask",
+        "order": 99,
     }
 
     def _import_good(name):
@@ -425,6 +426,7 @@ def test_discover_logs_warning_for_callbacks_dependency_error(monkeypatch, caplo
         "title": "Fake Tool",
         "desc": "A fake tool for testing.",
         "icon": "fa-solid fa-flask",
+        "order": 99,
     }
 
     def _import_with_bad_callbacks(name):
@@ -452,6 +454,7 @@ def test_discover_logs_warning_for_modal_dependency_error(monkeypatch, caplog):
         "title": "Fake Tool",
         "desc": "A fake tool for testing.",
         "icon": "fa-solid fa-flask",
+        "order": 99,
     }
 
     def _import_with_bad_modal(name):
