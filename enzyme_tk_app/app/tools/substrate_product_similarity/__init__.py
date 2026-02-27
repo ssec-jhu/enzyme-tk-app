@@ -13,5 +13,6 @@ TOOL_DEF: ToolDef = {
         "Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring."
     ),
     "icon": ICON_TOOL_REACTION,
+    "order": 2,
     "libraries": ["rdkit"],
 }
