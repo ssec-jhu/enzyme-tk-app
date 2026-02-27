@@ -153,16 +153,18 @@ def _discover_tools() -> None:
         except Exception:
             logger.warning("Failed to import modal for %s", full_name, exc_info=True)
 
+    # Sort tools by explicit ``order`` field so the card grid is deterministic
+    # regardless of filesystem directory listing order.  Sorting here (rather
+    # than once at module level) ensures the list is ordered whenever this
+    # function is called — not just on the first import.
+    TOOLS.sort(key=lambda t: t["order"])
+
 
 # Run discovery exactly once at import time.  Because Python caches imported
 # modules in ``sys.modules``, this function is never executed again — every
 # subsequent ``from enzyme_tk_app.app.tools import TOOLS`` simply reuses the
 # already-populated ``TOOLS`` list.
 _discover_tools()
-
-# Sort tools by explicit ``order`` field so the card grid is deterministic
-# regardless of filesystem directory listing order.
-TOOLS.sort(key=lambda t: t["order"])
 
 
 def ToolModals() -> html.Div:
