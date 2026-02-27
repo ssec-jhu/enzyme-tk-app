@@ -14,7 +14,7 @@ from .conftest import find_components, get_text
 def test_home_layout_returns_div_with_hero_and_tools():
     result = home_layout()
     assert isinstance(result, html.Div)
-    assert len(result.children) == 2
+    assert len(result.children) == 3
 
 
 # -- Navbar --

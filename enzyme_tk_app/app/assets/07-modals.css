@@ -1,0 +1,65 @@
+/* ==========================================================================
+   Modals — Bootstrap overrides for theme consistency
+   Only override what Bootstrap defaults differently from our theme.
+   ========================================================================== */
+
+/* Modal content — colors inherit to header/body/footer */
+.modal-content {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+/* Header/footer borders */
+.modal-header {
+    border-color: var(--border-color);
+}
+
+.modal-footer {
+    border-color: var(--border-color);
+}
+
+/* Close button visibility on themed background */
+.modal-header .btn-close {
+    filter: invert(0.5);
+}
+
+/* Form controls — override Bootstrap's white bg and blue focus */
+.modal-body .form-control,
+.modal-body .form-select {
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+}
+
+.modal-body .form-control:focus,
+.modal-body .form-select:focus {
+    background-color: var(--bg-base);
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb, 59, 130, 246), 0.25);
+}
+
+.modal-body .form-control::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* Buttons — override Bootstrap blue */
+.modal-footer .btn-primary {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.modal-footer .btn-primary:hover {
+    background-color: var(--accent-hover);
+    border-color: var(--accent-hover);
+}
+
+.modal-footer .btn-outline-secondary {
+    border-color: var(--border-color);
+    color: var(--text-secondary);
+}
+
+.modal-footer .btn-outline-secondary:hover {
+    background-color: var(--bg-muted);
+    color: var(--text-primary);
+}

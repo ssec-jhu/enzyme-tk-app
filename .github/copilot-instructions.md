@@ -9,6 +9,21 @@
 - All Dash component IDs must follow the pattern: `id-<component-type>-<name>` (e.g., `id-div-nav-links`, `id-location`).
 - Only assign an `id` to a component if it is used in a **callback** (`Input`, `Output`, or `State`). HTML anchor targets are an exception.
 
+## Adding a New Tool (Algorithm)
+- Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`.
+- Auto-discovery in `tools/__init__.py` scans sub-packages at import time — **no central file to edit**.
+- To add a tool, create a folder with:
+
+  | File | Required? | Must export | Purpose |
+  |------|-----------|-------------|---------|
+  | `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, libraries) |
+  | `modal.py` | No | `Modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
+  | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
+
+- The `slug` in `TOOL_DEF` must be URL-safe with hyphens (e.g., `"my-new-tool"`). Folder names use underscores (e.g., `my_new_tool/`).
+- Tool card appears automatically from `TOOL_DEF`. Modal appears automatically if `modal.py` exists. Callbacks register automatically if `callbacks.py` exists.
+- Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
+
 ## Callback Naming
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
@@ -50,8 +65,16 @@
 - Write **flat test functions**, not test classes. One test per distinct behavior — avoid multiple tests that verify the same thing.
 - Use fixtures in `conftest.py` for shared setup (component instances, helpers like `find_components` and `get_text`).
 - Focus on testing the **functionality** of components and callbacks, not implementation details.
-- **File organization**: UI/layout tests (app config, navbar, footer, hero, home page) go in `test_app.py`. Tool registry and tool card tests go in `test_tool_cards.py`.
+- **File organization**:
+  | File | Scope |
+  |------|-------|
+  | `test_app.py` | App config, navbar, footer, hero, home page layout |
+  | `test_tool_cards.py` | `ToolCard` / `ToolGrid` rendering, tool registry data |
+  | `test_tools.py` | Tool auto-discovery, `ToolDef` schema, modals, callbacks |
 - **Import order matters**: always import `app` before importing any page module (e.g., `home.py`) — `dash.register_page()` requires the Dash app to be instantiated first. See `test_app.py` for the pattern.
+- **Write for scientists**: test code should be readable by developers who are not Python experts. Use descriptive variable names (`_tool_folder_names`, not `_SUBPKGS`), plain-English docstrings, explicit loops over clever comprehensions, and inline comments that explain *why*. See `test_tools.py` for the style.
+- **Resilient to change**: tests for registries or auto-discovered components (e.g., tools, icons) must **scan the source at runtime** rather than hard-coding names or counts. This way adding or removing a tool folder doesn't break existing tests. See the `_tool_folder_names` pattern in `test_tools.py`.
+- **Numbered section headers**: in larger test files, group related tests under comment banners with numbers (e.g., `# 1. Discovery`, `# 2. Schema`) so the logical flow is easy to follow.
 
 ## Running & Testing
 - After making changes, always **run the app** to verify it starts without errors.

@@ -31,6 +31,7 @@ def tool_grid():
 @pytest.fixture()
 def sample_tool_card():
     return ToolCard(
+        slug="test-tool",
         title="Test Tool",
         description="A test description",
         icon_class="fa-solid fa-wrench",
@@ -41,6 +42,7 @@ def sample_tool_card():
 @pytest.fixture()
 def sample_tool_card_no_libs():
     return ToolCard(
+        slug="bare-tool",
         title="Bare Tool",
         description="No libraries",
         icon_class="fa-solid fa-gear",

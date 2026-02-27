@@ -1,8 +1,9 @@
 """Tests for the tool registry and tool card rendering."""
 
+import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.tool_registry import TOOLS
+from enzyme_tk_app.app.tools import TOOLS
 
 from .conftest import find_components, get_text
 
@@ -43,20 +44,20 @@ def test_tool_card_displays_title_and_description(sample_tool_card):
 
 
 def test_tool_card_has_launch_action(sample_tool_card):
-    spans = find_components(sample_tool_card, html.Span)
-    launch_spans = [s for s in spans if getattr(s, "children", None) == "Launch →"]
-    assert len(launch_spans) == 1
+    buttons = find_components(sample_tool_card, dbc.Button)
+    launch_buttons = [b for b in buttons if getattr(b, "children", None) == "Launch →"]
+    assert len(launch_buttons) == 1
 
 
 def test_tool_card_renders_library_badges(sample_tool_card):
-    badges = find_components(sample_tool_card, html.Span)
+    badges = find_components(sample_tool_card, dbc.Badge)
     badge_texts = {get_text(b) for b in badges}
     assert "numpy" in badge_texts
     assert "pandas" in badge_texts
 
 
 def test_tool_card_no_badges_when_no_libraries(sample_tool_card_no_libs):
-    badges = [s for s in find_components(sample_tool_card_no_libs, html.Span) if "badge" in (s.className or "")]
+    badges = find_components(sample_tool_card_no_libs, dbc.Badge)
     assert len(badges) == 0
 
 
