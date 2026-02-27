@@ -79,7 +79,7 @@ def Modal():
             dbc.ModalBody(
                 children=[
                     # Query Name Input
-                    dbc.Label("Query Name", html_for="id-input-reaction-query-name", className="form-label"),
+                    dbc.Label("Query Name", className="form-label"),
                     dbc.Input(
                         id="id-input-reaction-query-name",
                         type="text",
@@ -87,7 +87,7 @@ def Modal():
                         className="mb-3",
                     ),
                     # Database Selection
-                    dbc.Label("Select Database", html_for="id-select-reaction-database", className="form-label"),
+                    dbc.Label("Select Database", className="form-label"),
                     dbc.Select(
                         id="id-select-reaction-database",
                         options=db_options,
@@ -95,7 +95,7 @@ def Modal():
                         className="mb-3",
                     ),
                     # Reaction SMILES Input
-                    dbc.Label("Reaction SMILES", html_for="id-textarea-reaction-smiles", className="form-label"),
+                    dbc.Label("Reaction SMILES", className="form-label"),
                     dbc.Textarea(
                         id="id-textarea-reaction-smiles",
                         placeholder="Enter reaction SMILES (e.g., CC(=O)O.CCO>>CC(=O)OCC.O)",

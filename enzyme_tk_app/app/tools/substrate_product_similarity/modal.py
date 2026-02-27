@@ -87,7 +87,6 @@ def Modal():
                     # Query Name Input
                     dbc.Label(
                         "Query Name",
-                        html_for="id-input-subprod-query-name",
                         className="form-label",
                     ),
                     dbc.Input(
@@ -99,7 +98,6 @@ def Modal():
                     # Database Selection
                     dbc.Label(
                         "Select Database",
-                        html_for="id-select-subprod-database",
                         className="form-label",
                     ),
                     dbc.Select(
@@ -111,7 +109,6 @@ def Modal():
                     # Molecule Role Selection (substrate or product)
                     dbc.Label(
                         "Molecule Role",
-                        html_for="id-radio-subprod-role",
                         className="form-label",
                     ),
                     dbc.RadioItems(
@@ -127,7 +124,6 @@ def Modal():
                     # SMILES Input
                     dbc.Label(
                         "SMILES",
-                        html_for="id-textarea-subprod-smiles",
                         className="form-label",
                     ),
                     dbc.Textarea(
