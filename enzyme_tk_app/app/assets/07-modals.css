@@ -24,6 +24,13 @@
     filter: invert(0.5);
 }
 
+/* Form labels — more prominent than Bootstrap defaults */
+.modal-body .form-label {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: var(--text-primary);
+}
+
 /* Form controls — override Bootstrap's white bg and blue focus */
 .modal-body .form-control,
 .modal-body .form-select {

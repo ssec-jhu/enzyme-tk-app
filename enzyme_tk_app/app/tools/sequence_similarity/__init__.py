@@ -11,5 +11,6 @@ TOOL_DEF: ToolDef = {
     "title": "Sequence Similarity",
     "desc": ("High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms."),
     "icon": ICON_TOOL_SEQUENCE,
-    "libraries": ["diamand-blastp"],
+    "order": 3,
+    "libraries": ["diamond-blastp"],
 }

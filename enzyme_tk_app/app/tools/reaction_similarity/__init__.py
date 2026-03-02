@@ -14,5 +14,6 @@ TOOL_DEF: ToolDef = {
         "with Tanimoto, Russell, and Cosine scoring."
     ),
     "icon": ICON_TOOL_REACTION,
+    "order": 1,
     "libraries": ["rdkit"],
 }

@@ -10,6 +10,7 @@ ICON_LOGO = "fa-solid fa-flask"
 # --- Tool Cards ---
 ICON_TOOL_REACTION = "fa-solid fa-flask-vial"
 ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
+ICON_TOOL_STRUCTURE = "fa-solid fa-cube"
 ICON_TOOL_TBD = "fa-solid fa-gears"
 
 # --- Hero Feature Pills ---
