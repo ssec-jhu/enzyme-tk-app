@@ -20,6 +20,37 @@ class TaskScheduler(ABC):
     Implementations must provide concrete versions of every abstract method.
     The ABC ships one concrete helper (``_verify_ownership``) that all
     implementations inherit.
+
+    **Job lifecycle methods at a glance:**
+
+    +-----------------+--------------------+-----------------------------+-------+
+    | Method          | Scope              | Affected statuses           | Role  |
+    +=================+====================+=============================+=======+
+    | ``cancel_job``  | One job            | PENDING, STARTED → REVOKED | Both  |
+    +-----------------+--------------------+-----------------------------+-------+
+    | ``delete_job``  | One job            | Terminal only *             | User  |
+    +-----------------+--------------------+-----------------------------+-------+
+    | ``clear_jobs``  | All jobs / session | Terminal only *             | User  |
+    +-----------------+--------------------+-----------------------------+-------+
+    | ``clear_all_jobs`` | All jobs / all  | Terminal only *             | Admin |
+    +-----------------+--------------------+-----------------------------+-------+
+    | ``purge_all``   | Everything         | ALL (+ volume files)        | Admin |
+    +-----------------+--------------------+-----------------------------+-------+
+
+    (*) Terminal statuses: SUCCESS, FAILURE, REVOKED, TIMEOUT.
+
+    - **cancel** stops a live job (PENDING/STARTED) and moves it to REVOKED.
+      It does NOT remove the job record — the user can still see it.
+      Pass ``session_id`` for user-scoped ownership checks, or ``None``
+      to skip the check (admin mode).
+    - **delete** removes a single job record, but only if it has already
+      reached a terminal state.  A running job must be cancelled first.
+    - **clear** is a bulk delete of all terminal jobs for one session
+      (``clear_jobs``) or across every session (``clear_all_jobs``).
+      Running/pending jobs are never touched.
+    - **purge** is the dangerous zone option: it revokes every active task,
+      deletes ALL job records regardless of status, wipes session sets,
+      and removes result files from the shared Docker volume.
     """
 
     # ── Submit & control ─────────────────────────────────────────────
@@ -38,12 +69,13 @@ class TaskScheduler(ABC):
         """
 
     @abstractmethod
-    def cancel_job(self, job_id: str, session_id: str) -> bool:
+    def cancel_job(self, job_id: str, session_id: str | None = None) -> bool:
         """Cancel / revoke a pending or running job.
 
         Args:
             job_id: The job to cancel.
-            session_id: Must match the owning session.
+            session_id: When provided, ownership is verified (user mode).
+                When ``None``, the ownership check is skipped (admin mode).
 
         Returns:
             ``True`` if successfully revoked, ``False`` otherwise.
