@@ -1,51 +1,51 @@
-"""Backend job scheduling package for the EnzymeTK Tool Suite.
+"""Backend task scheduling package for the EnzymeTK Tool Suite.
 
 Public API
 ----------
-- ``get_job_scheduling_service()`` — returns the singleton
-  ``JobSchedulingService`` implementation (currently Celery + Redis).
-- ``JobSchedulingService`` — the ABC that all UI code programs against.
+- ``get_task_scheduler()`` — returns the singleton
+  ``TaskScheduler`` implementation (currently Celery + Redis).
+- ``TaskScheduler`` — the ABC that all UI code programs against.
 - ``JobInfo`` / ``JobStatus`` — data transfer objects.
 
 Usage in Dash callbacks::
 
     from flask import g
-    from enzyme_tk_app.app.backend import get_job_scheduling_service
+    from enzyme_tk_app.app.backend import get_task_scheduler
 
-    service = get_job_scheduling_service()
-    job_id = service.submit_job("reaction-similarity", params, g.session_id)
+    scheduler = get_task_scheduler()
+    job_id = scheduler.submit_job("reaction-similarity", params, g.session_id)
 """
 
 from __future__ import annotations
 
-from enzyme_tk_app.app.backend.api import JobSchedulingService
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 
 __all__ = [
     "JobInfo",
-    "JobSchedulingService",
     "JobStatus",
-    "get_job_scheduling_service",
+    "TaskScheduler",
+    "get_task_scheduler",
 ]
 
 # Singleton instance — lazily initialised to avoid Redis connections at
 # import time (important for test environments that don't run Redis).
-_service: JobSchedulingService | None = None
+_scheduler: TaskScheduler | None = None
 
 
-def get_job_scheduling_service() -> JobSchedulingService:
-    """Return the singleton ``JobSchedulingService`` implementation.
+def get_task_scheduler() -> TaskScheduler:
+    """Return the singleton ``TaskScheduler`` implementation.
 
     The instance is created on first call to avoid opening a Redis
     connection during module import (which would break tests and CLI
     scripts that don't need the backend).
 
     Returns:
-        The application-wide ``CeleryJobSchedulingService`` instance.
+        The application-wide ``CeleryTaskScheduler`` instance.
     """
-    global _service  # noqa: PLW0603
-    if _service is None:
-        from enzyme_tk_app.app.backend.celery_service import CeleryJobSchedulingService  # noqa: PLC0415
+    global _scheduler  # noqa: PLW0603
+    if _scheduler is None:
+        from enzyme_tk_app.app.backend.task_scheduler_celery import CeleryTaskScheduler  # noqa: PLC0415
 
-        _service = CeleryJobSchedulingService()
-    return _service
+        _scheduler = CeleryTaskScheduler()
+    return _scheduler
