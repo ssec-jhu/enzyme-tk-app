@@ -19,10 +19,22 @@
   | `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, libraries) |
   | `modal.py` | No | `Modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
   | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
+  | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
 
 - The `slug` in `TOOL_DEF` must be URL-safe with hyphens (e.g., `"my-new-tool"`). Folder names use underscores (e.g., `my_new_tool/`).
 - Tool card appears automatically from `TOOL_DEF`. Modal appears automatically if `modal.py` exists. Callbacks register automatically if `callbacks.py` exists.
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
+- `ToolDef` supports optional scheduling fields: `max_duration` (hard time limit in seconds, default 3600) and `soft_time_limit` (soft limit, default `max_duration − 300`). These control Celery worker time limits per tool.
+
+## Backend Architecture
+- The backend task scheduling system lives in `enzyme_tk_app/app/backend/`.
+- All Dash UI code programs against the `TaskScheduler` ABC — never import Celery, Redis, or backend internals in UI code.
+- Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
+- Session management uses anonymous UUID cookies (`etk_session_id`). Access the session ID via `flask.g.session_id`.
+- Each tool that does computation adds `compute.py` exporting `def run(params: dict) -> dict`. The `params` dict matches the form fields from the modal. The returned dict must be JSON-serialisable.
+- Large results (> 512 KB) are automatically offloaded to the shared volume — tool authors just return a plain dict.
+- Jobs are stored in Redis with a TTL (default 24h).
+- The `docker-compose.yml` orchestrates web, Redis, and worker containers with a shared volume.
 
 ## Callback Naming
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
@@ -71,6 +83,12 @@
   | `test_app.py` | App config, navbar, footer, hero, home page layout |
   | `test_tool_cards.py` | `ToolCard` / `ToolGrid` rendering, tool registry data |
   | `test_tools.py` | Tool auto-discovery, `ToolDef` schema, modals, callbacks |
+  | `test_backend_models.py` | `JobStatus` enum, `JobInfo` dataclass |
+  | `test_backend_config.py` | Backend config defaults and env var overrides |
+  | `test_backend_session.py` | Session cookie assignment via Flask test client |
+  | `test_backend_task_scheduler.py` | `TaskScheduler` ABC contract |
+  | `test_backend_task_scheduler_celery.py` | `CeleryTaskScheduler` with mocked Redis |
+  | `test_backend_tasks.py` | `run_tool_task`, result offloading, stdout capture |
 - **Import order matters**: always import `app` before importing any page module (e.g., `home.py`) — `dash.register_page()` requires the Dash app to be instantiated first. See `test_app.py` for the pattern.
 - **Write for scientists**: test code should be readable by developers who are not Python experts. Use descriptive variable names (`_tool_folder_names`, not `_SUBPKGS`), plain-English docstrings, explicit loops over clever comprehensions, and inline comments that explain *why*. See `test_tools.py` for the style.
 - **Resilient to change**: tests for registries or auto-discovered components (e.g., tools, icons) must **scan the source at runtime** rather than hard-coding names or counts. This way adding or removing a tool folder doesn't break existing tests. See the `_tool_folder_names` pattern in `test_tools.py`.
@@ -101,9 +119,11 @@
 
 ## Docker
 - The app runs in Docker with **gunicorn** as the production WSGI server.
-- Build: `docker build -t enzyme-tk-app .`
-- Run: `docker run -p 8050:8050 enzyme-tk-app`
+- For local development with the full stack (web + Redis + Celery worker), use: `docker compose up --build`
+- Build standalone: `docker build -t enzyme-tk-app .`
+- Run standalone: `docker run -p 8050:8050 enzyme-tk-app`
 - The Dockerfile uses `gunicorn enzyme_tk_app.app.app:server` — the `server` variable in `app.py` exposes the underlying Flask server.
+- `docker-compose.yml` defines three services: `web` (gunicorn), `redis` (broker + results), and `worker` (Celery). A shared volume at `/data` is mounted on web and worker.
 - Production requirements are in `requirements/prd.txt` (not `pyproject.toml` optional-dependencies).
 
 ## Final Checks Before Committing

@@ -10,15 +10,18 @@ license = {file = "LICENSE"}
 
 requires-python = ">=3.12"
 dependencies = [
+    "celery[redis]>=5.3",
     "dash>=2.0",
     "dash-bootstrap-components",
     "gunicorn",
+    "redis>=5.0,<6.5",
 ]
 
 [project.optional-dependencies]
 dev = [
     "bandit>=1.7",
     "build",
+    "fakeredis>=2.21",
     "pytest",
     "pytest-cov",
     "ruff",
@@ -115,3 +118,9 @@ convention = "google"
 docstring-quotes = "double"  # https://docs.astral.sh/ruff/settings/#lint_flake8-quotes_docstring-quotes
 inline-quotes = "double"  # https://docs.astral.sh/ruff/settings/#lint_flake8-quotes_inline-quotes
 multiline-quotes = "double"  # https://docs.astral.sh/ruff/settings/#lint_flake8-quotes_multiline-quotes
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests requiring a running Redis server (deselected by default)",
+]
+addopts = "-m 'not integration'"
