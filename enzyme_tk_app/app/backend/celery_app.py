@@ -21,5 +21,9 @@ celery_app.conf.update(
     worker_hijack_root_logger=False,
 )
 
-# Auto-discover the tasks module so Celery registers run_tool_task.
+# Tell Celery to scan the ``enzyme_tk_app.app.backend`` package for a
+# ``tasks.py`` module and register any functions decorated with ``@celery_app.task``
+# (in our case, ``run_tool_task``).  Without this call, the worker would not
+# know about our task and ``apply_async`` calls from the web process would fail
+# with a "Received unregistered task" error.
 celery_app.autodiscover_tasks(["enzyme_tk_app.app.backend"])
