@@ -240,18 +240,20 @@ class CeleryTaskScheduler(TaskScheduler):
 
         return job_id
 
-    def cancel_job(self, job_id: str, session_id: str) -> bool:
+    def cancel_job(self, job_id: str, session_id: str | None = None) -> bool:
         """Cancel / revoke a pending or running job.
 
         Args:
             job_id: The job to cancel.
-            session_id: Must match the owning session.
+            session_id: When provided, ownership is verified (user mode).
+                When ``None``, the ownership check is skipped (admin mode).
 
         Returns:
             ``True`` if successfully revoked.
         """
-        # Security check: only the session that created the job can cancel it.
-        if not self._owns_job(job_id, session_id):
+        # When session_id is given, enforce ownership so regular users
+        # can only cancel their own jobs.
+        if session_id is not None and not self._owns_job(job_id, session_id):
             return False
 
         job = self._read_job(job_id)
