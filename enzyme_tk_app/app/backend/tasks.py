@@ -106,33 +106,68 @@ def _now_iso() -> str:
 def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) -> None:
     """Execute a tool's ``compute.run()`` inside the Celery worker.
 
+    This function runs in a **separate process** (the Celery worker),
+    NOT in the web server.  It is the bridge between the job scheduling
+    system and every tool's algorithm code.
+
+    The flow:
+        1. Mark the job as STARTED in Redis so the UI can show progress.
+        2. Convert the tool slug to a Python module path and import it.
+        3. Run the tool's ``compute.run(params)`` while capturing any
+           ``print()`` output the algorithm produces.
+        4. Store the result back in Redis (or offload to disk if too big).
+        5. If anything crashes, store the full traceback so the user can
+           see what went wrong.
+
     Args:
         tool_slug: Identifies which tool to run (e.g. ``"reaction-similarity"``).
+            This gets converted to an underscore folder name for import.
         params: JSON-serialisable parameters forwarded to ``compute.run()``.
+            These come directly from the user's form inputs in the modal.
         session_id: The anonymous session that submitted the job.
-        job_id: Pre-generated UUID for this job.
+            Not used by the task itself, but stored in the job hash for
+            ownership tracking.
+        job_id: Pre-generated UUID for this job.  Used as the Redis hash
+            key (``job:<job_id>``) and the output directory name.
     """
+    # Get the Redis client (lazily created once per worker process).
     r = _get_redis()
     job_key = f"job:{job_id}"
 
-    # Mark STARTED.
+    # Step 1: Tell Redis (and therefore the UI) that we've started work.
+    # The web server polls this status field to update the user's dashboard.
     r.hset(job_key, mapping={"status": JobStatus.STARTED.value, "started_at": _now_iso()})
+    # Reset the TTL so the key doesn't expire while the job is running.
     r.expire(job_key, config.JOB_TTL_SECONDS)
 
+    # Prepare buffers to capture anything the tool prints to stdout/stderr.
+    # Many scientific algorithms use print() for progress logging — we
+    # save this output so the user can review it later.
     stdout_buf = io.StringIO()
     stderr_buf = io.StringIO()
 
     try:
-        # Dynamic import: slug ``reaction-similarity`` → folder ``reaction_similarity``.
+        # Step 2: Convert URL slug to Python module path.
+        # Example: "reaction-similarity" → "reaction_similarity"
+        #        → "enzyme_tk_app.app.tools.reaction_similarity.compute"
         folder = tool_slug.replace("-", "_")
         module_path = f"enzyme_tk_app.app.tools.{folder}.compute"
         compute_module = importlib.import_module(module_path)
 
+        # Step 3: Run the tool's algorithm.
+        # redirect_stdout/stderr captures any print() calls the algorithm
+        # makes during execution (e.g., progress updates, debug info).
         with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
             result = compute_module.run(params)
 
+        # Step 4: Persist the result.
+        # _store_result checks the size — if the result dict serialises to
+        # more than 512 KB of JSON, it writes the full data to a file on
+        # the shared Docker volume and returns a small pointer dict instead.
+        # This prevents Redis from running out of memory on large outputs.
         stored = _store_result(job_id, result)
 
+        # Write the final SUCCESS state + result + captured output to Redis.
         r.hset(
             job_key,
             mapping={
@@ -144,6 +179,9 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         )
 
     except Exception:
+        # Step 5: If the algorithm (or import) raised an exception, store
+        # the full Python traceback so the user can diagnose the failure.
+        # Any partial stdout/stderr captured before the crash is also saved.
         r.hset(
             job_key,
             mapping={
@@ -155,4 +193,6 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         )
 
     finally:
+        # Always refresh the TTL so the job metadata stays available for
+        # the configured period (default 24 hours) regardless of outcome.
         r.expire(job_key, config.JOB_TTL_SECONDS)
