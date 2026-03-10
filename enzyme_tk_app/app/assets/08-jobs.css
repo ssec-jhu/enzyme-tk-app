@@ -1,0 +1,388 @@
+/* ==========================================================================
+   My Jobs Page — status badges and table
+   CSS is used here for :hover pseudo-classes and shared table styling.
+   ========================================================================== */
+
+/* --- Status badges ------------------------------------------------------- */
+.badge-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+.badge-PENDING {
+    background: #EDF2F7;
+    color: #4A5568;
+}
+
+.badge-STARTED {
+    background: #EBF8FF;
+    color: #2B6CB0;
+}
+
+.badge-SUCCESS {
+    background: #F0FFF4;
+    color: #276749;
+}
+
+.badge-FAILURE {
+    background: #FFF5F5;
+    color: #C53030;
+}
+
+.badge-REVOKED {
+    background: #FFFAF0;
+    color: #C05621;
+}
+
+.badge-TIMEOUT {
+    background: #FFFFF0;
+    color: #975A16;
+}
+
+/* --- Jobs table ---------------------------------------------------------- */
+.jobs-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.875rem;
+}
+
+.jobs-table th {
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem;
+    border-bottom: 2px solid var(--border-color);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.jobs-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--border-color);
+    vertical-align: middle;
+}
+
+.jobs-table tr:hover td {
+    background: #F7FAFC;
+}
+
+/* --- Action buttons in table rows ---------------------------------------- */
+.btn-job-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    text-decoration: none;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+}
+
+.btn-job-action:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-job-action.view-results {
+    border-color: #276749;
+    color: #276749;
+}
+
+.btn-job-action.view-results:hover {
+    background: #F0FFF4;
+}
+
+.btn-job-action.cancel {
+    border-color: #C53030;
+    color: #C53030;
+}
+
+.btn-job-action.cancel:hover {
+    background: #FFF5F5;
+}
+
+.btn-job-action:disabled,
+.btn-job-action[disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* --- Stats cards row ----------------------------------------------------- */
+.jobs-stats-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.5rem;
+}
+
+.jobs-stat-card {
+    flex: 1;
+    min-width: 140px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.25rem;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+}
+
+.jobs-stat-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1.2;
+}
+
+.jobs-stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-top: 0.25rem;
+}
+
+/* --- Toolbar ------------------------------------------------------------- */
+.jobs-toolbar {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.btn-toolbar {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.45rem 1rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    font-weight: 500;
+    border: 1px solid var(--border-color);
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.btn-toolbar:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-toolbar.danger {
+    border-color: #C53030;
+    color: #C53030;
+}
+
+.btn-toolbar.danger:hover {
+    background: #FFF5F5;
+}
+
+/* --- Empty state --------------------------------------------------------- */
+.jobs-empty {
+    text-align: center;
+    padding: 3rem 1rem;
+    color: var(--text-secondary);
+}
+
+.jobs-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+/* --- Shared page wrapper ------------------------------------------------- */
+.jobs-page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem 1rem;
+}
+
+/* --- My Jobs page header ------------------------------------------------- */
+.jobs-page-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.jobs-page-header-icon {
+    font-size: 1.5rem;
+    color: var(--primary-color);
+}
+
+.jobs-page-subtitle {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+/* --- Back link ----------------------------------------------------------- */
+.jobs-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--primary-color);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 500;
+    margin-bottom: 1.5rem;
+}
+
+/* --- Job detail header (results page) ------------------------------------ */
+.jobs-detail-header {
+    margin-bottom: 1.5rem;
+}
+
+.jobs-detail-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+/* Unified stat card grid — wraps into rows */
+.jobs-detail-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+/* Enhanced stat card — matches app card accent-bar pattern */
+.jobs-detail-card {
+    flex: 0 0 200px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--accent-color);
+    border-radius: var(--radius-md);
+    padding: 0.85rem 1.15rem;
+    box-shadow: var(--shadow-sm);
+}
+
+/* Shared section title (Job Details, Results) */
+.jobs-section-title {
+    margin: 0 0 0.75rem 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* --- Error & log boxes --------------------------------------------------- */
+.jobs-error-box {
+    background: #FFF5F5;
+    border: 1px solid #FEB2B2;
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    color: #C53030;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    font-family: monospace;
+    margin-top: 1rem;
+}
+
+.jobs-log-box {
+    background: #F7FAFC;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 1rem;
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    font-family: monospace;
+    max-height: 300px;
+    overflow-y: auto;
+    margin-top: 1rem;
+}
+
+/* --- Divider ------------------------------------------------------------- */
+.jobs-divider {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 2rem 0;
+}
+
+/* --- Running / status messages ------------------------------------------- */
+.jobs-running-box {
+    text-align: center;
+    padding: 3rem 1rem;
+}
+
+.jobs-running-spinner {
+    font-size: 2rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+/* --- Badge icon ---------------------------------------------------------- */
+.badge-status-icon {
+    font-size: 0.7rem;
+}
+
+/* --- Table action cell --------------------------------------------------- */
+.jobs-actions-cell {
+    display: flex;
+    gap: 0.5rem;
+}
+
+/* --- Meta cards (results_helpers) ---------------------------------------- */
+.jobs-meta-row {
+    display: flex;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.jobs-meta-card {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.5rem;
+    min-width: 180px;
+}
+
+.jobs-meta-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.jobs-meta-value {
+    font-size: 1.0rem;
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+/* --- Status messages (revoked / timeout) --------------------------------- */
+.jobs-status-message {
+    font-style: italic;
+    margin-top: 1rem;
+}
+
+.jobs-timeout-message {
+    color: #975A16;
+    font-style: italic;
+    margin-top: 1rem;
+}

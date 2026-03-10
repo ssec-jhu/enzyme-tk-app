@@ -34,16 +34,16 @@
 /* Form controls — override Bootstrap's white bg and blue focus */
 .modal-body .form-control,
 .modal-body .form-select {
-    background-color: var(--bg-base);
+    background-color: var(--bg-surface);
     color: var(--text-primary);
     border-color: var(--border-color);
 }
 
 .modal-body .form-control:focus,
 .modal-body .form-select:focus {
-    background-color: var(--bg-base);
+    background-color: var(--bg-surface);
     border-color: var(--accent-color);
-    box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb, 59, 130, 246), 0.25);
+    box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.25);
 }
 
 .modal-body .form-control::placeholder {
@@ -57,8 +57,7 @@
 }
 
 .modal-footer .btn-primary:hover {
-    background-color: var(--accent-hover);
-    border-color: var(--accent-hover);
+    filter: brightness(1.1);
 }
 
 .modal-footer .btn-outline-secondary {
@@ -67,6 +66,6 @@
 }
 
 .modal-footer .btn-outline-secondary:hover {
-    background-color: var(--bg-muted);
+    background-color: var(--bg-body);
     color: var(--text-primary);
 }
