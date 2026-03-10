@@ -14,14 +14,6 @@
     text-align: center;
 }
 
-/* --- Grid ---------------------------------------------------------------- */
-
-.grid-3 {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 2rem;
-}
-
 /* --- Buttons ------------------------------------------------------------- */
 
 .btn {
@@ -64,3 +56,8 @@
 
 /* Badges are rendered via dbc.Badge(pill=True) with inline styles
    in tool_cards.py — no CSS class needed. */
+
+/* --- Text helpers -------------------------------------------------------- */
+.text-secondary {
+    color: var(--text-secondary);
+}
