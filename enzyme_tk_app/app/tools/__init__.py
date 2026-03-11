@@ -9,9 +9,10 @@ requires no edits here — just create a sub-package with:
 """
 
 import importlib
+import json
 import logging
 import pkgutil
-from typing import NotRequired, TypedDict
+from typing import Callable, NotRequired, TypedDict
 
 from dash import html
 
@@ -39,6 +40,12 @@ class ToolDef(TypedDict):
         libraries: Optional list of Python package names shown as monospace
             badges on the card (e.g., ``["rdkit", "scipy"]``).  Omit if the
             tool has no noteworthy dependencies.
+        max_duration: Timeout in seconds for the tool's computation.
+            When this limit is reached the worker raises
+            ``SoftTimeLimitExceeded``, which the task catches and records
+            as ``TIMEOUT``.  A small hard-kill buffer (60 s) is added
+            automatically so cleanup code can run.  Defaults to
+            ``DEFAULT_MAX_DURATION`` (3600 s) in ``backend.config``.
     """
 
     slug: str
@@ -47,6 +54,7 @@ class ToolDef(TypedDict):
     icon: str
     order: int
     libraries: NotRequired[list[str]]
+    max_duration: NotRequired[int]
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +66,7 @@ class ToolDef(TypedDict):
 # ``__init__.py`` once per interpreter session.
 TOOLS: list[ToolDef] = []  # Accumulated ToolDef dicts, one per discovered tool
 _modal_funcs: list = []  # Callables (Modal factories) that return dbc.Modal components
+RESULTS_LAYOUTS: dict[str, Callable] = {}  # slug → ResultsLayout callable
 
 
 def _discover_tools() -> None:
@@ -153,6 +162,27 @@ def _discover_tools() -> None:
         except Exception:
             logger.warning("Failed to import modal for %s", full_name, exc_info=True)
 
+        # --- Step 4: Import results.py (optional) ---
+        # If present, ``results.py`` must expose a ``ResultsLayout(job)``
+        # callable that renders tool-specific output on the job results page.
+        # Falls back to ``DefaultResultsLayout`` when not provided.
+        try:
+            results_mod = importlib.import_module(f"{full_name}.results")
+            results_fn = getattr(results_mod, "ResultsLayout", None)
+            if results_fn is not None:
+                RESULTS_LAYOUTS[tool_def["slug"]] = results_fn
+        except ModuleNotFoundError as exc:
+            expected_module = f"{full_name}.results"
+            if exc.name != expected_module:
+                logger.warning(
+                    "results module for %s failed: missing dependency %r",
+                    full_name,
+                    exc.name,
+                    exc_info=True,
+                )
+        except Exception:
+            logger.warning("Failed to import results for %s", full_name, exc_info=True)
+
     # Sort tools by explicit ``order`` field so the card grid is deterministic
     # regardless of filesystem directory listing order.  Sorting here (rather
     # than once at module level) ensures the list is ordered whenever this
@@ -182,6 +212,37 @@ def ToolModals() -> html.Div:
     return html.Div([fn() for fn in _modal_funcs])
 
 
+def DefaultResultsLayout(job) -> html.Div:
+    """Fallback results renderer that shows raw JSON.
+
+    Used when a tool does not provide a custom ``results.py`` module.
+
+    Args:
+        job: A completed ``JobInfo`` instance.
+
+    Returns:
+        An ``html.Div`` with a formatted JSON dump of the result dict.
+    """
+    result = job.result or {}
+    return html.Div(
+        children=[
+            html.H5("Raw Results", style={"marginBottom": "1rem"}),
+            html.Pre(
+                json.dumps(result, indent=2, default=str),
+                style={
+                    "backgroundColor": "#F7FAFC",
+                    "padding": "1rem",
+                    "borderRadius": "0.5rem",
+                    "fontSize": "0.85rem",
+                    "maxHeight": "400px",
+                    "overflowY": "auto",
+                    "border": "1px solid var(--border-color)",
+                },
+            ),
+        ],
+    )
+
+
 # Explicit public API for ``from enzyme_tk_app.app.tools import *``.
 # Without ``__all__``, a wildcard import would expose every name defined or
 # imported in this file (including ``importlib``, ``logging``, ``pkgutil``,
@@ -189,4 +250,4 @@ def ToolModals() -> html.Div:
 # Listing names here restricts the wildcard to only these three symbols,
 # keeping the public surface clean and preventing accidental coupling to
 # implementation details.
-__all__ = ["TOOLS", "ToolDef", "ToolModals"]
+__all__ = ["DefaultResultsLayout", "RESULTS_LAYOUTS", "TOOLS", "ToolDef", "ToolModals"]
