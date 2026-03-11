@@ -61,7 +61,7 @@ def _store_result(job_id: str, result: dict) -> dict:
         return result
 
     # Too large — write to shared volume.
-    output_dir = os.path.join(config.SHARED_VOLUME_PATH, "job_outputs", job_id)
+    output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "result.json")
     with open(output_path, "w") as fh:
