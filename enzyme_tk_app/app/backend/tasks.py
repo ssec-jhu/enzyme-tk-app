@@ -126,8 +126,8 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         params: JSON-serialisable parameters forwarded to ``compute.run()``.
             These come directly from the user's form inputs in the modal.
         session_id: The anonymous session that submitted the job.
-            Not used by the task itself, but stored in the job hash for
-            ownership tracking.
+            Used to refresh the session-set TTL so it stays in sync
+            with the job hash TTL.
         job_id: Pre-generated UUID for this job.  Used as the Redis hash
             key (``job:<job_id>``) and the output directory name.
     """
@@ -139,7 +139,9 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
     # The web server polls this status field to update the user's dashboard.
     r.hset(job_key, mapping={"status": JobStatus.STARTED.value, "started_at": _now_iso()})
     # Reset the TTL so the key doesn't expire while the job is running.
+    # Also refresh the session set TTL to keep it in sync with the job hash.
     r.expire(job_key, config.JOB_TTL_SECONDS)
+    r.expire(f"session:{session_id}:jobs", config.JOB_TTL_SECONDS)
 
     # Prepare buffers to capture anything the tool prints to stdout/stderr.
     # Many scientific algorithms use print() for progress logging — we
@@ -212,3 +214,8 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         # Always refresh the TTL so the job metadata stays available for
         # the configured period (default 24 hours) regardless of outcome.
         r.expire(job_key, config.JOB_TTL_SECONDS)
+        # Keep the session set alive at least as long as its newest job.
+        # Without this, the set can expire before the job hash, breaking
+        # ownership checks and job listing even though the job still exists.
+        session_key = f"session:{session_id}:jobs"
+        r.expire(session_key, config.JOB_TTL_SECONDS)

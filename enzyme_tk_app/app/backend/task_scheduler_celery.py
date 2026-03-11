@@ -153,10 +153,16 @@ class CeleryTaskScheduler(TaskScheduler):
         # Convert the flat string dict back into a typed JobInfo dataclass.
         # ``params`` and ``result`` are stored as JSON strings in Redis
         # because Redis hashes only support string values.
+        raw_status = data.get("status", JobStatus.PENDING.value)
+        try:
+            status = JobStatus(raw_status)
+        except ValueError:
+            logger.warning("Unknown job status %r for job %s — defaulting to FAILURE", raw_status, job_id)
+            status = JobStatus.FAILURE
         return JobInfo(
             job_id=data.get("job_id", job_id),
             tool_slug=data.get("tool_slug", ""),
-            status=JobStatus(data.get("status", JobStatus.PENDING.value)),
+            status=status,
             session_id=data.get("session_id", ""),
             submitted_at=data.get("submitted_at", ""),
             started_at=data.get("started_at"),
@@ -301,6 +307,16 @@ class CeleryTaskScheduler(TaskScheduler):
                 "completed_at": _now_iso(),
             },
         )
+
+        # Refresh TTLs so the user has a full window to see the REVOKED
+        # status.  The worker was SIGKILL'd, so its ``finally`` block
+        # never ran — the previous TTL may be almost exhausted.
+        self._redis.expire(self._job_key(job_id), config.JOB_TTL_SECONDS)
+        if session_id is not None:
+            self._redis.expire(self._session_key(session_id), config.JOB_TTL_SECONDS)
+        else:
+            # Admin mode — look up the session from the job hash.
+            self._redis.expire(self._session_key(job.session_id), config.JOB_TTL_SECONDS)
         return True
 
     # ── Query ────────────────────────────────────────────────────────
@@ -529,6 +545,13 @@ class CeleryTaskScheduler(TaskScheduler):
                         ),
                     },
                 )
+                # Refresh TTLs so the TIMEOUT status is visible for a
+                # full window.  The worker was hard-killed, so its
+                # ``finally`` block never refreshed these.
+                self._redis.expire(key, config.JOB_TTL_SECONDS)
+                sid = self._redis.hget(key, "session_id")
+                if sid:
+                    self._redis.expire(self._session_key(sid), config.JOB_TTL_SECONDS)
                 logger.info("Reconciled stale job %s → TIMEOUT (elapsed %.0fs)", job_id, elapsed)
                 reconciled += 1
 
