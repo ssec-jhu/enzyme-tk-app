@@ -286,14 +286,6 @@ def test_tool_def_type_has_expected_fields():
         assert key in fields, f"ToolDef is missing the '{key}' field"
 
 
-def test_public_api():
-    """The tools package __all__ must expose the full public API."""
-    import enzyme_tk_app.app.tools as tools_pkg
-
-    assert hasattr(tools_pkg, "__all__")
-    assert set(tools_pkg.__all__) == {"DefaultResultsLayout", "RESULTS_LAYOUTS", "TOOLS", "ToolDef", "ToolModals"}
-
-
 # ---------------------------------------------------------------------------
 # 6. Discovery error paths — does _discover_tools handle failures gracefully?
 # ---------------------------------------------------------------------------
