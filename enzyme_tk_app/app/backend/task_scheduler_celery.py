@@ -19,9 +19,16 @@ Celery directly — it only calls methods on this class via the abstract
 
 *   ``submit_job`` calls ``run_tool_task.apply_async(...)`` to send work
     to a Celery worker process (which may be running in a separate
-    container or machine).
+    container or machine).  Each tool has a single ``max_duration``
+    timeout.  Celery's *soft* time limit is set to ``max_duration``
+    (raises ``SoftTimeLimitExceeded``, caught by the task to record
+    ``TIMEOUT``) and the *hard* limit is ``max_duration + grace`` as
+    a safety net.
 *   ``cancel_job`` uses ``celery.control.revoke(...)`` to send a SIGKILL
     signal to the worker running the task.
+*   ``reconcile_stale_jobs`` sweeps for STARTED jobs that outlived their
+    deadline (e.g., hard-killed by SIGKILL with no cleanup) and marks
+    them as TIMEOUT.
 
 Redis key schema::
 
@@ -175,28 +182,24 @@ class CeleryTaskScheduler(TaskScheduler):
         job_key = self._job_key(job_id)
         session_key = self._session_key(session_id)
 
-        # 2. Look up per-tool time limits.
-        #    Each tool can declare ``max_duration`` (hard kill after N seconds)
-        #    and ``soft_time_limit`` (raise SoftTimeLimitExceeded after N seconds
-        #    so the task can clean up gracefully).
+        # 2. Look up per-tool timeout.
+        #    Each tool can declare ``max_duration`` — the number of seconds
+        #    the computation is allowed to run.  Celery's *soft* time limit
+        #    is set to ``max_duration`` (raises ``SoftTimeLimitExceeded``)
+        #    and the *hard* time limit is ``max_duration + grace`` so the
+        #    handler has time to write TIMEOUT to Redis before SIGKILL.
         #    We import TOOLS lazily here to avoid a circular import — this
         #    module is imported at app startup, before tools are registered.
         max_duration = config.DEFAULT_MAX_DURATION
-        soft_limit: int | None = None
         try:
             from enzyme_tk_app.app.tools import TOOLS  # noqa: PLC0415
 
             for tool in TOOLS:
                 if tool["slug"] == tool_slug:
                     max_duration = tool.get("max_duration", config.DEFAULT_MAX_DURATION)
-                    soft_limit = tool.get("soft_time_limit")
                     break
         except Exception:  # noqa: BLE001
             logger.debug("Could not resolve ToolDef for %s — using defaults", tool_slug)
-
-        # Default soft limit = 5 minutes before hard limit, but at least 60s.
-        if soft_limit is None:
-            soft_limit = max(max_duration - 300, 60)
 
         submitted_at = _now_iso()
 
@@ -231,6 +234,9 @@ class CeleryTaskScheduler(TaskScheduler):
         #    our own job ID.  This is required for ``cancel_job`` to work,
         #    because ``revoke(job_id, ...)`` must target the real Celery
         #    task ID.
+        #    ``soft_time_limit`` = user-visible timeout (raises exception).
+        #    ``time_limit``      = hard kill = timeout + grace buffer.
+        hard_limit = max_duration + config.HARD_TIMEOUT_GRACE_SECONDS
         run_tool_task.apply_async(
             kwargs={
                 "tool_slug": tool_slug,
@@ -239,8 +245,8 @@ class CeleryTaskScheduler(TaskScheduler):
                 "job_id": job_id,
             },
             task_id=job_id,
-            time_limit=max_duration,
-            soft_time_limit=soft_limit,
+            time_limit=hard_limit,
+            soft_time_limit=max_duration,
         )
 
         return job_id
@@ -440,6 +446,76 @@ class CeleryTaskScheduler(TaskScheduler):
                 self._redis.delete(self._job_key(job_id))
                 count += 1
         return count
+
+    # ── Reconciliation ───────────────────────────────────────────────
+
+    def reconcile_stale_jobs(self) -> int:
+        """Mark long-running STARTED jobs as TIMEOUT.
+
+        When Celery's hard time limit fires it sends SIGKILL, which kills
+        the worker process instantly — no Python cleanup runs, so the job
+        stays ``STARTED`` in Redis until its TTL expires (24 h by default).
+
+        This method scans every ``STARTED`` job and checks whether its
+        ``started_at`` timestamp exceeds ``max_duration + grace + buffer``.
+        If so, it marks the job as ``TIMEOUT``.  We add a generous 120 s
+        buffer on top of the hard limit to avoid false positives caused by
+        clock skew or scheduling delays.
+
+        Call this periodically (e.g., via Celery Beat, a cron job, or
+        a Dash interval callback) to keep the job list accurate.
+
+        Returns:
+            Number of jobs transitioned to TIMEOUT.
+        """
+        reconciled = 0
+        now = datetime.now(tz=timezone.utc)
+
+        for key in self._redis.scan_iter("job:*"):
+            status_str = self._redis.hget(key, "status")
+            if status_str != JobStatus.STARTED.value:
+                continue
+
+            started_at_str = self._redis.hget(key, "started_at")
+            if not started_at_str:
+                continue
+
+            tool_slug = self._redis.hget(key, "tool_slug") or ""
+
+            # Resolve the tool's max_duration.
+            max_duration = config.DEFAULT_MAX_DURATION
+            try:
+                from enzyme_tk_app.app.tools import TOOLS  # noqa: PLC0415
+
+                for tool in TOOLS:
+                    if tool["slug"] == tool_slug:
+                        max_duration = tool.get("max_duration", config.DEFAULT_MAX_DURATION)
+                        break
+            except Exception:  # noqa: BLE001
+                pass
+
+            # Total deadline = soft limit + hard grace + reconciliation buffer.
+            deadline_seconds = max_duration + config.HARD_TIMEOUT_GRACE_SECONDS + 120
+            started_at = datetime.fromisoformat(started_at_str)
+            elapsed = (now - started_at).total_seconds()
+
+            if elapsed > deadline_seconds:
+                job_id = key.split(":", 1)[1]
+                self._redis.hset(
+                    key,
+                    mapping={
+                        "status": JobStatus.TIMEOUT.value,
+                        "completed_at": _now_iso(),
+                        "error": (
+                            "Job exceeded the maximum allowed duration and was "
+                            "terminated by the system (hard timeout reconciliation)."
+                        ),
+                    },
+                )
+                logger.info("Reconciled stale job %s → TIMEOUT (elapsed %.0fs)", job_id, elapsed)
+                reconciled += 1
+
+        return reconciled
 
     # ── Admin: deep cleanup ──────────────────────────────────────────
 

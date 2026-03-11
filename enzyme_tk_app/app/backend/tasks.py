@@ -24,6 +24,7 @@ import traceback
 from datetime import datetime, timezone
 
 import redis
+from celery.exceptions import SoftTimeLimitExceeded
 
 from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.backend.celery_app import celery_app
@@ -178,8 +179,23 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
             },
         )
 
+    except SoftTimeLimitExceeded:
+        # Step 5a: The tool exceeded its ``max_duration`` timeout.
+        # Celery raises ``SoftTimeLimitExceeded`` (which does NOT inherit
+        # from ``Exception``, so the generic handler below won't catch it).
+        # We record TIMEOUT explicitly so the UI shows the right status.
+        r.hset(
+            job_key,
+            mapping={
+                "status": JobStatus.TIMEOUT.value,
+                "completed_at": _now_iso(),
+                "error": "Job exceeded the maximum allowed duration and was stopped.",
+                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
+            },
+        )
+
     except Exception:
-        # Step 5: If the algorithm (or import) raised an exception, store
+        # Step 5b: If the algorithm (or import) raised an exception, store
         # the full Python traceback so the user can diagnose the failure.
         # Any partial stdout/stderr captured before the crash is also saved.
         r.hset(

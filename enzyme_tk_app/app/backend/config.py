@@ -14,10 +14,18 @@ REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 # Redis automatically evicts the key.  Default: 24 hours.
 JOB_TTL_SECONDS: int = int(os.environ.get("JOB_TTL_SECONDS", "86400"))
 
-# Default hard time limit (seconds) for a Celery task.  The worker sends
-# SIGKILL if the task exceeds this.  Individual tools can override via
+# Default timeout (seconds) for a Celery task.  When this limit is
+# reached the worker raises ``SoftTimeLimitExceeded``, which the task
+# handler catches and records as ``TIMEOUT``.  A hard-kill buffer of
+# ``HARD_TIMEOUT_GRACE_SECONDS`` is added automatically so cleanup code
+# has time to run.  Individual tools can override via
 # ``ToolDef["max_duration"]``.
 DEFAULT_MAX_DURATION: int = int(os.environ.get("DEFAULT_MAX_DURATION", "3600"))
+
+# Extra seconds added beyond ``max_duration`` for the hard SIGKILL.
+# This gives the ``SoftTimeLimitExceeded`` handler time to write the
+# TIMEOUT status to Redis before the process is forcibly killed.
+HARD_TIMEOUT_GRACE_SECONDS: int = int(os.environ.get("HARD_TIMEOUT_GRACE_SECONDS", "60"))
 
 # Path to the shared volume mounted in both web and worker containers.
 # Used for large result offloading and trained model storage.
