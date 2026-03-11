@@ -34,6 +34,23 @@ SESSION_COOKIE_NAME = "etk_session_id"
 SESSION_COOKIE_MAX_AGE = 30 * 24 * 60 * 60
 
 
+def _is_valid_uuid4(value: str | None) -> bool:
+    """Return ``True`` if *value* is a well-formed UUID version 4 string.
+
+    Used to validate the session cookie before it becomes part of Redis keys.
+    Rejects ``None``, empty strings, non-UUID text, and UUIDs of versions
+    other than 4.
+    """
+    if not value:
+        return False
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError):
+        return False
+    # Ensure the string round-trips exactly and is version 4.
+    return parsed.version == 4 and str(parsed) == value
+
+
 def init_session(server: Flask) -> None:
     """Register the session-cookie ``before_request`` hook on *server*.
 
@@ -45,9 +62,17 @@ def init_session(server: Flask) -> None:
 
     @server.before_request
     def _ensure_session_cookie() -> None:  # noqa: ANN202
-        """Assign a session UUID if the cookie is missing."""
+        """Assign a session UUID if the cookie is missing or invalid.
+
+        The cookie value is validated as a UUID4.  If the client sends a
+        malformed or non-UUID4 value the server treats it as absent:
+        a fresh UUID4 is generated and a ``Set-Cookie`` header is emitted
+        to overwrite the bad value.  This prevents keyspace abuse in Redis
+        (keys like ``session:<session_id>:jobs``) and avoids surprising
+        key formats from arbitrary client input.
+        """
         session_id = request.cookies.get(SESSION_COOKIE_NAME)
-        if not session_id:
+        if not _is_valid_uuid4(session_id):
             session_id = str(uuid.uuid4())
             # Store a flag so the after_request handler knows to set the cookie.
             g._set_session_cookie = True  # noqa: SLF001

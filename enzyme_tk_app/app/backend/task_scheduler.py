@@ -146,7 +146,7 @@ class TaskScheduler(ABC):
         Removes:
         - ALL ``job:{job_id}`` hashes from Redis (regardless of status)
         - ALL ``session:{session_id}:jobs`` sets from Redis
-        - ALL files under ``/data/job_outputs/``
+        - ALL files under ``JOB_OUTPUTS_PATH``
         - Revokes any currently running or pending Celery tasks
 
         Returns:

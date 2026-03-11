@@ -124,10 +124,10 @@ class CeleryTaskScheduler(TaskScheduler):
         """Remove any offloaded result files for *job_id* from the shared volume.
 
         ``tasks._store_result()`` writes large results to
-        ``SHARED_VOLUME_PATH/job_outputs/<job_id>/``.  This helper deletes
+        ``JOB_OUTPUTS_PATH/<job_id>/``.  This helper deletes
         that directory tree so disk space is reclaimed when a job is deleted.
         """
-        output_dir = os.path.join(config.SHARED_VOLUME_PATH, "job_outputs", job_id)
+        output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
         if os.path.isdir(output_dir):
             shutil.rmtree(output_dir, ignore_errors=True)
 
@@ -574,12 +574,12 @@ class CeleryTaskScheduler(TaskScheduler):
             self._redis.delete(key)
             sessions_cleared += 1
 
-        # Step 4: remove large result files from the shared Docker volume
-        # (``/data/job_outputs/``).  These are the files created by
+        # Step 4: remove large result files from the job outputs directory.
+        # These are the files created by
         # ``tasks._store_result()`` when a result exceeds 512 KB.
         volume_bytes_freed = 0
         volume_files_deleted = 0
-        outputs_dir = os.path.join(config.SHARED_VOLUME_PATH, "job_outputs")
+        outputs_dir = config.JOB_OUTPUTS_PATH
         if os.path.isdir(outputs_dir):
             for dirpath, _dirnames, filenames in os.walk(outputs_dir):
                 for fname in filenames:
