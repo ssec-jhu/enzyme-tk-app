@@ -49,6 +49,11 @@ def test_submit_job_dispatches_celery_task(task_scheduler_celery_service):
     assert task_kwargs["tool_slug"] == "reaction-similarity"
     assert task_kwargs["job_id"] == job_id
 
+    # The Celery task_id must equal job_id so that cancel_job (which calls
+    # revoke(job_id, ...)) targets the correct Celery task.
+    celery_task_id = call_kwargs.kwargs.get("task_id") or call_kwargs[1].get("task_id")
+    assert celery_task_id == job_id
+
 
 # ── 2. get_job / get_job_status ──────────────────────────────────────────────
 

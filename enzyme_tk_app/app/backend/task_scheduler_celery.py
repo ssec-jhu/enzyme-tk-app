@@ -227,6 +227,10 @@ class CeleryTaskScheduler(TaskScheduler):
         # 5. Send the task to Celery.  ``apply_async`` puts a message on
         #    the Redis broker queue.  A worker picks it up and calls
         #    ``run_tool_task(**kwargs)`` in a separate process.
+        #    We set ``task_id=job_id`` so that the Celery task ID matches
+        #    our own job ID.  This is required for ``cancel_job`` to work,
+        #    because ``revoke(job_id, ...)`` must target the real Celery
+        #    task ID.
         run_tool_task.apply_async(
             kwargs={
                 "tool_slug": tool_slug,
@@ -234,6 +238,7 @@ class CeleryTaskScheduler(TaskScheduler):
                 "session_id": session_id,
                 "job_id": job_id,
             },
+            task_id=job_id,
             time_limit=max_duration,
             soft_time_limit=soft_limit,
         )
