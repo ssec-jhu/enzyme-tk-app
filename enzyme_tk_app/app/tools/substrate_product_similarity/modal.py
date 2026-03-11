@@ -8,7 +8,7 @@ import dash_bootstrap_components as dbc
 from dash import html
 
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE, ICON_TOOL_REACTION
-from enzyme_tk_app.app.utils import get_reaction_database_options
+from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
 
 def _get_example_smiles():
