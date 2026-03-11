@@ -55,21 +55,21 @@ def _store_result(job_id: str, result: dict) -> dict:
         The dict to persist in Redis — either the original *result*
         (if small enough) or a reference dict pointing to the volume file.
     """
-    serialized = json.dumps(result)
+    serialized = json.dumps(result, ensure_ascii=False)
 
-    if len(serialized.encode()) <= config.MAX_RESULT_BYTES:
+    if len(serialized.encode("utf-8")) <= config.MAX_RESULT_BYTES:
         return result
 
     # Too large — write to shared volume.
     output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "result.json")
-    with open(output_path, "w") as fh:
-        fh.write(serialized)
+    with open(output_path, "w", encoding="utf-8") as fh:
+        json.dump(result, fh, ensure_ascii=False)
 
     return {
         "_result_ref": output_path,
-        "_result_size_bytes": len(serialized.encode()),
+        "_result_size_bytes": len(serialized.encode("utf-8")),
         "preview": _make_preview(result),
     }
 

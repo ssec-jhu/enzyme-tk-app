@@ -225,6 +225,30 @@ def test_cancel_job_revokes_pending(task_scheduler_celery_service, fake_redis):
     assert fake_redis.hgetall("job:j1")["status"] == "REVOKED"
 
 
+def test_cancel_job_refreshes_ttls(task_scheduler_celery_service, fake_redis):
+    """cancel_job refreshes both job hash and session set TTLs.
+
+    Why this matters: the worker is SIGKILL'd so its ``finally`` block
+    never runs.  If the job had been running for most of the TTL period,
+    the remaining TTL could be very short — the user might not see the
+    REVOKED status before it expires.  Refreshing both keys gives the
+    user a full window.
+    """
+    write_job_into_fake_redis(fake_redis, "j1", "sess-1", status="STARTED")
+
+    # Simulate almost-expired keys.
+    fake_redis.expire("job:j1", 10)
+    fake_redis.expire("session:sess-1:jobs", 10)
+
+    with mock.patch("enzyme_tk_app.app.backend.task_scheduler_celery.run_tool_task") as mock_task:
+        mock_task.app = mock.MagicMock()
+        task_scheduler_celery_service.cancel_job("j1", "sess-1")
+
+    # Both TTLs must be refreshed well beyond 10 seconds.
+    assert fake_redis.ttl("job:j1") > 10
+    assert fake_redis.ttl("session:sess-1:jobs") > 10
+
+
 def test_cancel_job_refuses_terminal(task_scheduler_celery_service, fake_redis):
     """cancel_job returns False for already-completed jobs.
 
@@ -302,9 +326,95 @@ def test_purge_all_clears_everything(task_scheduler_celery_service, fake_redis, 
         mock.patch("enzyme_tk_app.app.backend.task_scheduler_celery.config") as mock_config,
     ):
         mock_task.app = mock.MagicMock()
-        mock_config.SHARED_VOLUME_PATH = str(tmp_path)
+        mock_config.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
 
         summary = task_scheduler_celery_service.purge_all()
 
     assert summary["jobs_deleted"] == 2
     assert summary["sessions_cleared"] >= 1
+
+
+# ── 9. reconcile_stale_jobs ──────────────────────────────────────────────────
+
+
+def test_reconcile_marks_stale_started_as_timeout(task_scheduler_celery_service, fake_redis):
+    """reconcile_stale_jobs marks STARTED jobs past their deadline as TIMEOUT.
+
+    Why this matters: when Celery's hard time limit fires (SIGKILL), no
+    Python cleanup runs, so the job stays STARTED in Redis indefinitely.
+    The reconciliation sweep detects this and marks the job as TIMEOUT so
+    the UI shows the correct status.
+    """
+    # Create a STARTED job with a very old started_at timestamp.
+    write_job_into_fake_redis(
+        fake_redis,
+        "j-stale",
+        "sess-1",
+        status="STARTED",
+        started_at="2020-01-01T00:00:00+00:00",
+    )
+
+    count = task_scheduler_celery_service.reconcile_stale_jobs()
+    assert count == 1
+    assert fake_redis.hgetall("job:j-stale")["status"] == "TIMEOUT"
+
+
+def test_reconcile_refreshes_ttls(task_scheduler_celery_service, fake_redis):
+    """reconcile_stale_jobs refreshes both job hash and session set TTLs.
+
+    Why this matters: the worker was hard-killed so its ``finally`` block
+    never refreshed TTLs.  The stale job and its session set may be close
+    to expiry.  After reconciliation the user should have a full TTL
+    window to see the TIMEOUT status.
+    """
+    write_job_into_fake_redis(
+        fake_redis,
+        "j-stale2",
+        "sess-recon",
+        status="STARTED",
+        started_at="2020-01-01T00:00:00+00:00",
+    )
+    # Simulate almost-expired keys.
+    fake_redis.expire("job:j-stale2", 10)
+    fake_redis.expire("session:sess-recon:jobs", 10)
+
+    task_scheduler_celery_service.reconcile_stale_jobs()
+
+    # Both TTLs must be refreshed well beyond 10 seconds.
+    assert fake_redis.ttl("job:j-stale2") > 10
+    assert fake_redis.ttl("session:sess-recon:jobs") > 10
+
+
+def test_reconcile_ignores_recent_started(task_scheduler_celery_service, fake_redis):
+    """reconcile_stale_jobs does NOT mark freshly-started jobs as TIMEOUT.
+
+    Why this matters: a job that just started should not be prematurely
+    marked as timed out.  The reconciliation buffer must be large enough
+    to avoid false positives.
+    """
+    from datetime import datetime, timezone
+
+    write_job_into_fake_redis(
+        fake_redis,
+        "j-fresh",
+        "sess-1",
+        status="STARTED",
+        started_at=datetime.now(tz=timezone.utc).isoformat(),
+    )
+
+    count = task_scheduler_celery_service.reconcile_stale_jobs()
+    assert count == 0
+    assert fake_redis.hgetall("job:j-fresh")["status"] == "STARTED"
+
+
+def test_reconcile_ignores_non_started(task_scheduler_celery_service, fake_redis):
+    """reconcile_stale_jobs only affects STARTED jobs, not other statuses.
+
+    Why this matters: SUCCESS, FAILURE, REVOKED, etc. are terminal and
+    should never be mutated by the reconciliation sweep.
+    """
+    write_job_into_fake_redis(fake_redis, "j-done", "sess-1", status="SUCCESS")
+    write_job_into_fake_redis(fake_redis, "j-fail", "sess-1", status="FAILURE")
+
+    count = task_scheduler_celery_service.reconcile_stale_jobs()
+    assert count == 0

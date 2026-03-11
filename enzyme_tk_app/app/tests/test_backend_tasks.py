@@ -37,7 +37,7 @@ def mock_compute(fake_redis, tmp_path):
     ):
         cfg.JOB_TTL_SECONDS = 86400
         cfg.MAX_RESULT_BYTES = 512 * 1024
-        cfg.SHARED_VOLUME_PATH = str(tmp_path)
+        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
         mock_importlib.import_module.return_value = compute
         yield compute
 
@@ -113,7 +113,7 @@ def test_store_result_inline_small(tmp_path):
     result = {"answer": 42}
     with mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg:
         cfg.MAX_RESULT_BYTES = 512 * 1024
-        cfg.SHARED_VOLUME_PATH = str(tmp_path)
+        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
         stored = _store_result("job-small", result)
 
     # The result dict should pass through unchanged.
@@ -134,7 +134,7 @@ def test_store_result_offloads_large(tmp_path):
     result = {"data": "x" * 200}
     with mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg:
         cfg.MAX_RESULT_BYTES = 100
-        cfg.SHARED_VOLUME_PATH = str(tmp_path)
+        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
         stored = _store_result("job-big", result)
 
     # The reference dict must contain all three expected keys.
@@ -219,3 +219,58 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-stdout")
     assert "Processing query..." in job_data["output_log"]
     assert "Done!" in job_data["output_log"]
+
+
+def test_run_tool_task_timeout(fake_redis, mock_compute):
+    """SoftTimeLimitExceeded from compute.run() stores TIMEOUT status.
+
+    Why this matters: when a tool exceeds its ``max_duration`` timeout,
+    Celery raises ``SoftTimeLimitExceeded``.  The task must catch it and
+    record TIMEOUT (not FAILURE) so the UI shows the correct status and
+    message.  Without this, the exception would propagate uncaught
+    because ``SoftTimeLimitExceeded`` does not inherit from ``Exception``.
+    """
+    from celery.exceptions import SoftTimeLimitExceeded
+
+    mock_compute.run.side_effect = SoftTimeLimitExceeded()
+
+    from enzyme_tk_app.app.backend.tasks import run_tool_task
+
+    run_tool_task("test-tool", {"query": "slow"}, "sess-1", "job-timeout")
+
+    job_data = fake_redis.hgetall("job:job-timeout")
+    assert job_data["status"] == JobStatus.TIMEOUT.value
+    assert "exceeded" in job_data["error"].lower()
+
+
+# ── 4. Session set TTL refresh ───────────────────────────────────────────────
+# The session-set key (session:<id>:jobs) must have its TTL refreshed
+# every time the job hash TTL is refreshed, otherwise the set can expire
+# before the job hash and break ownership checks / job listing.
+
+
+def test_run_tool_task_refreshes_session_set_ttl(fake_redis, mock_compute):
+    """run_tool_task must refresh the session-set TTL alongside the job hash TTL.
+
+    Why this matters: the session set (``session:<id>:jobs``) is only given
+    a TTL at submission time.  If the worker refreshes the job hash TTL
+    (at STARTED and in the ``finally`` block) without also refreshing the
+    session set, the set can expire before the job — breaking ownership
+    checks and ``list_jobs`` even though the job data still exists in Redis.
+    """
+    mock_compute.run.return_value = {"ok": True}
+
+    from enzyme_tk_app.app.backend.tasks import run_tool_task
+
+    session_key = "session:sess-ttl:jobs"
+
+    # Pre-set the session set with a short TTL to simulate an almost-expired set.
+    fake_redis.sadd(session_key, "old-job")
+    fake_redis.expire(session_key, 10)  # about to expire
+
+    run_tool_task("test-tool", {}, "sess-ttl", "job-ttl-check")
+
+    # After the task completes, the session set TTL must have been refreshed
+    # to the full JOB_TTL_SECONDS (86 400 in the mock_compute fixture).
+    ttl = fake_redis.ttl(session_key)
+    assert ttl > 10, f"session set TTL must be refreshed (got {ttl}s, expected ~86400)"

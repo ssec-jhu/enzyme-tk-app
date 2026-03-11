@@ -345,11 +345,28 @@ class CeleryTaskScheduler(TaskScheduler):
         # volume (a Docker volume mounted at /data on both web and worker).
         if job.result and "_result_ref" in job.result:
             ref_path = job.result["_result_ref"]
-            try:
-                with open(ref_path) as fh:
-                    job.result = json.load(fh)
-            except (FileNotFoundError, json.JSONDecodeError):
-                logger.warning("Failed to load result from %s for job %s", ref_path, job_id)
+
+            # Validate the path resolves inside the expected output
+            # directory for this job.  This prevents an arbitrary file
+            # read if the Redis hash is ever corrupted or tampered with.
+            # We use realpath (not abspath) because it also resolves
+            # symlinks — abspath only normalises ".." segments, so a
+            # symlink inside JOB_OUTPUTS_PATH could still escape.
+            expected_dir = os.path.realpath(os.path.join(config.JOB_OUTPUTS_PATH, job_id))
+            real_ref = os.path.realpath(ref_path)
+            if not real_ref.startswith(expected_dir + os.sep) or os.path.basename(real_ref) != "result.json":
+                logger.warning(
+                    "Suspicious _result_ref for job %s: %s (expected under %s/result.json)",
+                    job_id,
+                    ref_path,
+                    expected_dir,
+                )
+            else:
+                try:
+                    with open(real_ref, encoding="utf-8") as fh:
+                        job.result = json.load(fh)
+                except (FileNotFoundError, json.JSONDecodeError):
+                    logger.warning("Failed to load result from %s for job %s", ref_path, job_id)
 
         return job
 
@@ -372,7 +389,15 @@ class CeleryTaskScheduler(TaskScheduler):
         if status_str is None:
             return None
 
-        return JobStatus(status_str)
+        try:
+            return JobStatus(status_str)
+        except ValueError:
+            # Mirrors the guard in ``_read_job()`` — if Redis contains an
+            # unexpected value (schema change, manual corruption) we log a
+            # warning and fall back to FAILURE instead of crashing the
+            # status-polling callback.
+            logger.warning("Unknown job status %r for job %s — defaulting to FAILURE", status_str, job_id)
+            return JobStatus.FAILURE
 
     def list_jobs(self, session_id: str) -> list[JobInfo]:
         """List all jobs belonging to *session_id*.

@@ -121,8 +121,8 @@ def test_required_keys_present():
 
 
 def test_no_unknown_keys():
-    """Tools should only use recognised keys (slug, title, desc, icon, order, libraries)."""
-    allowed_keys = {"slug", "title", "desc", "icon", "order", "libraries"}
+    """Tools should only use recognised keys defined in ToolDef."""
+    allowed_keys = {"slug", "title", "desc", "icon", "order", "libraries", "max_duration"}
 
     for tool in TOOLS:
         extra = set(tool.keys()) - allowed_keys
@@ -287,11 +287,11 @@ def test_tool_def_type_has_expected_fields():
 
 
 def test_public_api():
-    """The tools package __all__ must expose exactly TOOLS, ToolDef, and ToolModals."""
+    """The tools package __all__ must expose the full public API."""
     import enzyme_tk_app.app.tools as tools_pkg
 
     assert hasattr(tools_pkg, "__all__")
-    assert set(tools_pkg.__all__) == {"TOOLS", "ToolDef", "ToolModals"}
+    assert set(tools_pkg.__all__) == {"DefaultResultsLayout", "RESULTS_LAYOUTS", "TOOLS", "ToolDef", "ToolModals"}
 
 
 # ---------------------------------------------------------------------------
