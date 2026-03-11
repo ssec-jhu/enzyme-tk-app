@@ -2,10 +2,11 @@
 #
 # Three services:
 #   web    — Dash app served by gunicorn (4 workers)
-#   redis  — message broker + result store
+#   redis  — message broker + result store for Celery
 #   worker — Celery worker that executes tool compute tasks
 #
-# When Celery Beat is added later, add a fourth "beat" service.
+# A named volume ("data") is shared between web and worker so large
+# job results written by the worker can be read by the web container.
 #
 # Usage:
 #   docker compose up --build          # start everything
@@ -13,6 +14,7 @@
 #   docker compose down -v             # stop and remove volumes
 
 services:
+  # ── Dash web app ──────────────────────────────────────────────────
   web:
     build: .
     ports:
@@ -20,27 +22,39 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379/0
       - SHARED_VOLUME_PATH=/data
-      # ETK_SECURE_COOKIES=true — enable in production behind HTTPS
+      - JOB_OUTPUTS_PATH=/data/job_outputs
+      # SESSION_COOKIE_SECURE — the session cookie's Secure flag is
+      # auto-detected from the request (request.is_secure) by default.
+      # Set Flask's SESSION_COOKIE_SECURE=true in production behind a
+      # TLS-terminating reverse proxy to force the flag on.
     volumes:
       - data:/data
     depends_on:
       - redis
 
+  # ── Redis ─────────────────────────────────────────────────────────
+  # Used as Celery broker AND result backend (same DB 0).
   redis:
     image: redis:7-alpine
     ports:
+      # Map to host 6380 to avoid conflicts with a local Redis on 6379.
       - "6380:6379"
 
+  # ── Celery worker ────────────────────────────────────────────────
+  # Runs tool compute tasks submitted by the web service.
   worker:
     build: .
     command: celery -A enzyme_tk_app.app.backend.celery_app worker -l info
     environment:
       - REDIS_URL=redis://redis:6379/0
       - SHARED_VOLUME_PATH=/data
+      # Must match the web service so both containers resolve the same path.
+      - JOB_OUTPUTS_PATH=/data/job_outputs
     volumes:
       - data:/data
     depends_on:
       - redis
 
 volumes:
+  # Shared between web and worker for large job-result JSON files.
   data:
