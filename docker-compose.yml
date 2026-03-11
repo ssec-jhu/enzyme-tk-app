@@ -1,0 +1,46 @@
+# docker-compose.yml — local / staging orchestration for EnzymeTK
+#
+# Three services:
+#   web    — Dash app served by gunicorn (4 workers)
+#   redis  — message broker + result store
+#   worker — Celery worker that executes tool compute tasks
+#
+# When Celery Beat is added later, add a fourth "beat" service.
+#
+# Usage:
+#   docker compose up --build          # start everything
+#   docker compose up --build -d       # start detached
+#   docker compose down -v             # stop and remove volumes
+
+services:
+  web:
+    build: .
+    ports:
+      - "8050:8050"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SHARED_VOLUME_PATH=/data
+      # ETK_SECURE_COOKIES=true — enable in production behind HTTPS
+    volumes:
+      - data:/data
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+
+  worker:
+    build: .
+    command: celery -A enzyme_tk_app.app.backend.celery_app worker -l info
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SHARED_VOLUME_PATH=/data
+    volumes:
+      - data:/data
+    depends_on:
+      - redis
+
+volumes:
+  data:

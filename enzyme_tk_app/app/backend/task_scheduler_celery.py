@@ -119,6 +119,18 @@ class CeleryTaskScheduler(TaskScheduler):
         """
         return f"session:{session_id}:jobs"
 
+    @staticmethod
+    def _delete_job_outputs(job_id: str) -> None:
+        """Remove any offloaded result files for *job_id* from the shared volume.
+
+        ``tasks._store_result()`` writes large results to
+        ``SHARED_VOLUME_PATH/job_outputs/<job_id>/``.  This helper deletes
+        that directory tree so disk space is reclaimed when a job is deleted.
+        """
+        output_dir = os.path.join(config.SHARED_VOLUME_PATH, "job_outputs", job_id)
+        if os.path.isdir(output_dir):
+            shutil.rmtree(output_dir, ignore_errors=True)
+
     def _read_job(self, job_id: str) -> JobInfo | None:
         """Read a job hash from Redis and convert it into a ``JobInfo`` object.
 
@@ -402,6 +414,9 @@ class CeleryTaskScheduler(TaskScheduler):
         # Remove the job hash and its reference from the session set.
         self._redis.delete(self._job_key(job_id))
         self._redis.srem(self._session_key(session_id), job_id)
+
+        # Clean up any offloaded result files on the shared volume.
+        self._delete_job_outputs(job_id)
         return True
 
     def clear_jobs(self, session_id: str) -> int:
@@ -421,6 +436,7 @@ class CeleryTaskScheduler(TaskScheduler):
             if job is not None and job.status in _TERMINAL_STATUSES:
                 self._redis.delete(self._job_key(jid))
                 self._redis.srem(self._session_key(session_id), jid)
+                self._delete_job_outputs(jid)
                 count += 1
         return count
 
@@ -444,6 +460,7 @@ class CeleryTaskScheduler(TaskScheduler):
                 session_key = self._session_key(job.session_id)
                 self._redis.srem(session_key, job_id)
                 self._redis.delete(self._job_key(job_id))
+                self._delete_job_outputs(job_id)
                 count += 1
         return count
 
