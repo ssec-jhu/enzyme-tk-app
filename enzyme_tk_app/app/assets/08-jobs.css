@@ -127,7 +127,7 @@
     pointer-events: none;
 }
 
-/* --- Stats cards row ----------------------------------------------------- */
+/* --- Stat cards (shared across all pages) -------------------------------- */
 .jobs-stats-row {
     display: flex;
     gap: 1rem;
@@ -147,7 +147,7 @@
 }
 
 .jobs-stat-value {
-    font-size: 1.75rem;
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--primary-color);
     line-height: 1.2;
@@ -251,38 +251,6 @@
     margin-bottom: 1.5rem;
 }
 
-/* --- Job detail header (results page) ------------------------------------ */
-.jobs-detail-header {
-    margin-bottom: 1.5rem;
-}
-
-.jobs-detail-title-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-
-/* Unified stat card grid — wraps into rows */
-.jobs-detail-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
-}
-
-/* Enhanced stat card — matches app card accent-bar pattern */
-.jobs-detail-card {
-    flex: 0 0 200px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-left: 4px solid var(--accent-color);
-    border-radius: var(--radius-md);
-    padding: 0.85rem 1.15rem;
-    box-shadow: var(--shadow-sm);
-}
-
 /* Shared section title (Job Details, Results) */
 .jobs-section-title {
     margin: 0 0 0.75rem 0;
@@ -347,34 +315,6 @@
     gap: 0.5rem;
 }
 
-/* --- Meta cards (results_helpers) ---------------------------------------- */
-.jobs-meta-row {
-    display: flex;
-    gap: 2rem;
-    margin-bottom: 1.5rem;
-    flex-wrap: wrap;
-}
-
-.jobs-meta-card {
-    background: var(--bg-surface);
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-sm);
-    padding: 1rem 1.5rem;
-    min-width: 180px;
-}
-
-.jobs-meta-label {
-    font-size: 0.8rem;
-    color: var(--text-secondary);
-    margin-bottom: 0.25rem;
-}
-
-.jobs-meta-value {
-    font-size: 1.0rem;
-    font-weight: 600;
-    color: var(--primary-color);
-}
-
 /* --- Status messages (revoked / timeout) --------------------------------- */
 .jobs-status-message {
     font-style: italic;
@@ -385,4 +325,53 @@
     color: #975A16;
     font-style: italic;
     margin-top: 1rem;
+}
+
+/* --- Input parameters section -------------------------------------------- */
+.jobs-params-section {
+    margin-bottom: 1.5rem;
+}
+
+.jobs-params-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+}
+
+.jobs-params-table tr:not(:last-child) {
+    border-bottom: 1px solid var(--border-color);
+}
+
+.jobs-params-label {
+    width: 160px;
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    vertical-align: top;
+    white-space: nowrap;
+    background: var(--bg-body);
+}
+
+.jobs-params-value {
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    word-break: break-word;
+}
+
+.jobs-params-value-long {
+    padding: 0.6rem 1rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    color: var(--text-primary);
+    white-space: pre;
+    overflow-x: auto;
+    max-width: 0;
 }
