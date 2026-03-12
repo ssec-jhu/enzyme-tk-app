@@ -36,7 +36,7 @@ def _get_example_reactions():
     ]
 
 
-def Modal():
+def modal():
     """Build the Reaction Similarity modal component.
 
     Returns:
