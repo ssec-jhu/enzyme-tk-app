@@ -1,6 +1,6 @@
 """Tool card rendering components.
 
-Provides ``ToolCard`` for individual tool cards and ``ToolGrid``
+Provides ``tool_card`` for individual tool cards and ``tool_grid``
 for the full grid section on the home page.
 
 To add or edit tools, create a new sub-package under ``tools/`` — no
@@ -26,7 +26,7 @@ STYLE_BADGE_LIB = {
 }
 
 
-def ToolCard(slug, title, description, icon_class, libraries=None):
+def tool_card(slug, title, description, icon_class, libraries=None):
     """Build a single tool card.
 
     Args:
@@ -74,11 +74,11 @@ def ToolCard(slug, title, description, icon_class, libraries=None):
     )
 
 
-def ToolGrid():
+def tool_grid():
     """Build the tool card grid section from the tool registry.
 
     Returns:
-        An ``html.Div`` containing a heading and a grid of ``ToolCard`` components.
+        An ``html.Div`` containing a heading and a grid of ``tool_card`` components.
     """
     return html.Div(
         className="container",
@@ -94,7 +94,7 @@ def ToolGrid():
             html.Div(
                 className="card-grid",
                 children=[
-                    ToolCard(
+                    tool_card(
                         tool["slug"],
                         tool["title"],
                         tool["desc"],
