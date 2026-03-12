@@ -3,7 +3,7 @@
 ## Project Setup
 - This is a **Dash** (Plotly) Python web app.
 - Run the app with: `python3 -m enzyme_tk_app.app.app` from the project root.
-- Always use **package imports** (e.g., `from enzyme_tk_app.app.components.navbar import Navbar`), never relative path hacks with `sys.path`.
+- Always use **package imports** (e.g., `from enzyme_tk_app.app.components.navbar import navbar`), never relative path hacks with `sys.path`.
 
 ## Component IDs
 - All Dash component IDs must follow the pattern: `id-<component-type>-<name>` (e.g., `id-div-nav-links`, `id-location`).
@@ -16,15 +16,15 @@
 
   | File | Required? | Must export | Purpose |
   |------|-----------|-------------|---------|
-  | `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, libraries) |
-  | `modal.py` | No | `Modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
+  | `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, order, libraries) |
+  | `modal.py` | No | `modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
   | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
   | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
-
-- The `slug` in `TOOL_DEF` must be URL-safe with hyphens (e.g., `"my-new-tool"`). Folder names use underscores (e.g., `my_new_tool/`).
-- Tool card appears automatically from `TOOL_DEF`. Modal appears automatically if `modal.py` exists. Callbacks register automatically if `callbacks.py` exists.
+  | `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
+- `TOOL_DEF` requires an `order: int` field that controls the card's position in the grid (lower numbers appear first).
+- Tool card appears automatically from `TOOL_DEF`. Modal appears automatically if `modal.py` exists. Callbacks register automatically if `callbacks.py` exists. Custom results page appears if `results.py` exists.
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
-- `ToolDef` supports optional scheduling fields: `max_duration` (hard time limit in seconds, default 3600) and `soft_time_limit` (soft limit, default `max_duration − 300`). These control Celery worker time limits per tool.
+- `ToolDef` supports an optional `max_duration` field (timeout in seconds, default 3600). When a job exceeds this duration the worker records it as `TIMEOUT`. A small hard-kill grace period (`HARD_TIMEOUT_GRACE_SECONDS`, default 60 s) is added automatically.
 
 ## Backend Architecture
 - The backend task scheduling system lives in `enzyme_tk_app/app/backend/`.
@@ -32,8 +32,9 @@
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
 - Session management uses anonymous UUID cookies (`etk_session_id`). Access the session ID via `flask.g.session_id`.
 - Each tool that does computation adds `compute.py` exporting `def run(params: dict) -> dict`. The `params` dict matches the form fields from the modal. The returned dict must be JSON-serialisable.
-- Large results (> 512 KB) are automatically offloaded to the shared volume — tool authors just return a plain dict.
+- Large results (> 512 KB) are automatically offloaded to `JOB_OUTPUTS_PATH` — tool authors just return a plain dict.
 - Jobs are stored in Redis with a TTL (default 24h).
+- **Redis TTL invariant — dual-key sync:** Every job has two Redis keys: a *hash* (`job:<job_id>`) and a membership entry in a *session set* (`session:<session_id>:jobs`). Whenever code refreshes, sets, or resets the TTL on the job hash it **must also refresh the TTL on the session set** (and vice-versa). If only one key's TTL is extended, the other can expire first — breaking ownership checks (`_owns_job`), job listing (`list_jobs`), or leaving orphan data. Audit both keys any time you add or modify a method that calls `expire`, `hset` on a status transition, or `delete` on either key.
 - The `docker-compose.yml` orchestrates web, Redis, and worker containers with a shared volume.
 
 ## Callback Naming
@@ -49,7 +50,17 @@
 - **Use CSS** for styles that require pseudo-classes (`:hover`, `:focus`, `::after`), media queries, animations, or are shared across multiple components/pages.
 - **Use inline styles** (Python dicts) for one-off styles scoped to a single component that don't need pseudo-classes — keep the style co-located with the element it applies to.
 - When converting a CSS class to inline, merge all cascading rules into one flat `STYLE_*` constant (e.g., `.badge` + `.badge-lib` → `STYLE_BADGE_LIB`).
-- CSS files live in `enzyme_tk_app/app/assets/` and are split by concern (`00-variables.css` … `06-footer.css`). Only add a new CSS class when the style truly needs CSS features or is reused across files.
+- CSS files live in `enzyme_tk_app/app/assets/` and are split by concern with numbered prefixes (e.g., `00-variables.css`, `05-cards.css`). Only add a new CSS class when the style truly needs CSS features or is reused across files.
+
+## Shared UI Components — Stat Cards
+- **All stat-card-style elements across the app must use the same CSS classes** defined in `08-jobs.css`:
+  - Container: `jobs-stats-row` (flex row with wrapping and gap).
+  - Card: `jobs-stat-card` (flex: 1, centered, bordered, shadowed).
+  - Value: `jobs-stat-value` (large, bold, primary color).
+  - Label: `jobs-stat-label` (small, uppercase, secondary text).
+- **Never create page-specific stat card classes** (e.g., no `jobs-detail-card`, `jobs-meta-card`). Reuse the shared set everywhere — My Jobs stats, Job Results header, tool-specific results meta, etc.
+- See `enzyme_tk_app/app/components/results_helpers.py` and `enzyme_tk_app/app/pages/my_jobs_callbacks.py` for existing usage of these classes.
+- When adding new pages with summary statistics, follow the same pattern.
 
 ## Icons
 - All FontAwesome icon class strings should be defined as constants in `enzyme_tk_app/app/components/icons.py` with a descriptive name relative to where they are used (e.g., `ICON_LOGO = "fa-solid fa-flask"`).
@@ -57,6 +68,12 @@
 - Icons should be free icons from FontAwesome's free collection, not pro icons.
 
 ## Code Style
+- Follow **PEP 8 naming conventions** strictly:
+  - Functions and methods: `snake_case` (e.g., `tool_card`, `default_results_layout`).
+  - Variables and parameters: `snake_case`.
+  - Constants: `UPPER_SNAKE_CASE` (e.g., `STYLE_BADGE_LIB`, `NAV_LINKS`).
+  - Classes and TypedDicts: `PascalCase` (e.g., `ToolDef`, `JobInfo`).
+  - **Never use PascalCase for functions** — even for Dash component factories, use `snake_case` (e.g., `navbar()`, not `Navbar()`).
 - Add **docstrings** (Google style) to all modules, functions, and classes.
 - Add **inline comments** for non-obvious logic.
 - Use **double quotes** for all strings.
@@ -77,22 +94,13 @@
 - Write **flat test functions**, not test classes. One test per distinct behavior — avoid multiple tests that verify the same thing.
 - Use fixtures in `conftest.py` for shared setup (component instances, helpers like `find_components` and `get_text`).
 - Focus on testing the **functionality** of components and callbacks, not implementation details.
-- **File organization**:
-  | File | Scope |
-  |------|-------|
-  | `test_app.py` | App config, navbar, footer, hero, home page layout |
-  | `test_tool_cards.py` | `ToolCard` / `ToolGrid` rendering, tool registry data |
-  | `test_tools.py` | Tool auto-discovery, `ToolDef` schema, modals, callbacks |
-  | `test_backend_models.py` | `JobStatus` enum, `JobInfo` dataclass |
-  | `test_backend_config.py` | Backend config defaults and env var overrides |
-  | `test_backend_session.py` | Session cookie assignment via Flask test client |
-  | `test_backend_task_scheduler.py` | `TaskScheduler` ABC contract |
-  | `test_backend_task_scheduler_celery.py` | `CeleryTaskScheduler` with mocked Redis |
-  | `test_backend_tasks.py` | `run_tool_task`, result offloading, stdout capture |
+- **File naming convention**: name test files `test_<module_or_feature>.py` so the scope is obvious from the filename alone (e.g., `test_backend_config.py` tests `backend/config.py`). Group related tests in one file rather than splitting by class — scan `enzyme_tk_app/app/tests/` to see the current layout.
 - **Import order matters**: always import `app` before importing any page module (e.g., `home.py`) — `dash.register_page()` requires the Dash app to be instantiated first. See `test_app.py` for the pattern.
 - **Write for scientists**: test code should be readable by developers who are not Python experts. Use descriptive variable names (`_tool_folder_names`, not `_SUBPKGS`), plain-English docstrings, explicit loops over clever comprehensions, and inline comments that explain *why*. See `test_tools.py` for the style.
 - **Resilient to change**: tests for registries or auto-discovered components (e.g., tools, icons) must **scan the source at runtime** rather than hard-coding names or counts. This way adding or removing a tool folder doesn't break existing tests. See the `_tool_folder_names` pattern in `test_tools.py`.
 - **Numbered section headers**: in larger test files, group related tests under comment banners with numbers (e.g., `# 1. Discovery`, `# 2. Schema`) so the logical flow is easy to follow.
+- **Why this matters**: adding context to tests helps future developers understand the purpose and importance of each test, making maintenance easier and reducing the risk of accidental breakage.
+- Quality over quantity — it's better to have a few well-written, meaningful tests than many brittle or trivial ones.
 
 ## Running & Testing
 - After making changes, always **run the app** to verify it starts without errors.
@@ -123,9 +131,9 @@
 - Build standalone: `docker build -t enzyme-tk-app .`
 - Run standalone: `docker run -p 8050:8050 enzyme-tk-app`
 - The Dockerfile uses `gunicorn enzyme_tk_app.app.app:server` — the `server` variable in `app.py` exposes the underlying Flask server.
-- `docker-compose.yml` defines three services: `web` (gunicorn), `redis` (broker + results), and `worker` (Celery). A shared volume at `/data` is mounted on web and worker.
+- `docker-compose.yml` defines three services: `web` (gunicorn), `redis` (broker + results), and `worker` (Celery). A shared volume at `/data` is mounted on web and worker. Job result files are stored under `JOB_OUTPUTS_PATH` (default `/data/job_outputs`).
 - Production requirements are in `requirements/prd.txt` (not `pyproject.toml` optional-dependencies).
 
 ## Final Checks Before Committing
 - Ensure new code has appropriate docstrings and comments.
-- For full verification (format, lint, security, tests, app & Docker smoke tests), ask the agent to **"run the verify agent"** — see `AGENTS.md`.
+- For full verification (format, lint, security, tests, app & Docker smoke tests), ask the agent to **"run the verify agent"** — Run `.github/verify-docker-build-agent.md`.
