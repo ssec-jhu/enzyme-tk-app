@@ -32,7 +32,7 @@ PARTNERS = [
 ]
 
 
-def Footer():
+def footer():
     """Build the site footer layout.
 
     Returns:
