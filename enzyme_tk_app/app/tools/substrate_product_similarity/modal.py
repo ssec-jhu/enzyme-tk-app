@@ -41,7 +41,7 @@ def _get_example_smiles():
     ]
 
 
-def Modal():
+def modal():
     """Build the Substrate/Product Similarity modal component.
 
     Returns:

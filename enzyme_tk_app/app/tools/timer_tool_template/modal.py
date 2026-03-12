@@ -18,13 +18,14 @@ QUICK_DURATIONS = [
 ]
 
 
-def Modal():
+def modal():
     """Build the Timer modal component.
 
     Returns:
         A ``dbc.Modal`` component with inputs for:
         - Duration in seconds (number input)
         - Quick-select radio buttons for common durations
+        - Option to simulate a mid-run failure (for testing)
     """
     return dbc.Modal(
         id="id-modal-timer-tool-template",
@@ -75,14 +76,25 @@ def Modal():
                             ),
                         ],
                     ),
-                    # Results placeholder
+                    # Simulate failure toggle
+                    html.Div(
+                        className="mb-3",
+                        children=[
+                            dbc.Checkbox(
+                                id="id-check-timer-tool-template-fail",
+                                label="Simulate failure (throws exception halfway through)",
+                                value=False,
+                            ),
+                        ],
+                    ),
+                    # Status / job ID placeholder
                     html.Div(id="id-div-timer-tool-template-results"),
                 ],
             ),
             dbc.ModalFooter(
                 children=[
                     dbc.Button(
-                        "Cancel",
+                        "Close",
                         id="id-btn-timer-tool-template-cancel",
                         color="secondary",
                         outline=True,

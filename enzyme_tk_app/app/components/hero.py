@@ -10,7 +10,7 @@ from dash import html
 from enzyme_tk_app.app.components.icons import ICON_HERO_ASYNC, ICON_HERO_PYTHON
 
 
-def Hero():
+def hero():
     """Build the hero banner layout.
 
     Returns:
