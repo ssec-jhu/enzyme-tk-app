@@ -39,7 +39,7 @@ def make_nav_link(link: dict, pathname: str = None, url_hash: str = None) -> htm
     )
 
 
-def Navbar():
+def navbar():
     """Build the top navigation bar layout.
 
     Contains:
