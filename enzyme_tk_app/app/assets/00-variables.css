@@ -7,15 +7,15 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-    /* --- Colors ---------------------------------------------------------- */
+    /* Color Palette - Scientific Blue (Classic Research) */
     --primary-color: #1E3A5F;
     /* Royal Blue 600 */
+    --primary-dark: #162C48;
+    /* Royal Blue 700 */
     --secondary-color: #2C5282;
     /* Blue 500 */
     --accent-color: #D69E2E;
     /* Amber 500 */
-    --hero-accent: #D69E2E;
-    /* Amber — hero headline accent */
 
     --text-primary: #1A202C;
     /* Blue 900 */
@@ -27,6 +27,15 @@
     --bg-surface: #FFFFFF;
 
     --border-color: #E2E8F0;
+
+    /* --- Status colours -------------------------------------------------- */
+    /* One base colour per status — bg & border derived via color-mix().    */
+    --status-pending: #64748B;   /* Slate 500: Neutral, soft */
+    --status-started: #2C5282;   /* Matches --secondary-color */
+    --status-success: #0F766E;   /* Teal 700: Professional clinical green */
+    --status-failure: #9F1239;   /* Rose 800: Deep, serious muted red */
+    --status-revoked: #94A3B8;   /* Slate 400: Faded, receding */
+    --status-timeout: #9A3412;   /* Orange 800: Deep rust/burnt orange */
 
     /* --- Spacing --------------------------------------------------------- */
     --spacing-md: 1.5rem;

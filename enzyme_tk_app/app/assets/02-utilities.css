@@ -37,7 +37,7 @@
 }
 
 .btn-primary:hover {
-    background-color: var(--accent-color);
+    background-color: var(--primary-dark);
     transform: translateY(-1px);
     box-shadow: 0 6px 8px rgba(30, 58, 138, 0.4);
 }
@@ -49,9 +49,32 @@
 }
 
 .btn-outline:hover {
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    background: color-mix(in srgb, var(--accent-color) 8%, white);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 4%, white);
+}
+
+.btn-subtle {
+    background-color: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.btn-subtle:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.btn-ghost {
+    background-color: transparent;
+    border: 1px solid transparent;
+    color: var(--text-secondary);
+}
+
+.btn-ghost:hover {
+    background: color-mix(in srgb, var(--primary-color) 4%, white);
+    color: var(--primary-color);
 }
 
 /* Badges are rendered via dbc.Badge(pill=True) with inline styles

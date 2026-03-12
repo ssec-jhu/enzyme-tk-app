@@ -8,43 +8,38 @@
     display: inline-flex;
     align-items: center;
     gap: 0.35rem;
-    padding: 0.25rem 0.65rem;
-    border-radius: 9999px;
+    padding: 0.2rem 0;
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.02em;
+    letter-spacing: 0.03em;
     white-space: nowrap;
+    border: none;
+    background: transparent;
 }
 
 .badge-PENDING {
-    background: #EDF2F7;
-    color: #4A5568;
+    color: var(--status-pending);
 }
 
 .badge-STARTED {
-    background: #EBF8FF;
-    color: #2B6CB0;
+    color: var(--status-started);
 }
 
 .badge-SUCCESS {
-    background: #F0FFF4;
-    color: #276749;
+    color: var(--status-success);
 }
 
 .badge-FAILURE {
-    background: #FFF5F5;
-    color: #C53030;
+    color: var(--status-failure);
 }
 
 .badge-REVOKED {
-    background: #FFFAF0;
-    color: #C05621;
+    color: var(--status-revoked);
 }
 
 .badge-TIMEOUT {
-    background: #FFFFF0;
-    color: #975A16;
+    color: var(--status-timeout);
 }
 
 /* --- Jobs table ---------------------------------------------------------- */
@@ -87,8 +82,8 @@
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-weight: 500;
-    border: 1px solid var(--border-color);
-    background: var(--bg-surface);
+    border: 1px solid transparent; /* Ghost style: invisible border */
+    background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
     text-decoration: none;
@@ -97,27 +92,18 @@
 }
 
 .btn-job-action:hover {
-    border-color: var(--primary-color);
+    background: var(--bg-body);
     color: var(--primary-color);
-    box-shadow: var(--shadow-sm);
-}
-
-.btn-job-action.view-results {
-    border-color: #276749;
-    color: #276749;
 }
 
 .btn-job-action.view-results:hover {
-    background: #F0FFF4;
-}
-
-.btn-job-action.cancel {
-    border-color: #C53030;
-    color: #C53030;
+    background: color-mix(in srgb, var(--status-success) 8%, white);
+    color: var(--status-success);
 }
 
 .btn-job-action.cancel:hover {
-    background: #FFF5F5;
+    background: color-mix(in srgb, var(--status-failure) 8%, white);
+    color: var(--status-failure);
 }
 
 .btn-job-action:disabled,
@@ -192,12 +178,14 @@
 }
 
 .btn-toolbar.danger {
-    border-color: #C53030;
-    color: #C53030;
+    border-color: var(--border-color);
+    color: var(--text-secondary);
 }
 
 .btn-toolbar.danger:hover {
-    background: #FFF5F5;
+    border-color: var(--status-failure);
+    color: var(--status-failure);
+    background: color-mix(in srgb, var(--status-failure) 8%, white);
 }
 
 /* --- Empty state --------------------------------------------------------- */
@@ -259,13 +247,44 @@
     color: var(--text-primary);
 }
 
+/* --- Status banner (active jobs) ----------------------------------------- */
+.jobs-status-banner {
+    background: color-mix(in srgb, var(--status-started) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-started) 35%, transparent);
+    border-radius: var(--radius-sm);
+    padding: 1.25rem 1.5rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.jobs-status-banner-text {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--status-started);
+}
+
+.jobs-status-banner-icon {
+    font-size: 1.1rem;
+}
+
+.jobs-status-banner-hint {
+    font-size: 0.8rem;
+    color: var(--status-started);
+    opacity: 0.75;
+}
+
 /* --- Error & log boxes --------------------------------------------------- */
 .jobs-error-box {
-    background: #FFF5F5;
-    border: 1px solid #FEB2B2;
+    background: color-mix(in srgb, var(--status-failure) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, transparent);
     border-radius: var(--radius-sm);
     padding: 1rem;
-    color: #C53030;
+    color: var(--status-failure);
     font-size: 0.85rem;
     white-space: pre-wrap;
     font-family: monospace;
@@ -292,18 +311,6 @@
     margin: 2rem 0;
 }
 
-/* --- Running / status messages ------------------------------------------- */
-.jobs-running-box {
-    text-align: center;
-    padding: 3rem 1rem;
-}
-
-.jobs-running-spinner {
-    font-size: 2rem;
-    color: var(--primary-color);
-    margin-bottom: 1rem;
-}
-
 /* --- Badge icon ---------------------------------------------------------- */
 .badge-status-icon {
     font-size: 0.7rem;
@@ -313,18 +320,6 @@
 .jobs-actions-cell {
     display: flex;
     gap: 0.5rem;
-}
-
-/* --- Status messages (revoked / timeout) --------------------------------- */
-.jobs-status-message {
-    font-style: italic;
-    margin-top: 1rem;
-}
-
-.jobs-timeout-message {
-    color: #975A16;
-    font-style: italic;
-    margin-top: 1rem;
 }
 
 /* --- Input parameters section -------------------------------------------- */
