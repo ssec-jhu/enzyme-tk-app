@@ -9,37 +9,38 @@ without requiring a running Redis instance for unit tests.
 import fakeredis
 import pytest
 
-from enzyme_tk_app.app.components.footer import Footer
-from enzyme_tk_app.app.components.hero import Hero
-from enzyme_tk_app.app.components.navbar import Navbar
-from enzyme_tk_app.app.components.tool_cards import ToolCard, ToolGrid
+from enzyme_tk_app.app.components.footer import footer as create_footer
+from enzyme_tk_app.app.components.hero import hero as create_hero
+from enzyme_tk_app.app.components.navbar import navbar as create_navbar
+from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
+from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
 
 # ── UI component fixtures ────────────────────────────────────────────────────
 
 
 @pytest.fixture()
 def navbar():
-    return Navbar()
+    return create_navbar()
 
 
 @pytest.fixture()
 def footer():
-    return Footer()
+    return create_footer()
 
 
 @pytest.fixture()
 def hero():
-    return Hero()
+    return create_hero()
 
 
 @pytest.fixture()
 def tool_grid():
-    return ToolGrid()
+    return create_tool_grid()
 
 
 @pytest.fixture()
 def sample_tool_card():
-    return ToolCard(
+    return create_tool_card(
         slug="test-tool",
         title="Test Tool",
         description="A test description",
@@ -50,7 +51,7 @@ def sample_tool_card():
 
 @pytest.fixture()
 def sample_tool_card_no_libs():
-    return ToolCard(
+    return create_tool_card(
         slug="bare-tool",
         title="Bare Tool",
         description="No libraries",
