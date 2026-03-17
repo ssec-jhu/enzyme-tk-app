@@ -27,7 +27,12 @@ import redis
 from celery.exceptions import SoftTimeLimitExceeded
 
 from enzyme_tk_app.app.backend import config
-from enzyme_tk_app.app.backend.celery_app import celery_app
+from enzyme_tk_app.app.backend.celery_app import (
+    DEFAULT_MAX_DURATION,
+    HARD_TIMEOUT_GRACE_SECONDS,
+    celery_app,
+    effective_ttl,
+)
 from enzyme_tk_app.app.backend.models import JobStatus
 
 logger = logging.getLogger(__name__)
@@ -135,13 +140,23 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
     r = _get_redis()
     job_key = f"job:{job_id}"
 
+    # Read the per-tool timeout thresholds stored at submit time so we
+    # can compute a TTL that covers the full execution window + the
+    # post-completion retention period.  This prevents Redis keys from
+    # expiring mid-execution when max_duration is large.
+    _max_dur, _grace = r.hmget(job_key, "max_duration", "hard_timeout_grace")
+    job_ttl = effective_ttl(
+        int(_max_dur or DEFAULT_MAX_DURATION),
+        int(_grace or HARD_TIMEOUT_GRACE_SECONDS),
+    )
+
     # Step 1: Tell Redis (and therefore the UI) that we've started work.
     # The web server polls this status field to update the user's dashboard.
     r.hset(job_key, mapping={"status": JobStatus.STARTED.value, "started_at": _now_iso()})
     # Reset the TTL so the key doesn't expire while the job is running.
     # Also refresh the session set TTL to keep it in sync with the job hash.
-    r.expire(job_key, config.JOB_TTL_SECONDS)
-    r.expire(f"session:{session_id}:jobs", config.JOB_TTL_SECONDS)
+    r.expire(job_key, job_ttl)
+    r.expire(f"session:{session_id}:jobs", job_ttl)
 
     # Prepare buffers to capture anything the tool prints to stdout/stderr.
     # Many scientific algorithms use print() for progress logging — we
@@ -212,10 +227,10 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
 
     finally:
         # Always refresh the TTL so the job metadata stays available for
-        # the configured period (default 24 hours) regardless of outcome.
-        r.expire(job_key, config.JOB_TTL_SECONDS)
+        # the full lifecycle window regardless of outcome.
+        r.expire(job_key, job_ttl)
         # Keep the session set alive at least as long as its newest job.
         # Without this, the set can expire before the job hash, breaking
         # ownership checks and job listing even though the job still exists.
         session_key = f"session:{session_id}:jobs"
-        r.expire(session_key, config.JOB_TTL_SECONDS)
+        r.expire(session_key, job_ttl)

@@ -5,9 +5,43 @@ web containers (for ``apply_async``) and the worker containers import this
 module to share the same Celery app object.
 """
 
+import os
+
 from celery import Celery
 
 from enzyme_tk_app.app.backend import config
+
+# ── Task timeout defaults ────────────────────────────────────────────
+# These are internal to the Celery execution layer.  Tool authors set
+# ``max_duration`` in ``ToolDef`` and the system handles the rest.
+
+# Default timeout (seconds) for a Celery task.  Individual tools can
+# override via ``ToolDef["max_duration"]``.  When this limit is
+# reached the worker raises ``SoftTimeLimitExceeded``, which the task
+# handler catches and records as ``TIMEOUT``.
+DEFAULT_MAX_DURATION: int = int(os.environ.get("DEFAULT_MAX_DURATION", "3600"))
+
+# Extra seconds added beyond ``max_duration`` for the hard SIGKILL.
+# This gives the ``SoftTimeLimitExceeded`` handler time to write the
+# TIMEOUT status to Redis before the process is forcibly killed.
+HARD_TIMEOUT_GRACE_SECONDS: int = int(os.environ.get("HARD_TIMEOUT_GRACE_SECONDS", "60"))
+
+
+def effective_ttl(
+    max_duration: int = DEFAULT_MAX_DURATION,
+    grace: int = HARD_TIMEOUT_GRACE_SECONDS,
+) -> int:
+    """Compute the Redis TTL that covers a job's full lifecycle.
+
+    Returns ``max_duration + grace + JOB_TTL_SECONDS`` so that Redis
+    keys survive the entire execution window *plus* the post-completion
+    retention period.  This is called automatically — tool authors and
+    app developers never need to use it directly.
+    """
+    return max_duration + grace + config.JOB_TTL_SECONDS
+
+
+# ── Celery app ───────────────────────────────────────────────────────
 
 celery_app = Celery("enzyme_tk_app")
 

@@ -12,8 +12,9 @@ Celery directly — it only calls methods on this class via the abstract
 *   Each user session keeps a Redis *set* of its job IDs, keyed by
     ``session:<session_id>:jobs``.  This lets us quickly list "my jobs"
     without scanning every key in Redis.
-*   All keys have a TTL (time-to-live), so old jobs are automatically
-    cleaned up after 24 hours.
+*   All keys have a TTL computed by ``celery_app.effective_ttl()`` —
+    ``max_duration + grace + JOB_TTL_SECONDS`` — so keys never expire
+    mid-execution and are cleaned up after the retention period.
 
 **How Celery is used:**
 
@@ -57,6 +58,11 @@ from datetime import datetime, timezone
 import redis as redis_lib
 
 from enzyme_tk_app.app.backend import config
+from enzyme_tk_app.app.backend.celery_app import (
+    DEFAULT_MAX_DURATION,
+    HARD_TIMEOUT_GRACE_SECONDS,
+    effective_ttl,
+)
 from enzyme_tk_app.app.backend.models import TERMINAL_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 from enzyme_tk_app.app.backend.tasks import run_tool_task
@@ -201,8 +207,8 @@ class CeleryTaskScheduler(TaskScheduler):
         if data.get("status") != JobStatus.STARTED.value or not data.get("started_at"):
             return False
 
-        max_dur = int(data.get("max_duration") or config.DEFAULT_MAX_DURATION)
-        grace = int(data.get("hard_timeout_grace") or config.HARD_TIMEOUT_GRACE_SECONDS)
+        max_dur = int(data.get("max_duration") or DEFAULT_MAX_DURATION)
+        grace = int(data.get("hard_timeout_grace") or HARD_TIMEOUT_GRACE_SECONDS)
         elapsed = (datetime.now(tz=timezone.utc) - datetime.fromisoformat(data["started_at"])).total_seconds()
         return elapsed > max_dur + grace + _STALE_JOB_BUFFER_SECONDS
 
@@ -217,9 +223,13 @@ class CeleryTaskScheduler(TaskScheduler):
             "error": "Job exceeded the maximum allowed duration and was terminated by the system.",
         }
         self._redis.hset(job_key, mapping=update)
-        self._redis.expire(job_key, config.JOB_TTL_SECONDS)
+        ttl = effective_ttl(
+            int(data.get("max_duration") or DEFAULT_MAX_DURATION),
+            int(data.get("hard_timeout_grace") or HARD_TIMEOUT_GRACE_SECONDS),
+        )
+        self._redis.expire(job_key, ttl)
         if data.get("session_id"):
-            self._redis.expire(self._session_key(data["session_id"]), config.JOB_TTL_SECONDS)
+            self._redis.expire(self._session_key(data["session_id"]), ttl)
 
         logger.info("Read-time timeout: job %s → TIMEOUT", data.get("job_id", "?"))
         data.update(update)
@@ -251,13 +261,13 @@ class CeleryTaskScheduler(TaskScheduler):
         #    handler has time to write TIMEOUT to Redis before SIGKILL.
         #    We import TOOLS lazily here to avoid a circular import — this
         #    module is imported at app startup, before tools are registered.
-        max_duration = config.DEFAULT_MAX_DURATION
+        max_duration = DEFAULT_MAX_DURATION
         try:
             from enzyme_tk_app.app.tools import TOOLS  # noqa: PLC0415
 
             for tool in TOOLS:
                 if tool["slug"] == tool_slug:
-                    max_duration = tool.get("max_duration", config.DEFAULT_MAX_DURATION)
+                    max_duration = tool.get("max_duration", DEFAULT_MAX_DURATION)
                     break
         except Exception:  # noqa: BLE001
             logger.debug("Could not resolve ToolDef for %s — using defaults", tool_slug)
@@ -282,16 +292,18 @@ class CeleryTaskScheduler(TaskScheduler):
                 # detection can compute the deadline without consulting
                 # the TOOLS registry or application lifecycle.
                 "max_duration": str(max_duration),
-                "hard_timeout_grace": str(config.HARD_TIMEOUT_GRACE_SECONDS),
+                "hard_timeout_grace": str(HARD_TIMEOUT_GRACE_SECONDS),
             },
         )
-        # Auto-expire the key after 24 hours so old jobs don't pile up.
-        self._redis.expire(job_key, config.JOB_TTL_SECONDS)
+        # Expire the key after the full execution window + retention
+        # period so the hash never vanishes while the job is running.
+        job_ttl = effective_ttl(max_duration)
+        self._redis.expire(job_key, job_ttl)
 
         # 4. Add this job_id to the session's set so we can later list
         #    "all jobs for this user" efficiently.
         self._redis.sadd(session_key, job_id)
-        self._redis.expire(session_key, config.JOB_TTL_SECONDS)
+        self._redis.expire(session_key, job_ttl)
 
         # 5. Send the task to Celery.  ``apply_async`` puts a message on
         #    the Redis broker queue.  A worker picks it up and calls
@@ -302,7 +314,7 @@ class CeleryTaskScheduler(TaskScheduler):
         #    task ID.
         #    ``soft_time_limit`` = user-visible timeout (raises exception).
         #    ``time_limit``      = hard kill = timeout + grace buffer.
-        hard_limit = max_duration + config.HARD_TIMEOUT_GRACE_SECONDS
+        hard_limit = max_duration + HARD_TIMEOUT_GRACE_SECONDS
         run_tool_task.apply_async(
             kwargs={
                 "tool_slug": tool_slug,
@@ -359,12 +371,15 @@ class CeleryTaskScheduler(TaskScheduler):
         # Refresh TTLs so the user has a full window to see the REVOKED
         # status.  The worker was SIGKILL'd, so its ``finally`` block
         # never ran — the previous TTL may be almost exhausted.
-        self._redis.expire(self._job_key(job_id), config.JOB_TTL_SECONDS)
+        job_key = self._job_key(job_id)
+        max_dur_str = self._redis.hget(job_key, "max_duration")
+        ttl = effective_ttl(int(max_dur_str or DEFAULT_MAX_DURATION))
+        self._redis.expire(job_key, ttl)
         if session_id is not None:
-            self._redis.expire(self._session_key(session_id), config.JOB_TTL_SECONDS)
+            self._redis.expire(self._session_key(session_id), ttl)
         else:
             # Admin mode — look up the session from the job hash.
-            self._redis.expire(self._session_key(job.session_id), config.JOB_TTL_SECONDS)
+            self._redis.expire(self._session_key(job.session_id), ttl)
         return True
 
     # ── Query ────────────────────────────────────────────────────────
