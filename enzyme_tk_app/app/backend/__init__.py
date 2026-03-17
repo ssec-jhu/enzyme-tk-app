@@ -18,6 +18,8 @@ Usage in Dash callbacks::
 
 from __future__ import annotations
 
+import threading
+
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 
@@ -30,7 +32,11 @@ __all__ = [
 
 # Singleton instance — lazily initialised to avoid Redis connections at
 # import time (important for test environments that don't run Redis).
+# A lock is required because gunicorn runs with multiple threads per
+# worker (--threads 4); without it two threads could both see None and
+# instantiate the scheduler twice.
 _scheduler: TaskScheduler | None = None
+_scheduler_lock = threading.Lock()
 
 
 def get_task_scheduler() -> TaskScheduler:
@@ -45,7 +51,8 @@ def get_task_scheduler() -> TaskScheduler:
     """
     global _scheduler  # noqa: PLW0603
     if _scheduler is None:
-        from enzyme_tk_app.app.backend.task_scheduler_celery import CeleryTaskScheduler  # noqa: PLC0415
+        with _scheduler_lock:
+            from enzyme_tk_app.app.backend.task_scheduler_celery import CeleryTaskScheduler  # noqa: PLC0415
 
-        _scheduler = CeleryTaskScheduler()
+            _scheduler = CeleryTaskScheduler()
     return _scheduler
