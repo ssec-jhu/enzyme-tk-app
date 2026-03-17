@@ -48,23 +48,11 @@ from datetime import datetime, timezone
 import redis as redis_lib
 
 from enzyme_tk_app.app.backend import config
-from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.backend.models import TERMINAL_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 from enzyme_tk_app.app.backend.tasks import run_tool_task
 
 logger = logging.getLogger(__name__)
-
-# Terminal statuses — once a job reaches one of these states it is
-# considered "done" and will not change again.  Only terminal jobs can
-# be deleted by the user (you can't delete a job that is still running).
-_TERMINAL_STATUSES = frozenset(
-    {
-        JobStatus.SUCCESS,
-        JobStatus.FAILURE,
-        JobStatus.REVOKED,
-        JobStatus.TIMEOUT,
-    }
-)
 
 
 def _now_iso() -> str:
@@ -290,7 +278,7 @@ class CeleryTaskScheduler(TaskScheduler):
             return False
 
         # A job that has already finished cannot be cancelled.
-        if job.status in _TERMINAL_STATUSES:
+        if job.status in TERMINAL_STATUSES:
             return False
 
         # Tell Celery to kill the worker process running this task.
@@ -416,7 +404,7 @@ class CeleryTaskScheduler(TaskScheduler):
                 jobs.append(job)
         return jobs
 
-    def list_all_jobs(self) -> list[JobInfo]:
+    def admin_list_all_jobs(self) -> list[JobInfo]:
         """List every job across all sessions (admin only).
 
         Uses ``scan_iter`` to iterate over all ``job:*`` keys without
@@ -449,7 +437,7 @@ class CeleryTaskScheduler(TaskScheduler):
             return False
 
         job = self._read_job(job_id)
-        if job is None or job.status not in _TERMINAL_STATUSES:
+        if job is None or job.status not in TERMINAL_STATUSES:
             return False
 
         # Remove the job hash and its reference from the session set.
@@ -474,14 +462,14 @@ class CeleryTaskScheduler(TaskScheduler):
         count = 0
         for jid in job_ids:
             job = self._read_job(jid)
-            if job is not None and job.status in _TERMINAL_STATUSES:
+            if job is not None and job.status in TERMINAL_STATUSES:
                 self._redis.delete(self._job_key(jid))
                 self._redis.srem(self._session_key(session_id), jid)
                 self._delete_job_outputs(jid)
                 count += 1
         return count
 
-    def clear_all_jobs(self) -> int:
+    def admin_clear_all_jobs(self) -> int:
         """Clear all finished jobs across every session (admin only).
 
         Similar to ``clear_jobs`` but operates globally.  Each deleted
@@ -495,7 +483,7 @@ class CeleryTaskScheduler(TaskScheduler):
         for key in self._redis.scan_iter("job:*"):
             job_id = key.split(":", 1)[1]
             job = self._read_job(job_id)
-            if job is not None and job.status in _TERMINAL_STATUSES:
+            if job is not None and job.status in TERMINAL_STATUSES:
                 # Remove from the owning session's set so it doesn't
                 # contain stale references to deleted job hashes.
                 session_key = self._session_key(job.session_id)
@@ -584,7 +572,7 @@ class CeleryTaskScheduler(TaskScheduler):
 
     # ── Admin: deep cleanup ──────────────────────────────────────────
 
-    def purge_all(self) -> dict:
+    def admin_purge_all(self) -> dict:
         """Nuclear option: delete ALL jobs, results, and shared-volume files.
 
         This is intended for admin maintenance (e.g., during deployment

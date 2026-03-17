@@ -31,7 +31,7 @@ HARD_TIMEOUT_GRACE_SECONDS: int = int(os.environ.get("HARD_TIMEOUT_GRACE_SECONDS
 # Directory for temporary job result files.  When a tool result exceeds
 # ``MAX_RESULT_BYTES`` the worker writes it here as JSON.  The web
 # container reads from the same path to serve results.  Cleaned up
-# when a job is deleted or ``purge_all()`` is called.
+# when a job is deleted or ``admin_purge_all()`` is called.
 JOB_OUTPUTS_PATH: str = os.environ.get(
     "JOB_OUTPUTS_PATH",
     os.path.join(os.environ.get("SHARED_VOLUME_PATH", "/data"), "job_outputs"),

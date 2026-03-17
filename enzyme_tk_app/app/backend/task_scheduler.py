@@ -32,9 +32,9 @@ class TaskScheduler(ABC):
     +-----------------+--------------------+-----------------------------+-------+
     | ``clear_jobs``  | All jobs / session | Terminal only *             | User  |
     +-----------------+--------------------+-----------------------------+-------+
-    | ``clear_all_jobs`` | All jobs / all  | Terminal only *             | Admin |
+    | ``admin_clear_all_jobs`` | All jobs / all  | Terminal only *       | Admin |
     +-----------------+--------------------+-----------------------------+-------+
-    | ``purge_all``   | Everything         | ALL (+ volume files)        | Admin |
+    | ``admin_purge_all``   | Everything   | ALL (+ volume files)        | Admin |
     +-----------------+--------------------+-----------------------------+-------+
 
     (*) Terminal statuses: SUCCESS, FAILURE, REVOKED, TIMEOUT.
@@ -46,7 +46,7 @@ class TaskScheduler(ABC):
     - **delete** removes a single job record, but only if it has already
       reached a terminal state.  A running job must be cancelled first.
     - **clear** is a bulk delete of all terminal jobs for one session
-      (``clear_jobs``) or across every session (``clear_all_jobs``).
+      (``clear_jobs``) or across every session (``admin_clear_all_jobs``).
       Running/pending jobs are never touched.
     - **purge** is the dangerous zone option: it revokes every active task,
       deletes ALL job records regardless of status, wipes session sets,
@@ -103,7 +103,7 @@ class TaskScheduler(ABC):
         """List all jobs belonging to *session_id*."""
 
     @abstractmethod
-    def list_all_jobs(self) -> list[JobInfo]:
+    def admin_list_all_jobs(self) -> list[JobInfo]:
         """List every job across all sessions (admin use only)."""
 
     # ── Cleanup ──────────────────────────────────────────────────────
@@ -128,7 +128,7 @@ class TaskScheduler(ABC):
         """
 
     @abstractmethod
-    def clear_all_jobs(self) -> int:
+    def admin_clear_all_jobs(self) -> int:
         """Clear all finished jobs across every session (admin only).
 
         Same rules as ``clear_jobs()`` applied globally.
@@ -140,7 +140,7 @@ class TaskScheduler(ABC):
     # ── Admin: deep cleanup ──────────────────────────────────────────
 
     @abstractmethod
-    def purge_all(self) -> dict:
+    def admin_purge_all(self) -> dict:
         """Complete deep cleanup of ALL jobs, results, and volume data.
 
         Removes:
