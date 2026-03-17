@@ -33,10 +33,10 @@ def test_abc_has_required_abstract_methods():
         "get_job",
         "get_job_status",
         "list_jobs",
-        "list_all_jobs",
+        "admin_list_all_jobs",
         "delete_job",
         "clear_jobs",
-        "clear_all_jobs",
-        "purge_all",
+        "admin_clear_all_jobs",
+        "admin_purge_all",
     }
     assert expected_methods <= TaskScheduler.__abstractmethods__

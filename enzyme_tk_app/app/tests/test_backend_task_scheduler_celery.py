@@ -132,8 +132,8 @@ def test_list_jobs_returns_session_jobs(task_scheduler_celery_service, fake_redi
     assert {j.job_id for j in jobs_a} == {"j1", "j2"}
 
 
-def test_list_all_jobs_returns_everything(task_scheduler_celery_service, fake_redis):
-    """list_all_jobs returns jobs from all sessions (admin view).
+def test_admin_list_all_jobs_returns_everything(task_scheduler_celery_service, fake_redis):
+    """admin_list_all_jobs returns jobs from all sessions (admin view).
 
     Why this matters: the admin dashboard needs a global view.  This must
     scan all ``job:*`` keys, not just one session's set.
@@ -141,7 +141,7 @@ def test_list_all_jobs_returns_everything(task_scheduler_celery_service, fake_re
     write_job_into_fake_redis(fake_redis, "j1", "sess-A")
     write_job_into_fake_redis(fake_redis, "j2", "sess-B")
 
-    assert len(task_scheduler_celery_service.list_all_jobs()) == 2
+    assert len(task_scheduler_celery_service.admin_list_all_jobs()) == 2
 
 
 # ── 4. Session isolation ────────────────────────────────────────────────────
@@ -303,11 +303,11 @@ def test_cancel_job_admin_nonexistent(task_scheduler_celery_service):
     assert task_scheduler_celery_service.cancel_job("no-such-job") is False
 
 
-# ── 8. purge_all ─────────────────────────────────────────────────────────────
+# ── 8. admin_purge_all ───────────────────────────────────────────────────────
 
 
-def test_purge_all_clears_everything(task_scheduler_celery_service, fake_redis, tmp_path):
-    """purge_all removes all jobs, session sets, and shared-volume files.
+def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_redis, tmp_path):
+    """admin_purge_all removes all jobs, session sets, and shared-volume files.
 
     Why this matters: this is the admin "nuclear reset" used during
     deployments or dev environment cleanup.  It must delete Redis keys
@@ -328,44 +328,67 @@ def test_purge_all_clears_everything(task_scheduler_celery_service, fake_redis, 
         mock_task.app = mock.MagicMock()
         mock_config.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
 
-        summary = task_scheduler_celery_service.purge_all()
+        summary = task_scheduler_celery_service.admin_purge_all()
 
     assert summary["jobs_deleted"] == 2
     assert summary["sessions_cleared"] >= 1
 
 
-# ── 9. reconcile_stale_jobs ──────────────────────────────────────────────────
+# ── 9. Read-time stale-job timeout detection ─────────────────────────────────
 
 
-def test_reconcile_marks_stale_started_as_timeout(task_scheduler_celery_service, fake_redis):
-    """reconcile_stale_jobs marks STARTED jobs past their deadline as TIMEOUT.
+def test_get_job_marks_stale_started_as_timeout(task_scheduler_celery_service, fake_redis):
+    """get_job marks a STARTED job past its deadline as TIMEOUT at read time.
 
     Why this matters: when Celery's hard time limit fires (SIGKILL), no
     Python cleanup runs, so the job stays STARTED in Redis indefinitely.
-    The reconciliation sweep detects this and marks the job as TIMEOUT so
-    the UI shows the correct status.
+    Read-time detection catches this the moment the job is read, without
+    requiring a periodic sweep.
     """
-    # Create a STARTED job with a very old started_at timestamp.
     write_job_into_fake_redis(
         fake_redis,
         "j-stale",
         "sess-1",
         status="STARTED",
         started_at="2020-01-01T00:00:00+00:00",
+        max_duration="60",
+        hard_timeout_grace="10",
     )
 
-    count = task_scheduler_celery_service.reconcile_stale_jobs()
-    assert count == 1
+    job = task_scheduler_celery_service.get_job("j-stale", "sess-1")
+    assert job.status is JobStatus.TIMEOUT
     assert fake_redis.hgetall("job:j-stale")["status"] == "TIMEOUT"
 
 
-def test_reconcile_refreshes_ttls(task_scheduler_celery_service, fake_redis):
-    """reconcile_stale_jobs refreshes both job hash and session set TTLs.
+def test_get_job_status_marks_stale_started_as_timeout(task_scheduler_celery_service, fake_redis):
+    """get_job_status also triggers read-time timeout detection.
+
+    Why this matters: the UI polls this lightweight method for live
+    status updates.  It must detect stale STARTED jobs the same way
+    get_job does.
+    """
+    write_job_into_fake_redis(
+        fake_redis,
+        "j-stale-status",
+        "sess-1",
+        status="STARTED",
+        started_at="2020-01-01T00:00:00+00:00",
+        max_duration="60",
+        hard_timeout_grace="10",
+    )
+
+    status = task_scheduler_celery_service.get_job_status("j-stale-status", "sess-1")
+    assert status is JobStatus.TIMEOUT
+    assert fake_redis.hgetall("job:j-stale-status")["status"] == "TIMEOUT"
+
+
+def test_read_time_timeout_refreshes_ttls(task_scheduler_celery_service, fake_redis):
+    """Read-time timeout detection refreshes both job hash and session set TTLs.
 
     Why this matters: the worker was hard-killed so its ``finally`` block
     never refreshed TTLs.  The stale job and its session set may be close
-    to expiry.  After reconciliation the user should have a full TTL
-    window to see the TIMEOUT status.
+    to expiry.  After detection the user should have a full TTL window to
+    see the TIMEOUT status.
     """
     write_job_into_fake_redis(
         fake_redis,
@@ -373,24 +396,25 @@ def test_reconcile_refreshes_ttls(task_scheduler_celery_service, fake_redis):
         "sess-recon",
         status="STARTED",
         started_at="2020-01-01T00:00:00+00:00",
+        max_duration="60",
+        hard_timeout_grace="10",
     )
     # Simulate almost-expired keys.
     fake_redis.expire("job:j-stale2", 10)
     fake_redis.expire("session:sess-recon:jobs", 10)
 
-    task_scheduler_celery_service.reconcile_stale_jobs()
+    task_scheduler_celery_service.get_job("j-stale2", "sess-recon")
 
     # Both TTLs must be refreshed well beyond 10 seconds.
     assert fake_redis.ttl("job:j-stale2") > 10
     assert fake_redis.ttl("session:sess-recon:jobs") > 10
 
 
-def test_reconcile_ignores_recent_started(task_scheduler_celery_service, fake_redis):
-    """reconcile_stale_jobs does NOT mark freshly-started jobs as TIMEOUT.
+def test_read_time_timeout_ignores_recent_started(task_scheduler_celery_service, fake_redis):
+    """A freshly-started STARTED job is NOT marked TIMEOUT at read time.
 
     Why this matters: a job that just started should not be prematurely
-    marked as timed out.  The reconciliation buffer must be large enough
-    to avoid false positives.
+    marked as timed out.
     """
     from datetime import datetime, timezone
 
@@ -400,21 +424,22 @@ def test_reconcile_ignores_recent_started(task_scheduler_celery_service, fake_re
         "sess-1",
         status="STARTED",
         started_at=datetime.now(tz=timezone.utc).isoformat(),
+        max_duration="3600",
+        hard_timeout_grace="60",
     )
 
-    count = task_scheduler_celery_service.reconcile_stale_jobs()
-    assert count == 0
-    assert fake_redis.hgetall("job:j-fresh")["status"] == "STARTED"
+    job = task_scheduler_celery_service.get_job("j-fresh", "sess-1")
+    assert job.status is JobStatus.STARTED
 
 
-def test_reconcile_ignores_non_started(task_scheduler_celery_service, fake_redis):
-    """reconcile_stale_jobs only affects STARTED jobs, not other statuses.
+def test_read_time_timeout_ignores_non_started(task_scheduler_celery_service, fake_redis):
+    """Read-time timeout detection only affects STARTED jobs, not terminals.
 
     Why this matters: SUCCESS, FAILURE, REVOKED, etc. are terminal and
-    should never be mutated by the reconciliation sweep.
+    should never be mutated by the timeout check.
     """
     write_job_into_fake_redis(fake_redis, "j-done", "sess-1", status="SUCCESS")
     write_job_into_fake_redis(fake_redis, "j-fail", "sess-1", status="FAILURE")
 
-    count = task_scheduler_celery_service.reconcile_stale_jobs()
-    assert count == 0
+    assert task_scheduler_celery_service.get_job("j-done", "sess-1").status is JobStatus.SUCCESS
+    assert task_scheduler_celery_service.get_job("j-fail", "sess-1").status is JobStatus.FAILURE

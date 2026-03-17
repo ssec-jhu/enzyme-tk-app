@@ -34,6 +34,18 @@ def mock_compute(fake_redis, tmp_path):
         mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
         mock.patch("enzyme_tk_app.app.backend.tasks.importlib") as mock_importlib,
         mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg,
+        mock.patch(
+            "enzyme_tk_app.app.backend.tasks.DEFAULT_MAX_DURATION",
+            3600,
+        ),
+        mock.patch(
+            "enzyme_tk_app.app.backend.tasks.HARD_TIMEOUT_GRACE_SECONDS",
+            60,
+        ),
+        mock.patch(
+            "enzyme_tk_app.app.backend.tasks.effective_ttl",
+            side_effect=lambda max_duration=3600, grace=60: max_duration + grace + 86400,
+        ),
     ):
         cfg.JOB_TTL_SECONDS = 86400
         cfg.MAX_RESULT_BYTES = 512 * 1024
