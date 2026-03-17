@@ -26,9 +26,18 @@ Celery directly — it only calls methods on this class via the abstract
     a safety net.
 *   ``cancel_job`` uses ``celery.control.revoke(...)`` to send a SIGKILL
     signal to the worker running the task.
-*   ``reconcile_stale_jobs`` sweeps for STARTED jobs that outlived their
-    deadline (e.g., hard-killed by SIGKILL with no cleanup) and marks
-    them as TIMEOUT.
+
+**Read-time stale-job detection:**
+
+When Celery's hard time limit fires it sends SIGKILL, killing the worker
+instantly — no Python cleanup runs, so the job stays ``STARTED`` in Redis.
+Rather than requiring a periodic sweep, this module detects stale jobs
+*at read time*: every call to ``_read_job`` or ``get_job_status`` checks
+whether a ``STARTED`` job has exceeded its deadline and, if so, transitions
+it to ``TIMEOUT`` on the spot.  The deadline is computed from
+``max_duration`` and ``hard_timeout_grace`` fields stored in the Redis hash
+at submit time, making the check independent of the application lifecycle
+or the TOOLS registry.
 
 Redis key schema::
 
@@ -53,6 +62,12 @@ from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 from enzyme_tk_app.app.backend.tasks import run_tool_task
 
 logger = logging.getLogger(__name__)
+
+# Buffer (seconds) added on top of the hard-kill deadline when detecting
+# stale STARTED jobs at read time.  Accounts for minor clock drift
+# between the web and worker containers.  Kept small because read-time
+# detection does not suffer from periodic-scheduling delays.
+_STALE_JOB_BUFFER_SECONDS = 30
 
 
 def _now_iso() -> str:
@@ -138,6 +153,11 @@ class CeleryTaskScheduler(TaskScheduler):
         if not data:
             return None
 
+        # Read-time stale-job detection: if the job is STARTED past its
+        # deadline, transition it to TIMEOUT before returning.
+        if self._is_timed_out(data):
+            data = self._mark_timed_out(self._job_key(job_id), data)
+
         # Convert the flat string dict back into a typed JobInfo dataclass.
         # ``params`` and ``result`` are stored as JSON strings in Redis
         # because Redis hashes only support string values.
@@ -169,6 +189,41 @@ class CeleryTaskScheduler(TaskScheduler):
         in the session's Redis set (``session:<session_id>:jobs``).
         """
         return bool(self._redis.sismember(self._session_key(session_id), job_id))
+
+    @staticmethod
+    def _is_timed_out(data: dict) -> bool:
+        """Return ``True`` if a STARTED job has exceeded its deadline.
+
+        Pure decision function — reads only the values in *data* and
+        has no side effects.  Callers are responsible for writing the
+        TIMEOUT status back to Redis when this returns ``True``.
+        """
+        if data.get("status") != JobStatus.STARTED.value or not data.get("started_at"):
+            return False
+
+        max_dur = int(data.get("max_duration") or config.DEFAULT_MAX_DURATION)
+        grace = int(data.get("hard_timeout_grace") or config.HARD_TIMEOUT_GRACE_SECONDS)
+        elapsed = (datetime.now(tz=timezone.utc) - datetime.fromisoformat(data["started_at"])).total_seconds()
+        return elapsed > max_dur + grace + _STALE_JOB_BUFFER_SECONDS
+
+    def _mark_timed_out(self, job_key: str, data: dict) -> dict:
+        """Write TIMEOUT status to Redis and return the updated *data* dict.
+
+        Call only after ``_is_timed_out(data)`` returns ``True``.
+        """
+        update = {
+            "status": JobStatus.TIMEOUT.value,
+            "completed_at": _now_iso(),
+            "error": "Job exceeded the maximum allowed duration and was terminated by the system.",
+        }
+        self._redis.hset(job_key, mapping=update)
+        self._redis.expire(job_key, config.JOB_TTL_SECONDS)
+        if data.get("session_id"):
+            self._redis.expire(self._session_key(data["session_id"]), config.JOB_TTL_SECONDS)
+
+        logger.info("Read-time timeout: job %s → TIMEOUT", data.get("job_id", "?"))
+        data.update(update)
+        return data
 
     # ── Submit & control ─────────────────────────────────────────────
 
@@ -223,6 +278,11 @@ class CeleryTaskScheduler(TaskScheduler):
                 "submitted_at": submitted_at,
                 "params": json.dumps(params),
                 "output_log": "",
+                # Persist timeout thresholds so read-time stale-job
+                # detection can compute the deadline without consulting
+                # the TOOLS registry or application lifecycle.
+                "max_duration": str(max_duration),
+                "hard_timeout_grace": str(config.HARD_TIMEOUT_GRACE_SECONDS),
             },
         )
         # Auto-expire the key after 24 hours so old jobs don't pile up.
@@ -377,6 +437,32 @@ class CeleryTaskScheduler(TaskScheduler):
         if status_str is None:
             return None
 
+        # Read-time stale-job detection: when the status is STARTED we
+        # fetch the deadline fields and check whether the job has
+        # exceeded its timeout.  Only costs one extra ``hmget`` and only
+        # when the job is still running.
+        if status_str == JobStatus.STARTED.value:
+            job_key = self._job_key(job_id)
+            extra = self._redis.hmget(
+                job_key,
+                "started_at",
+                "max_duration",
+                "hard_timeout_grace",
+                "session_id",
+                "job_id",
+            )
+            data = {
+                "status": status_str,
+                "started_at": extra[0],
+                "max_duration": extra[1],
+                "hard_timeout_grace": extra[2],
+                "session_id": extra[3],
+                "job_id": extra[4],
+            }
+            if self._is_timed_out(data):
+                data = self._mark_timed_out(job_key, data)
+            status_str = data["status"]
+
         try:
             return JobStatus(status_str)
         except ValueError:
@@ -492,83 +578,6 @@ class CeleryTaskScheduler(TaskScheduler):
                 self._delete_job_outputs(job_id)
                 count += 1
         return count
-
-    # ── Reconciliation ───────────────────────────────────────────────
-
-    def reconcile_stale_jobs(self) -> int:
-        """Mark long-running STARTED jobs as TIMEOUT.
-
-        When Celery's hard time limit fires it sends SIGKILL, which kills
-        the worker process instantly — no Python cleanup runs, so the job
-        stays ``STARTED`` in Redis until its TTL expires (24 h by default).
-
-        This method scans every ``STARTED`` job and checks whether its
-        ``started_at`` timestamp exceeds ``max_duration + grace + buffer``.
-        If so, it marks the job as ``TIMEOUT``.  We add a generous 120 s
-        buffer on top of the hard limit to avoid false positives caused by
-        clock skew or scheduling delays.
-
-        Call this periodically (e.g., via Celery Beat, a cron job, or
-        a Dash interval callback) to keep the job list accurate.
-
-        Returns:
-            Number of jobs transitioned to TIMEOUT.
-        """
-        reconciled = 0
-        now = datetime.now(tz=timezone.utc)
-
-        for key in self._redis.scan_iter("job:*"):
-            status_str = self._redis.hget(key, "status")
-            if status_str != JobStatus.STARTED.value:
-                continue
-
-            started_at_str = self._redis.hget(key, "started_at")
-            if not started_at_str:
-                continue
-
-            tool_slug = self._redis.hget(key, "tool_slug") or ""
-
-            # Resolve the tool's max_duration.
-            max_duration = config.DEFAULT_MAX_DURATION
-            try:
-                from enzyme_tk_app.app.tools import TOOLS  # noqa: PLC0415
-
-                for tool in TOOLS:
-                    if tool["slug"] == tool_slug:
-                        max_duration = tool.get("max_duration", config.DEFAULT_MAX_DURATION)
-                        break
-            except Exception:  # noqa: BLE001
-                pass
-
-            # Total deadline = soft limit + hard grace + reconciliation buffer.
-            deadline_seconds = max_duration + config.HARD_TIMEOUT_GRACE_SECONDS + 120
-            started_at = datetime.fromisoformat(started_at_str)
-            elapsed = (now - started_at).total_seconds()
-
-            if elapsed > deadline_seconds:
-                job_id = key.split(":", 1)[1]
-                self._redis.hset(
-                    key,
-                    mapping={
-                        "status": JobStatus.TIMEOUT.value,
-                        "completed_at": _now_iso(),
-                        "error": (
-                            "Job exceeded the maximum allowed duration and was "
-                            "terminated by the system (hard timeout reconciliation)."
-                        ),
-                    },
-                )
-                # Refresh TTLs so the TIMEOUT status is visible for a
-                # full window.  The worker was hard-killed, so its
-                # ``finally`` block never refreshed these.
-                self._redis.expire(key, config.JOB_TTL_SECONDS)
-                sid = self._redis.hget(key, "session_id")
-                if sid:
-                    self._redis.expire(self._session_key(sid), config.JOB_TTL_SECONDS)
-                logger.info("Reconciled stale job %s → TIMEOUT (elapsed %.0fs)", job_id, elapsed)
-                reconciled += 1
-
-        return reconciled
 
     # ── Admin: deep cleanup ──────────────────────────────────────────
 
