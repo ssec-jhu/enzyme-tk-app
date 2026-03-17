@@ -4,8 +4,8 @@ import dash
 import dash_bootstrap_components as dbc
 from dash import Dash, html
 
-from enzyme_tk_app.app.components.footer import Footer
-from enzyme_tk_app.app.components.navbar import Navbar
+from enzyme_tk_app.app.components.footer import footer
+from enzyme_tk_app.app.components.navbar import navbar
 
 # Initialize the app
 # We include FontAwesome for icons and Bootstrap for dbc component functionality.
@@ -24,7 +24,7 @@ app.title = "EnzymeTK Tool Suite"
 # the layout is evaluated, which prevents UnboundLocalError with the hot reloader.
 def layout():
     """Return the top-level app layout."""
-    return html.Div([Navbar(), dash.page_container, Footer()])
+    return html.Div([navbar(), dash.page_container, footer()])
 
 
 app.layout = layout
