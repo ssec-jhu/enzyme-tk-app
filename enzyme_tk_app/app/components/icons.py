@@ -23,6 +23,7 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 
 # --- Tool Modals ---
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
+ICON_MODAL_DATABASE = "fa-solid fa-database"
 
 # --- My Jobs Page ---
 ICON_JOBS_PAGE = "fa-solid fa-list-check"
