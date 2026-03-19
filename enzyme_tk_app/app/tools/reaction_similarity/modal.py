@@ -42,7 +42,7 @@ def modal():
 
     Returns:
         A ``dbc.Modal`` component with inputs for:
-        - Query name
+        - Task name
         - Database selection
         - Reaction SMILES input
         - Example reactions dropdown
@@ -81,13 +81,13 @@ def modal():
             dbc.ModalBody(
                 children=[
                     # --------------------------------
-                    # Query Name Input
+                    # Task Name Input
                     # --------------------------------
-                    dbc.Label("Query Name", className="form-label"),
+                    dbc.Label("Task Name", className="form-label"),
                     dbc.Input(
-                        id="id-input-reaction-query-name",
+                        id="id-input-reaction-task-name",
                         type="text",
-                        placeholder="Enter a name for this query (e.g., 'Hydrolysis search')",
+                        placeholder="Enter a name for this task (e.g., 'Hydrolysis search')",
                         className="mb-3 themed-control",
                     ),
                     # --------------------------------------------

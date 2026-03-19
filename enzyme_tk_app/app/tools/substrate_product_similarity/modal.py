@@ -47,7 +47,7 @@ def modal():
 
     Returns:
         A ``dbc.Modal`` component with inputs for:
-        - Query name
+        - Task name
         - Database selection
         - Molecule role (substrate or product)
         - SMILES input
@@ -79,15 +79,15 @@ def modal():
             ),
             dbc.ModalBody(
                 children=[
-                    # Query Name Input
+                    # Task Name Input
                     dbc.Label(
-                        "Query Name",
+                        "Task Name",
                         className="form-label",
                     ),
                     dbc.Input(
-                        id="id-input-subprod-query-name",
+                        id="id-input-subprod-task-name",
                         type="text",
-                        placeholder="Enter a name for this query (e.g., 'Glucose substrate search')",
+                        placeholder="Enter a name for this task (e.g., 'Glucose substrate search')",
                         className="mb-3 themed-control",
                     ),
                     # Database Selection (multi-select dropdown)
