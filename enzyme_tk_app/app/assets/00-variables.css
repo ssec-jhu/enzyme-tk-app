@@ -16,6 +16,8 @@
     /* Blue 500 */
     --accent-color: #D69E2E;
     /* Amber 500 */
+    --hero-accent: #D69E2E;
+    /* Hero headline gradient start — matches accent-color */
 
     --text-primary: #1A202C;
     /* Blue 900 */
