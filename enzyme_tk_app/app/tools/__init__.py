@@ -4,7 +4,7 @@ Each tool lives in its own sub-package under ``tools/``.  Adding a new tool
 requires no edits here — just create a sub-package with:
 
 - ``__init__.py`` exporting ``TOOL_DEF: ToolDef``  (required)
-- ``modal.py`` exporting ``Modal() → dbc.Modal``   (optional)
+- ``modal.py`` exporting ``modal() → dbc.Modal``   (optional)
 - ``callbacks.py`` with ``@callback`` decorators   (optional, side-effect only)
 """
 
@@ -139,7 +139,7 @@ def _discover_tools() -> None:
             logger.warning("Failed to import callbacks for %s", full_name, exc_info=True)
 
         # --- Step 3: Import modal.py (optional) ---
-        # If present, ``modal.py`` must expose a ``Modal()`` factory function
+        # If present, ``modal.py`` must expose a ``modal()`` factory function
         # that returns a ``dbc.Modal`` component.  We store the *callable*
         # (not the component) so the modal is instantiated lazily when
         # ``tool_modals()`` is called during layout construction.
@@ -215,7 +215,7 @@ def tool_modals() -> html.Div:
 def default_results_layout(job) -> html.Div:
     """Fallback results renderer that shows raw JSON.
 
-    Used when a tool does not provide a custom ``results_layout`` in ``results.py``.
+    Used when a tool does not provide a custom ``results.py`` module.
 
     Args:
         job: A completed ``JobInfo`` instance.

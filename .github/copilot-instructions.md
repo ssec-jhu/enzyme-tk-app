@@ -26,6 +26,38 @@
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
 - `ToolDef` supports an optional `max_duration` field (timeout in seconds, default 3600). When a job exceeds this duration the worker records it as `TIMEOUT`. A small hard-kill grace period (`HARD_TIMEOUT_GRACE_SECONDS`, default 60 s) is added automatically.
 
+### Single-source slug & title — the rename-once invariant
+- **`TOOL_DEF` in `__init__.py` is the single source of truth** for a tool's slug, title, and icon. Changing them there must be the only edit needed (besides renaming the folder — see below).
+- In `modal.py` and `callbacks.py`, import `TOOL_DEF` from the tool's own package and use it directly:
+  ```python
+  from enzyme_tk_app.app.tools.<tool_folder> import TOOL_DEF
+  ```
+- **Build all slug-dependent component IDs** with f-strings from `TOOL_DEF["slug"]` — never hardcode the slug in an ID string:
+  - Modal ID: `f"id-modal-{TOOL_DEF['slug']}"`
+  - Launch button match: `f"id-btn-launch-{TOOL_DEF['slug']}"` (must match the auto-generated ID from `tool_cards.py`)
+  - Sub-component IDs: `f"id-btn-{TOOL_DEF['slug']}-submit"`, `f"id-input-{TOOL_DEF['slug']}-duration"`, etc.
+- **Use `TOOL_DEF["title"]`** for the modal header text instead of a hardcoded string.
+- **Use `TOOL_DEF["slug"]`** when calling `scheduler.submit_job()` instead of a hardcoded slug string.
+- **Do not create local aliases** like `_SLUG = TOOL_DEF["slug"]` — use `TOOL_DEF["slug"]` directly to keep the origin obvious.
+- **Folder-name invariant:** The folder name **must** equal `slug.replace("-", "_")`. The task dispatcher in `tasks.py` converts the slug back to a folder name using this convention. If you change the slug, rename the folder to match.
+- See `timer_tool_template/modal.py` and `timer_tool_template/callbacks.py` for the canonical pattern.
+
+### Modal dropdowns, inputs, and form controls — use `themed-control` everywhere
+- **All dropdowns in tool modals must use `dcc.Dropdown`** (from `dash`), never `dbc.Select` (from `dash_bootstrap_components`). This ensures consistent look-and-feel and theming across all tools.
+- **For all form controls inside modals (Dropdowns, Inputs, Textareas, Checkboxes, RadioItems)** always add the CSS class `themed-control` for dark-mode-aware styling (defined in `07-modals.css`).
+- Example for a dropdown:
+  ```python
+  dcc.Dropdown(
+      id=f"id-dropdown-{TOOL_DEF['slug']}-example",
+      options=[...],
+      className="mb-3 themed-control",
+  )
+  ```
+- Set `multi=True` or `multi=False` as appropriate for the tool's needs.
+- Set `searchable=False` for short option lists (e.g., example pickers); leave it `True` (default) for longer lists.
+- Use `id-dropdown-` as the component-type prefix in the ID (not `id-select-`).
+- See `reaction_similarity/modal.py` for a multi-select database dropdown and single-select example picker.
+
 ## Backend Architecture
 - The backend task scheduling system lives in `enzyme_tk_app/app/backend/`.
 - All Dash UI code programs against the `TaskScheduler` ABC — never import Celery, Redis, or backend internals in UI code.
@@ -36,6 +68,7 @@
 - Jobs are stored in Redis with a TTL (default 24h).
 - **Redis TTL invariant — dual-key sync:** Every job has two Redis keys: a *hash* (`job:<job_id>`) and a membership entry in a *session set* (`session:<session_id>:jobs`). Whenever code refreshes, sets, or resets the TTL on the job hash it **must also refresh the TTL on the session set** (and vice-versa). If only one key's TTL is extended, the other can expire first — breaking ownership checks (`_owns_job`), job listing (`list_jobs`), or leaving orphan data. Audit both keys any time you add or modify a method that calls `expire`, `hset` on a status transition, or `delete` on either key.
 - The `docker-compose.yml` orchestrates web, Redis, and worker containers with a shared volume.
+- **Dual-scheduler invariant — keep Local in sync with Celery:** There are two `TaskScheduler` implementations: `CeleryTaskScheduler` (production, Redis + Celery) and `LocalTaskScheduler` (dev, in-memory dicts). Both must honour the same behavioural contract defined in the `TaskScheduler` ABC and its docstrings. When modifying any method in `CeleryTaskScheduler`, **always review the corresponding method in `LocalTaskScheduler`** to ensure the same semantics (e.g., terminal-status guards on delete/clear, ownership checks, return-value schema). Shared constants like `TERMINAL_STATUSES` live in `models.py` — import from there, never duplicate. Run `test_backend_task_scheduler_local.py` after any change to either scheduler.
 
 ## Callback Naming
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
