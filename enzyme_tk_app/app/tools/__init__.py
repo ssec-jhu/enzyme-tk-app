@@ -142,10 +142,10 @@ def _discover_tools() -> None:
         # If present, ``modal.py`` must expose a ``Modal()`` factory function
         # that returns a ``dbc.Modal`` component.  We store the *callable*
         # (not the component) so the modal is instantiated lazily when
-        # ``ToolModals()`` is called during layout construction.
+        # ``tool_modals()`` is called during layout construction.
         try:
             modal_mod = importlib.import_module(f"{full_name}.modal")
-            modal_fn = getattr(modal_mod, "Modal", None)
+            modal_fn = getattr(modal_mod, "modal", None)
             if modal_fn is not None:
                 _modal_funcs.append(modal_fn)
         except ModuleNotFoundError as exc:
@@ -163,12 +163,12 @@ def _discover_tools() -> None:
             logger.warning("Failed to import modal for %s", full_name, exc_info=True)
 
         # --- Step 4: Import results.py (optional) ---
-        # If present, ``results.py`` must expose a ``ResultsLayout(job)``
+        # If present, ``results.py`` must expose a ``results_layout(job)``
         # callable that renders tool-specific output on the job results page.
-        # Falls back to ``DefaultResultsLayout`` when not provided.
+        # Falls back to ``default_results_layout`` when not provided.
         try:
             results_mod = importlib.import_module(f"{full_name}.results")
-            results_fn = getattr(results_mod, "ResultsLayout", None)
+            results_fn = getattr(results_mod, "results_layout", None)
             if results_fn is not None:
                 RESULTS_LAYOUTS[tool_def["slug"]] = results_fn
         except ModuleNotFoundError as exc:
@@ -197,7 +197,7 @@ def _discover_tools() -> None:
 _discover_tools()
 
 
-def ToolModals() -> html.Div:
+def tool_modals() -> html.Div:
     """Return all discovered tool modals bundled in a single container.
 
     Called by the app layout (e.g., ``home.py``) to inject all tool modals
@@ -206,16 +206,16 @@ def ToolModals() -> html.Div:
     Returns:
         An ``html.Div`` containing every discovered tool modal (hidden by default).
     """
-    # Each ``fn`` is a Modal() factory collected during discovery.  Calling
+    # Each ``fn`` is a modal() factory collected during discovery.  Calling
     # them here produces the actual dbc.Modal components, which are then
     # wrapped in a single Div and inserted into the app layout.
     return html.Div([fn() for fn in _modal_funcs])
 
 
-def DefaultResultsLayout(job) -> html.Div:
+def default_results_layout(job) -> html.Div:
     """Fallback results renderer that shows raw JSON.
 
-    Used when a tool does not provide a custom ``results.py`` module.
+    Used when a tool does not provide a custom ``results_layout`` in ``results.py``.
 
     Args:
         job: A completed ``JobInfo`` instance.
@@ -250,4 +250,4 @@ def DefaultResultsLayout(job) -> html.Div:
 # Listing names here restricts the wildcard to only these three symbols,
 # keeping the public surface clean and preventing accidental coupling to
 # implementation details.
-__all__ = ["DefaultResultsLayout", "RESULTS_LAYOUTS", "TOOLS", "ToolDef", "ToolModals"]
+__all__ = ["RESULTS_LAYOUTS", "TOOLS", "ToolDef", "default_results_layout", "tool_modals"]

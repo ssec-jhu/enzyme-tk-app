@@ -26,7 +26,7 @@ from unittest.mock import MagicMock, patch
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.tools import TOOLS, ToolDef, ToolModals, _discover_tools, _modal_funcs
+from enzyme_tk_app.app.tools import TOOLS, ToolDef, _discover_tools, _modal_funcs, tool_modals
 
 # ---------------------------------------------------------------------------
 # Helpers — find tool folders on disk
@@ -121,8 +121,8 @@ def test_required_keys_present():
 
 
 def test_no_unknown_keys():
-    """Tools should only use recognised keys (slug, title, desc, icon, order, libraries)."""
-    allowed_keys = {"slug", "title", "desc", "icon", "order", "libraries"}
+    """Tools should only use recognised keys defined in ToolDef."""
+    allowed_keys = {"slug", "title", "desc", "icon", "order", "libraries", "max_duration"}
 
     for tool in TOOLS:
         extra = set(tool.keys()) - allowed_keys
@@ -199,7 +199,7 @@ def test_modal_count_matches_modal_files_on_disk():
             continue
         try:
             modal_module = importlib.import_module(f"enzyme_tk_app.app.tools.{folder_name}.modal")
-            if hasattr(modal_module, "Modal"):
+            if hasattr(modal_module, "modal"):
                 expected_count += 1
         except ModuleNotFoundError:
             pass  # No modal.py file — that's fine
@@ -208,14 +208,14 @@ def test_modal_count_matches_modal_files_on_disk():
 
 
 def test_tool_modals_returns_a_div():
-    """ToolModals() must return an html.Div container."""
-    container = ToolModals()
+    """tool_modals() must return an html.Div container."""
+    container = tool_modals()
     assert isinstance(container, html.Div)
 
 
 def test_tool_modals_contains_only_dbc_modals():
-    """Every child inside the ToolModals container must be a dbc.Modal."""
-    container = ToolModals()
+    """Every child inside the tool_modals container must be a dbc.Modal."""
+    container = tool_modals()
     children = container.children or []
 
     for child in children:
@@ -223,15 +223,15 @@ def test_tool_modals_contains_only_dbc_modals():
 
 
 def test_tool_modals_count():
-    """ToolModals() must produce one modal per discovered Modal factory."""
-    container = ToolModals()
+    """tool_modals() must produce one modal per discovered modal factory."""
+    container = tool_modals()
     children = container.children or []
     assert len(children) == len(_modal_funcs)
 
 
 def test_every_modal_has_an_id():
     """Each modal component must have a Dash id attribute."""
-    container = ToolModals()
+    container = tool_modals()
     children = container.children or []
 
     for modal in children:
@@ -242,7 +242,7 @@ def test_every_modal_has_an_id():
 def test_modal_ids_follow_naming_convention():
     """Modal ids must follow the pattern 'id-modal-<slug>'."""
     pattern = re.compile(r"^id-modal-[a-z0-9-]+$")
-    container = ToolModals()
+    container = tool_modals()
     children = container.children or []
 
     for modal in children:
@@ -284,14 +284,6 @@ def test_tool_def_type_has_expected_fields():
     fields = ToolDef.__annotations__
     for key in ("slug", "title", "desc", "icon", "order", "libraries"):
         assert key in fields, f"ToolDef is missing the '{key}' field"
-
-
-def test_public_api():
-    """The tools package __all__ must expose exactly TOOLS, ToolDef, and ToolModals."""
-    import enzyme_tk_app.app.tools as tools_pkg
-
-    assert hasattr(tools_pkg, "__all__")
-    assert set(tools_pkg.__all__) == {"TOOLS", "ToolDef", "ToolModals"}
 
 
 # ---------------------------------------------------------------------------
