@@ -5,9 +5,10 @@ Similarity tool card. It collects inputs needed to run the molecular similarity 
 """
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
-from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE, ICON_TOOL_REACTION
+from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
+from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
 
@@ -55,17 +56,11 @@ def modal():
     db_options = get_reaction_database_options()
     example_smiles = _get_example_smiles()
 
-    # Default database selection (enzymemap if available)
-    default_db = None
-    for opt in db_options:
-        if "enzymemap" in opt["value"].lower():
-            default_db = opt["value"]
-            break
-    if not default_db and db_options:
-        default_db = db_options[0]["value"]
+    # Pre-select all databases by default
+    all_db_values = [opt["value"] for opt in db_options]
 
     return dbc.Modal(
-        id="id-modal-substrate-product-similarity",
+        id=f"id-modal-{TOOL_DEF['slug']}",
         is_open=False,
         size="lg",
         centered=True,
@@ -74,10 +69,10 @@ def modal():
                 dbc.ModalTitle(
                     children=[
                         html.I(
-                            className=ICON_TOOL_REACTION,
+                            className=TOOL_DEF["icon"],
                             style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                         ),
-                        "Substrate/Product Similarity Search",
+                        TOOL_DEF["title"],
                     ]
                 ),
                 close_button=True,
@@ -93,18 +88,20 @@ def modal():
                         id="id-input-subprod-query-name",
                         type="text",
                         placeholder="Enter a name for this query (e.g., 'Glucose substrate search')",
-                        className="mb-3",
+                        className="mb-3 themed-control",
                     ),
-                    # Database Selection
+                    # Database Selection (multi-select dropdown)
                     dbc.Label(
-                        "Select Database",
+                        "Select Databases",
                         className="form-label",
                     ),
-                    dbc.Select(
-                        id="id-select-subprod-database",
+                    dcc.Dropdown(
+                        id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
                         options=db_options,
-                        value=default_db,
-                        className="mb-3",
+                        value=all_db_values,
+                        multi=True,
+                        placeholder="Select one or more databases...",
+                        className="mb-3 themed-control",
                     ),
                     # Molecule Role Selection (substrate or product)
                     dbc.Label(
@@ -119,7 +116,7 @@ def modal():
                         ],
                         value="substrate",
                         inline=True,
-                        className="mb-3",
+                        className="mb-3 themed-control",
                     ),
                     # SMILES Input
                     dbc.Label(
@@ -130,7 +127,7 @@ def modal():
                         id="id-textarea-subprod-smiles",
                         placeholder="Enter a SMILES string (e.g., CCO)",
                         rows=3,
-                        className="mb-2",
+                        className="mb-2 themed-control",
                         style={"fontFamily": "monospace", "fontSize": "0.9rem"},
                     ),
                     # Try an Example section
@@ -147,8 +144,8 @@ def modal():
                                 ],
                                 style={"color": "var(--text-tertiary)"},
                             ),
-                            dbc.Select(
-                                id="id-select-subprod-example",
+                            dcc.Dropdown(
+                                id=f"id-dropdown-{TOOL_DEF['slug']}-example",
                                 options=[
                                     {
                                         "label": ex["label"],
@@ -158,8 +155,8 @@ def modal():
                                     for ex in example_smiles
                                 ],
                                 placeholder="Select an example molecule...",
-                                className="mt-1",
-                                style={"fontSize": "0.9rem"},
+                                className="mt-1 themed-control",
+                                searchable=False,
                             ),
                         ],
                     ),
