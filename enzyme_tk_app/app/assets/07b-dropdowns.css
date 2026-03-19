@@ -1,0 +1,90 @@
+/* ==========================================================================
+   dcc.Dropdown — theme overrides for Dash's built-in dropdown component
+   Dash renders multi-select checkboxes as <span> pseudo-elements, and the
+   dropdown menu (search, options) lives inside the wrapper div that receives
+   the component className.  These rules replace Dash's default purple
+   accent with our theme palette.
+   ========================================================================== */
+
+/* ── Checkbox accent ─────────────────────────────────────────────────── */
+
+/* Native <input> checkbox fallback (older Dash / React-Select) */
+.modal-body .themed-control .Select-option input[type="checkbox"],
+.modal-body .themed-control .dash-dropdown-option input[type="checkbox"],
+.modal-body .themed-control input[type="checkbox"],
+.modal-body .dash-dropdown-option input[type="checkbox"] {
+    accent-color: var(--primary-color) !important;
+}
+
+/* <span> pseudo-checkbox used by modern Dash */
+.modal-body .themed-control .dash-dropdown-option > span:first-child,
+.modal-body .themed-control .dash-options-list-option > span:first-child,
+.modal-body .dash-dropdown-option > span:first-child {
+    accent-color: var(--primary-color) !important;
+}
+
+/* ── Search input focus ──────────────────────────────────────────────── */
+
+.modal-body .themed-control .dash-dropdown-search:focus,
+.modal-body .themed-control input.dash-dropdown-search:focus,
+.modal-body .themed-control .dash-search-component input:focus,
+.modal-body .themed-control .dash-search-component:focus-within,
+.modal-body input.dash-dropdown-search:focus,
+.modal-body .dash-dropdown-search:focus,
+.modal-body .dash-search-component input:focus,
+.modal-body .dash-search-component:focus-within,
+.modal-body div[class*="search"]:focus-within {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.25) !important;
+    outline: none !important;
+}
+
+/* Broad wrapper fallback */
+.modal-body .themed-control div[class*="search"]:focus-within,
+.modal-body .themed-control [class*="SearchWrapper"]:focus-within {
+    border-color: var(--accent-color) !important;
+    box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.25) !important;
+    outline: none !important;
+}
+
+/* Override Dash's purple focus-color CSS variable */
+.modal-body .themed-control {
+    --dash-dropdown-focus-color: var(--accent-color);
+}
+
+/* ── Option text color, hover, and focus ────────────────────────────────────────────── */
+
+/* Base text color for all options to prevent Dash purple leaking in */
+.modal-body .themed-control .dash-dropdown-option,
+.modal-body .dash-dropdown-option,
+.modal-body .themed-control .dash-dropdown-option label,
+.modal-body .dash-dropdown-option label {
+    color: var(--text-primary) !important;
+}
+
+/* Base text color for elements inside options */
+.modal-body .themed-control .dash-dropdown-option *,
+.modal-body .dash-dropdown-option * {
+    color: var(--text-primary) !important;
+}
+
+.modal-body .themed-control .dash-dropdown-option:hover,
+.modal-body .themed-control .dash-dropdown-option.dash-dropdown-option--is-focused,
+.modal-body .dash-dropdown-option:hover,
+.modal-body .dash-dropdown-option.dash-dropdown-option--is-focused {
+    background-color: var(--bg-body) !important;
+}
+
+/* Old React-Select option hover */
+.modal-body .themed-control .Select-option:hover,
+.modal-body .themed-control .Select-option.is-focused {
+    background-color: var(--bg-body);
+    color: var(--text-primary);
+}
+
+/* ── "Select All" / "Deselect All" buttons ───────────────────────────── */
+
+.modal-body .themed-control .dash-dropdown-action-button,
+.modal-body .dash-dropdown-action-button {
+    color: var(--secondary-color) !important;
+}

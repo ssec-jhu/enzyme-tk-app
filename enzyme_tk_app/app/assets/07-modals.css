@@ -31,33 +31,102 @@
     color: var(--text-primary);
 }
 
-/* Form controls — override Bootstrap's white bg and blue focus */
-.modal-body .form-control,
-.modal-body .form-select {
+/* Form controls — unified themed-control class */
+.modal-body .themed-control,
+.modal-body .themed-control .form-control,
+.modal-body .themed-control .form-select,
+.modal-body .themed-control .Select-control {
     background-color: var(--bg-surface);
     color: var(--text-primary);
     border-color: var(--border-color);
 }
 
-.modal-body .form-control:focus,
-.modal-body .form-select:focus {
+.modal-body .themed-control:focus,
+.modal-body .themed-control .form-control:focus,
+.modal-body .themed-control .form-select:focus,
+.modal-body .themed-control.is-focused .Select-control {
     background-color: var(--bg-surface);
     border-color: var(--accent-color);
     box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.25);
+    outline: none;
 }
 
-.modal-body .form-control::placeholder {
+.modal-body .themed-control::placeholder,
+.modal-body .themed-control .form-control::placeholder,
+.modal-body .themed-control .Select-placeholder {
     color: var(--text-tertiary);
 }
 
-/* Buttons — override Bootstrap blue */
+/* Checkboxes & Radios */
+.modal-body .themed-control .form-check-input:checked,
+.modal-body .themed-control.form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.modal-body .themed-control .form-check-input:focus,
+.modal-body .themed-control.form-check-input:focus {
+    box-shadow: 0 0 0 2px rgba(30, 58, 95, 0.25);
+}
+
+/* dcc.Dropdown specialized parts */
+.modal-body .themed-control .Select-menu-outer {
+    background-color: var(--bg-surface);
+    border-color: var(--border-color);
+}
+
+.modal-body .themed-control .Select-option {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+}
+
+.modal-body .themed-control .Select-option:hover,
+.modal-body .themed-control .Select-option.is-focused {
+    background-color: var(--bg-body);
+}
+
+.modal-body .themed-control .Select-value {
+    background-color: var(--bg-body);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.modal-body .themed-control .Select-value-icon:hover {
+    background-color: var(--border-color);
+    color: var(--text-primary);
+}
+
+.modal-body .themed-control .Select-input input {
+    color: var(--text-primary);
+}
+
+.modal-body .themed-control .Select-clear-zone:hover {
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   Modal Footer Buttons
+   ========================================================================== */
+
 .modal-footer .btn-primary {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+    color: white;
+}
+
+.modal-footer .btn-primary:hover:not(:disabled):not(.disabled) {
+    filter: brightness(1.1);
     background-color: var(--accent-color);
     border-color: var(--accent-color);
 }
 
-.modal-footer .btn-primary:hover {
-    filter: brightness(1.1);
+.modal-footer .btn-primary:disabled,
+.modal-footer .btn-primary.disabled {
+    background-color: color-mix(in srgb, var(--accent-color) 50%, transparent);
+    border-color: color-mix(in srgb, var(--accent-color) 50%, transparent);
+    color: rgba(255, 255, 255, 0.8);
+    cursor: not-allowed;
+    opacity: 0.8;
 }
 
 .modal-footer .btn-outline-secondary {
@@ -65,7 +134,13 @@
     color: var(--text-secondary);
 }
 
-.modal-footer .btn-outline-secondary:hover {
+.modal-footer .btn-outline-secondary:hover:not(:disabled):not(.disabled) {
     background-color: var(--bg-body);
     color: var(--text-primary);
+}
+
+.modal-footer .btn-outline-secondary:disabled,
+.modal-footer .btn-outline-secondary.disabled {
+    opacity: 0.65;
+    cursor: not-allowed;
 }
