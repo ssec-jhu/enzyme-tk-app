@@ -32,5 +32,11 @@ app.layout = layout
 # Expose the underlying Flask server for production WSGI servers (e.g., gunicorn).
 server = app.server
 
+# Register anonymous session-cookie management so every request gets a
+# ``flask.g.session_id`` that Dash callbacks can read.
+from enzyme_tk_app.app.backend.session import init_session  # noqa: E402
+
+init_session(server)
+
 if __name__ == "__main__":
     app.run(port=8050, debug=True)

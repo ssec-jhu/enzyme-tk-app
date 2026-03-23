@@ -1,7 +1,7 @@
 # docker-compose.yml — local / staging orchestration for EnzymeTK
 #
 # Three services:
-#   web    — Dash app served by gunicorn (4 workers)
+#   web    — Dash app served by gunicorn (2 workers × 4 threads)
 #   redis  — message broker + result store for Celery
 #   worker — Celery worker that executes tool compute tasks
 #
@@ -42,9 +42,14 @@ services:
 
   # ── Celery worker ────────────────────────────────────────────────
   # Runs tool compute tasks submitted by the web service.
+  # Each replica is an independent Celery worker process that pulls
+  # tasks from the shared Redis broker.  Scale up/down with:
+  #   docker compose up --scale worker=N
   worker:
     build: .
     command: celery -A enzyme_tk_app.app.backend.celery_app worker -l info
+    deploy:
+      replicas: 3
     environment:
       - REDIS_URL=redis://redis:6379/0
       - SHARED_VOLUME_PATH=/data
