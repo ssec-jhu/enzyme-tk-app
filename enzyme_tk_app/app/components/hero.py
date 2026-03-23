@@ -58,7 +58,7 @@ def hero():
                                 className="btn btn-primary",
                             ),
                             html.A(
-                                "View My Jobs",
+                                "View My Tasks",
                                 href="#",
                                 className="btn btn-outline",
                             ),
