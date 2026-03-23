@@ -43,6 +43,7 @@
 - See `timer_tool_template/modal.py` and `timer_tool_template/callbacks.py` for the canonical pattern.
 
 ### Modal dropdowns, inputs, and form controls — use `themed-control` everywhere
+- **All new UI Modals must strictly follow the standard Layout Structure documented in `.github/agents/create-modal.md`. Read that file before generating or modifying any `modal.py` components.**
 - **All dropdowns in tool modals must use `dcc.Dropdown`** (from `dash`), never `dbc.Select` (from `dash_bootstrap_components`). This ensures consistent look-and-feel and theming across all tools.
 - **For all form controls inside modals (Dropdowns, Inputs, Textareas, Checkboxes, RadioItems)** always add the CSS class `themed-control` for dark-mode-aware styling (defined in `07-modals.css`).
 - Example for a dropdown:

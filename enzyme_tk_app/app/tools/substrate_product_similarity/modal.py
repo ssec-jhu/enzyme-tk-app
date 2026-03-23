@@ -5,9 +5,11 @@ Similarity tool card. It collects inputs needed to run the molecular similarity 
 """
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
-from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE, ICON_TOOL_REACTION
+from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
+from enzyme_tk_app.app.tools.reaction_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
 
@@ -46,7 +48,7 @@ def modal():
 
     Returns:
         A ``dbc.Modal`` component with inputs for:
-        - Query name
+        - Task name
         - Database selection
         - Molecule role (substrate or product)
         - SMILES input
@@ -55,17 +57,16 @@ def modal():
     db_options = get_reaction_database_options()
     example_smiles = _get_example_smiles()
 
-    # Default database selection (enzymemap if available)
-    default_db = None
-    for opt in db_options:
-        if "enzymemap" in opt["value"].lower():
-            default_db = opt["value"]
-            break
-    if not default_db and db_options:
-        default_db = db_options[0]["value"]
+    # Pre-select all databases by default
+    all_db_values = [opt["value"] for opt in db_options]
+
+    # Build algorithm options from the shared registry
+    algo_options = get_similarity_algorithms()
+    algo_dropdown_options = [{"label": a["label"], "value": a["value"]} for a in algo_options]
+    all_algo_values = [a["value"] for a in algo_options]
 
     return dbc.Modal(
-        id="id-modal-substrate-product-similarity",
+        id=f"id-modal-{TOOL_DEF['slug']}",
         is_open=False,
         size="lg",
         centered=True,
@@ -74,92 +75,215 @@ def modal():
                 dbc.ModalTitle(
                     children=[
                         html.I(
-                            className=ICON_TOOL_REACTION,
+                            className=TOOL_DEF["icon"],
                             style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                         ),
-                        "Substrate/Product Similarity Search",
+                        TOOL_DEF["title"],
                     ]
                 ),
                 close_button=True,
             ),
             dbc.ModalBody(
+                className="p-4",
                 children=[
-                    # Query Name Input
-                    dbc.Label(
-                        "Query Name",
-                        className="form-label",
-                    ),
-                    dbc.Input(
-                        id="id-input-subprod-query-name",
-                        type="text",
-                        placeholder="Enter a name for this query (e.g., 'Glucose substrate search')",
-                        className="mb-3",
-                    ),
-                    # Database Selection
-                    dbc.Label(
-                        "Select Database",
-                        className="form-label",
-                    ),
-                    dbc.Select(
-                        id="id-select-subprod-database",
-                        options=db_options,
-                        value=default_db,
-                        className="mb-3",
-                    ),
-                    # Molecule Role Selection (substrate or product)
-                    dbc.Label(
-                        "Molecule Role",
-                        className="form-label",
-                    ),
-                    dbc.RadioItems(
-                        id="id-radio-subprod-role",
-                        options=[
-                            {"label": "Substrate", "value": "substrate"},
-                            {"label": "Product", "value": "product"},
-                        ],
-                        value="substrate",
-                        inline=True,
-                        className="mb-3",
-                    ),
-                    # SMILES Input
-                    dbc.Label(
-                        "SMILES",
-                        className="form-label",
-                    ),
-                    dbc.Textarea(
-                        id="id-textarea-subprod-smiles",
-                        placeholder="Enter a SMILES string (e.g., CCO)",
-                        rows=3,
-                        className="mb-2",
-                        style={"fontFamily": "monospace", "fontSize": "0.9rem"},
-                    ),
-                    # Try an Example section
+                    # --------------------------------------------
+                    # Section 1: Input Data
+                    # --------------------------------------------
                     html.Div(
-                        className="mt-2 mb-3",
+                        className="bg-light p-3 rounded mb-3",
                         children=[
-                            html.Small(
+                            html.H6(
                                 children=[
                                     html.I(
-                                        className=ICON_MODAL_EXAMPLE,
-                                        style={"marginRight": "0.25rem", "color": "var(--accent-color)"},
+                                        className="fas fa-flask",
+                                        style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                                     ),
-                                    "Try an example:",
+                                    "Input Data",
                                 ],
-                                style={"color": "var(--text-tertiary)"},
+                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
                             ),
-                            dbc.Select(
-                                id="id-select-subprod-example",
-                                options=[
-                                    {
-                                        "label": ex["label"],
-                                        # Encode both SMILES and role so the callback can set both
-                                        "value": f"{ex['role']}||{ex['value']}",
-                                    }
-                                    for ex in example_smiles
+                            # Task Name
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Task Name", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dbc.Input(
+                                            id="id-input-subprod-task-name",
+                                            type="text",
+                                            placeholder="e.g. 'Glucose substrate search'",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
                                 ],
-                                placeholder="Select an example molecule...",
-                                className="mt-1",
-                                style={"fontSize": "0.9rem"},
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Molecule Role
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Molecule Role", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dbc.RadioItems(
+                                            id="id-radio-subprod-role",
+                                            options=[
+                                                {"label": "Substrate", "value": "substrate"},
+                                                {"label": "Product", "value": "product"},
+                                            ],
+                                            value="substrate",
+                                            inline=False,
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # SMILES Input
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("SMILES", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        [
+                                            dbc.Textarea(
+                                                id="id-textarea-subprod-smiles",
+                                                placeholder="e.g. CCO",
+                                                rows=3,
+                                                className="themed-control",
+                                                style={"fontFamily": "monospace", "fontSize": "0.9rem"},
+                                            ),
+                                            html.Div(
+                                                className="mt-1",
+                                                children=[
+                                                    html.Small(
+                                                        children=[
+                                                            html.I(
+                                                                className=ICON_MODAL_EXAMPLE,
+                                                                style={
+                                                                    "marginRight": "0.25rem",
+                                                                    "color": "var(--accent-color)",
+                                                                },
+                                                            ),
+                                                            "Try an example:",
+                                                        ],
+                                                        style={"color": "var(--text-tertiary)"},
+                                                    ),
+                                                    dcc.Dropdown(
+                                                        id=f"id-dropdown-{TOOL_DEF['slug']}-example",
+                                                        options=[
+                                                            {
+                                                                "label": ex["label"],
+                                                                "value": f"{ex['role']}||{ex['value']}",
+                                                            }
+                                                            for ex in example_smiles
+                                                        ],
+                                                        placeholder="Select an example molecule...",
+                                                        className="mt-1 themed-control",
+                                                        searchable=False,
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                            ),
+                        ],
+                    ),
+                    # --------------------------------------------
+                    # Section 2: Search Configuration
+                    # --------------------------------------------
+                    html.Div(
+                        className="bg-light p-3 rounded mb-2",
+                        children=[
+                            html.H6(
+                                children=[
+                                    html.I(
+                                        className="fas fa-cog",
+                                        style={"marginRight": "0.5rem", "color": "var(--text-secondary)"},
+                                    ),
+                                    "Search Configuration",
+                                ],
+                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
+                            ),
+                            # Database Selection
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Databases", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
+                                            options=db_options,
+                                            value=all_db_values,
+                                            multi=True,
+                                            placeholder="Select one or more databases...",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Similarity Algorithm Selection
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Algorithms", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-algorithms",
+                                            options=algo_dropdown_options,
+                                            value=all_algo_values,
+                                            multi=True,
+                                            placeholder="Select one or more algorithms...",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Top-N Results
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Top N Results", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dbc.Input(
+                                            id=f"id-input-{TOOL_DEF['slug']}-top-n",
+                                            type="number",
+                                            value=10,
+                                            min=1,
+                                            max=500,
+                                            step=1,
+                                            placeholder="Number of top results",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
                             ),
                         ],
                     ),

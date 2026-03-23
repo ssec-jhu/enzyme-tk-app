@@ -9,6 +9,7 @@ without requiring a running Redis instance for unit tests.
 import fakeredis
 import pytest
 
+from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.footer import footer as create_footer
 from enzyme_tk_app.app.components.hero import hero as create_hero
 from enzyme_tk_app.app.components.navbar import navbar as create_navbar
@@ -107,6 +108,31 @@ def write_job_into_fake_redis(fake_redis, job_id, session_id, status="PENDING", 
     }
     fake_redis.hset(f"job:{job_id}", mapping=mapping)
     fake_redis.sadd(f"session:{session_id}:jobs", job_id)
+
+
+def make_job(*, params=None, result=None, **overrides) -> JobInfo:
+    """Create a minimal ``JobInfo`` for testing.
+
+    Sensible defaults are provided for all identity fields so tests
+    only need to specify the fields they care about.
+
+    Args:
+        params: Job parameters dict (default empty).
+        result: Job result dict (default ``None``).
+        **overrides: Any ``JobInfo`` field to override (e.g.
+            ``status=JobStatus.FAILURE``, ``session_id="other"``).
+    """
+    defaults = {
+        "job_id": "test-id",
+        "tool_slug": "test-tool",
+        "status": JobStatus.SUCCESS,
+        "session_id": "sess-1",
+        "submitted_at": "2025-01-01T00:00:00+00:00",
+        "params": params or {},
+        "result": result,
+    }
+    defaults.update(overrides)
+    return JobInfo(**defaults)
 
 
 def find_components(component, target_type, results=None):

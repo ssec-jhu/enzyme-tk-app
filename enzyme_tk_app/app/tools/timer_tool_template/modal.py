@@ -7,7 +7,7 @@ It collects the number of seconds the background task should sleep for.
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.icons import ICON_TOOL_TIMER
+from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 
 # Pre-defined quick-select durations shown as radio options.
 QUICK_DURATIONS = [
@@ -28,7 +28,7 @@ def modal():
         - Option to simulate a mid-run failure (for testing)
     """
     return dbc.Modal(
-        id="id-modal-timer-tool-template",
+        id=f"id-modal-{TOOL_DEF['slug']}",
         is_open=False,
         size="lg",
         centered=True,
@@ -37,10 +37,10 @@ def modal():
                 dbc.ModalTitle(
                     children=[
                         html.I(
-                            className=ICON_TOOL_TIMER,
+                            className=TOOL_DEF["icon"],
                             style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                         ),
-                        "Timer Task",
+                        TOOL_DEF["title"],
                     ]
                 ),
                 close_button=True,
@@ -50,14 +50,14 @@ def modal():
                     # Duration Input
                     dbc.Label("Duration (seconds)", className="form-label"),
                     dbc.Input(
-                        id="id-input-timer-tool-template-duration",
+                        id=f"id-input-{TOOL_DEF['slug']}-duration",
                         type="number",
                         min=1,
                         max=300,
                         step=1,
                         value=5,
                         placeholder="Enter duration in seconds (1–300)",
-                        className="mb-3",
+                        className="mb-3 themed-control",
                     ),
                     # Quick-select radio buttons
                     html.Div(
@@ -68,11 +68,11 @@ def modal():
                                 style={"color": "var(--text-tertiary)"},
                             ),
                             dbc.RadioItems(
-                                id="id-radio-timer-tool-template-quick",
+                                id=f"id-radio-{TOOL_DEF['slug']}-quick",
                                 options=[{"label": d["label"], "value": d["value"]} for d in QUICK_DURATIONS],
                                 value=5,
                                 inline=True,
-                                className="mt-1",
+                                className="mt-1 themed-control",
                             ),
                         ],
                     ),
@@ -81,28 +81,29 @@ def modal():
                         className="mb-3",
                         children=[
                             dbc.Checkbox(
-                                id="id-check-timer-tool-template-fail",
+                                id=f"id-check-{TOOL_DEF['slug']}-fail",
                                 label="Simulate failure (throws exception halfway through)",
                                 value=False,
+                                className="themed-control",
                             ),
                         ],
                     ),
                     # Status / job ID placeholder
-                    html.Div(id="id-div-timer-tool-template-results"),
+                    html.Div(id=f"id-div-{TOOL_DEF['slug']}-results"),
                 ],
             ),
             dbc.ModalFooter(
                 children=[
                     dbc.Button(
                         "Close",
-                        id="id-btn-timer-tool-template-cancel",
+                        id=f"id-btn-{TOOL_DEF['slug']}-cancel",
                         color="secondary",
                         outline=True,
                         className="me-2",
                     ),
                     dbc.Button(
                         "Start Timer",
-                        id="id-btn-timer-tool-template-submit",
+                        id=f"id-btn-{TOOL_DEF['slug']}-submit",
                         color="primary",
                     ),
                 ],
