@@ -7,7 +7,7 @@ tool card. It collects inputs needed to run the reaction similarity search.
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
-from enzyme_tk_app.app.components.icons import ICON_MODAL_DATABASE, ICON_MODAL_EXAMPLE
+from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF, get_similarity_algorithms
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
@@ -79,99 +79,181 @@ def modal():
                 close_button=True,
             ),
             dbc.ModalBody(
+                className="p-4",
                 children=[
-                    # --------------------------------
-                    # Task Name Input
-                    # --------------------------------
-                    dbc.Label("Task Name", className="form-label"),
-                    dbc.Input(
-                        id="id-input-reaction-task-name",
-                        type="text",
-                        placeholder="Enter a name for this task (e.g., 'Hydrolysis search')",
-                        className="mb-3 themed-control",
-                    ),
                     # --------------------------------------------
-                    # Database Selection (multi-select dropdown)
-                    # --------------------------------------------
-                    dbc.Label(
-                        children=[
-                            html.I(
-                                className=ICON_MODAL_DATABASE,
-                                style={"marginRight": "0.4rem", "color": "var(--primary-color)"},
-                            ),
-                            "Select Databases",
-                        ],
-                        className="form-label",
-                    ),
-                    dcc.Dropdown(
-                        id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
-                        options=db_options,
-                        value=all_db_values,
-                        multi=True,
-                        placeholder="Select one or more databases...",
-                        className="mb-3 themed-control",
-                    ),
-                    # --------------------------------------------
-                    # Similarity Algorithm Selection (multi-select)
-                    # --------------------------------------------
-                    dbc.Label("Similarity Algorithms", className="form-label"),
-                    dcc.Dropdown(
-                        id=f"id-dropdown-{TOOL_DEF['slug']}-algorithms",
-                        options=algo_dropdown_options,
-                        value=all_algo_values,
-                        multi=True,
-                        placeholder="Select one or more algorithms...",
-                        className="mb-3 themed-control",
-                    ),
-                    # --------------------------------------------
-                    # Reaction SMILES Input
-                    # --------------------------------------------
-                    dbc.Label("Reaction SMILES", className="form-label"),
-                    dbc.Textarea(
-                        id="id-textarea-reaction-smiles",
-                        placeholder="Enter reaction SMILES (e.g., CC(=O)O.CCO>>CC(=O)OCC.O)",
-                        rows=3,
-                        className="mb-2 themed-control",
-                        style={"fontFamily": "monospace", "fontSize": "0.9rem"},
-                    ),
-                    # --------------------------------------------
-                    # Try an Example section
+                    # Section 1: Input Data
                     # --------------------------------------------
                     html.Div(
-                        className="mt-2 mb-3",
+                        className="bg-light p-3 rounded mb-3",
                         children=[
-                            html.Small(
+                            html.H6(
                                 children=[
                                     html.I(
-                                        className=ICON_MODAL_EXAMPLE,
-                                        style={"marginRight": "0.25rem", "color": "var(--accent-color)"},
+                                        className="fas fa-flask",
+                                        style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                                     ),
-                                    "Try an example:",
+                                    "Input Data",
                                 ],
-                                style={"color": "var(--text-tertiary)"},
+                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
                             ),
-                            dcc.Dropdown(
-                                id=f"id-dropdown-{TOOL_DEF['slug']}-example",
-                                options=[{"label": ex["label"], "value": ex["value"]} for ex in example_reactions],
-                                placeholder="Select an example reaction...",
-                                className="mt-1 themed-control",
-                                searchable=False,
+                            # Task Name
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Task Name", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dbc.Input(
+                                            id="id-input-reaction-task-name",
+                                            type="text",
+                                            placeholder="e.g. 'Hydrolysis search'",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Reaction SMILES
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Reaction SMILES", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        [
+                                            dbc.Textarea(
+                                                id="id-textarea-reaction-smiles",
+                                                placeholder="e.g. CC(=O)O.CCO>>CC(=O)OCC.O",
+                                                rows=3,
+                                                className="themed-control",
+                                                style={"fontFamily": "monospace", "fontSize": "0.9rem"},
+                                            ),
+                                            html.Div(
+                                                className="mt-1",
+                                                children=[
+                                                    html.Small(
+                                                        children=[
+                                                            html.I(
+                                                                className=ICON_MODAL_EXAMPLE,
+                                                                style={
+                                                                    "marginRight": "0.25rem",
+                                                                    "color": "var(--accent-color)",
+                                                                },
+                                                            ),
+                                                            "Try an example:",
+                                                        ],
+                                                        style={"color": "var(--text-tertiary)"},
+                                                    ),
+                                                    dcc.Dropdown(
+                                                        id=f"id-dropdown-{TOOL_DEF['slug']}-example",
+                                                        options=[
+                                                            {"label": ex["label"], "value": ex["value"]}
+                                                            for ex in example_reactions
+                                                        ],
+                                                        placeholder="Select an example reaction...",
+                                                        className="mt-1 themed-control",
+                                                        searchable=False,
+                                                    ),
+                                                ],
+                                            ),
+                                        ],
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
                             ),
                         ],
                     ),
                     # --------------------------------------------
-                    # Top-N Results
+                    # Section 2: Search Configuration
                     # --------------------------------------------
-                    dbc.Label("Top N Results", className="form-label"),
-                    dbc.Input(
-                        id=f"id-input-{TOOL_DEF['slug']}-top-n",
-                        type="number",
-                        value=10,
-                        min=1,
-                        max=500,
-                        step=1,
-                        placeholder="Number of top results to return",
-                        className="mb-3 themed-control",
+                    html.Div(
+                        className="bg-light p-3 rounded mb-2",
+                        children=[
+                            html.H6(
+                                children=[
+                                    html.I(
+                                        className="fas fa-cog",
+                                        style={"marginRight": "0.5rem", "color": "var(--text-secondary)"},
+                                    ),
+                                    "Search Configuration",
+                                ],
+                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
+                            ),
+                            # Database Selection
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Databases", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
+                                            options=db_options,
+                                            value=all_db_values,
+                                            multi=True,
+                                            placeholder="Select one or more databases...",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Similarity Algorithm Selection
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Algorithms", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dcc.Dropdown(
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-algorithms",
+                                            options=algo_dropdown_options,
+                                            value=all_algo_values,
+                                            multi=True,
+                                            placeholder="Select one or more algorithms...",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                            # Top-N Results
+                            dbc.Row(
+                                [
+                                    dbc.Col(
+                                        dbc.Label("Top N Results", className="col-form-label fw-bold"),
+                                        width=3,
+                                    ),
+                                    dbc.Col(
+                                        dbc.Input(
+                                            id=f"id-input-{TOOL_DEF['slug']}-top-n",
+                                            type="number",
+                                            value=10,
+                                            min=1,
+                                            max=500,
+                                            step=1,
+                                            placeholder="Number of top results",
+                                            className="themed-control",
+                                        ),
+                                        width=9,
+                                    ),
+                                ],
+                                className="mb-2",
+                                align="center",
+                            ),
+                        ],
                     ),
                     # --------------------------------------------
                     html.Div(id=f"id-div-{TOOL_DEF['slug']}-results"),
