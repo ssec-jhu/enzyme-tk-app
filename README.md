@@ -1,4 +1,4 @@
-# SSEC-JHU enzyme-tk-app
+# SSEC-JHU EnzymeTK Tool Suite
 
 [![CI](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/ci.yml/badge.svg)](https://github.com/ssec-jhu/enzyme-tk-app/actions/workflows/ci.yml)
 [![Documentation Status](https://readthedocs.org/projects/ssec-jhu-enzyme-tk-app/badge/?version=latest)](https://ssec-jhu-enzyme-tk-app.readthedocs.io/en/latest/?badge=latest)
@@ -9,139 +9,236 @@
 
 ![SSEC-JHU Logo](docs/_static/SSEC_logo_horiz_blue_1152x263.png)
 
-Base repo template to be used by all others.
+A web application for protein engineering workflows, built with [Dash](https://dash.plotly.com/) (Plotly) and backed by [Celery](https://docs.celeryq.dev/) for asynchronous job processing. It provides a suite of bioinformatics tools that scientists can launch from the browser and monitor through a job-management dashboard.
 
-Things to do when using this template:
+## Available Tools
 
- * Run ```python project_setup.py```
- * Uncomment above DOI in README.md and correct ``<insert_ID_number>``.
- * Correct "description" field in .zenodo.json to reflect description of child repo.
- * Correct the ``CI Status`` badge with the correct token in the URL.
- * Import package into https://readthedocs.org/.
- * Update [zenodo.json](zenodo.json). For more details see [zenodo.json docs](https://developers.zenodo.org/#representation) and [zenodo docs on contributors vs creators](https://help.zenodo.org/docs/deposit/describe-records/contributors/).
- * Update quickstart guide below.
+| Tool | Description | Key Libraries |
+|------|-------------|---------------|
+| **Reaction Similarity** | Reaction similarity search using RDKit structural reaction fingerprints | `rdkit` |
+| **Substrate/Product Similarity** | Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring | `rdkit` |
+| **Sequence Similarity** | High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms | `diamond-blastp` |
+| **Sequence and Structure-Based Similarity** | Experimental tool for sequence and structure-based similarity | `foldseek` |
+| **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
 
-What's included in this template:
+New tools are auto-discovered — add a sub-package under `enzyme_tk_app/app/tools/` and it appears on the home page automatically. See [`.github/copilot-instructions.md`](.github/copilot-instructions.md) for the full guide.
 
- * Licence file
- * Code of Conduct
- * Build & Setup, inc. ``pip`` dependency requirements.
- * Dependabot GitHub action
- * CI for GitHub actions: lint, pytest, build & publish docker image to GitHub Packages.
- * Dockerfile.
- * Pytest example(s).
- * Githooks.
+## Quickstart
 
-# Quickstart Guide
+```bash
+git clone https://github.com/ssec-jhu/enzyme-tk-app
+cd enzyme-tk-app
+docker compose up --build
+```
 
-Add here, streamlined instructions on how to get the code running as swiftly as possible, and provide usage example(s).
-This shouldn't attempt to cover all OS's and/or build variations - just the canonical. Since users are most likely
-viewing this README from GitHub.com, assuming a repo context might be best, where instructions look like those below.
-Alternatively, if this package is distributed on PyPi, perhaps just ``pip install <package-name>``, followed by quick
-user instructions, will suffice.
+The app is available at **http://localhost:8050**. This starts the web server, Redis, and 3 Celery workers — everything needed to submit and run jobs.
 
-  * ``git clone https://github.com/ssec-jhu/enzyme-tk-app``
-  * ``conda create -n enzyme_tk_app python pip``
-  * ``conda activate enzyme_tk_app``
-  * ``pip pinstall -e .``
-  * Add user instructions.
+```bash
+docker compose up --build -d     # detached
+docker compose down -v           # stop and remove volumes
+```
 
-# Installation, Build, & Run instructions
+Pull pre-built images: `docker pull ghcr.io/ssec-jhu/enzyme-tk-app:<tag>`
 
-### Conda:
+##  Developers - Adding a New Tool
 
-For additional cmds see the [Conda cheat-sheet](https://docs.conda.io/projects/conda/en/4.6.0/_downloads/52a95608c49671267e40c689e0bc00ca/conda-cheatsheet.pdf).
+Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`. Auto-discovery scans sub-packages at import time — **no central file to edit**. Create a new folder and the tool card appears on the home page automatically.
 
- * Download and install either [miniconda](https://docs.conda.io/en/latest/miniconda.html#installing) or [anaconda](https://docs.anaconda.com/free/anaconda/install/index.html).
- * Create new environment (env) and install ``conda create -n <environment_name>``
- * Activate/switch to new env ``conda activate <environment_name>``
- * ``cd`` into repo dir.
- * Install ``python`` and ``pip`` ``conda install python=3.12 pip``
- * Install all required dependencies (assuming local dev work), there are two ways to do this
-   * If working with tox (recommended) ``pip install -r requirements/dev.txt``.
-   * If you would like to setup an environment with all requirements to run outside of tox ``pip install -r requirements/all.txt``.
+### File layout
 
-### Build:
+| File | Required? | Must export | Purpose |
+|------|-----------|-------------|---------|
+| `__init__.py` | Yes | `TOOL_DEF: ToolDef` | Metadata (slug, title, desc, icon, order, libraries) |
+| `modal.py` | No | `modal() → dbc.Modal` | Input form shown when "Launch →" is clicked |
+| `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
+| `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
+| `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
 
-  #### with Docker:
-  * Download & install Docker - see [Docker install docs](https://docs.docker.com/get-docker/).
-  * ``cd`` into repo dir.
-  * Build image: ``docker build -t <image_name> .``
+### Folder-name rule
 
-  #### with Python ecosystem:
-  * ``cd`` into repo dir.
-  * ``conda activate <environment_name>``
-  * Build and install package in <environment_name> conda env: ``pip install .``
-  * Do the same but in dev/editable mode (changes to repo will be reflected in env installation upon python kernel restart)
-    _NOTE: This is the preferred installation method for dev work._
-    ``pip install -e .``.
-    _NOTE: If you didn't install dependencies from ``requirements/dev.txt``, you can install
-    a looser constrained set of deps using: ``pip install -e .[dev]``._
+The folder name **must** equal `slug.replace("-", "_")`. The task dispatcher converts the slug back to a folder name using this convention. If you change the slug, rename the folder to match (e.g., slug `"my-new-tool"` → folder `my_new_tool/`).
 
-### Run
+### `__init__.py` — tool definition (required)
 
-  #### with Docker:
-  * Follow the above [Build with Docker instructions](#with-docker).
-  * Run container from image: ``docker run -d -p 8000:8000 <image_name>``. _NOTE: ``-p 8000:8000`` is specific to the example application using port 8000._
-  * Alternatively, images can be pulled from ``ghcr.io/ssec-jhu/`` e.g., ``docker pull ghcr.io/ssec-jhu/enzyme-tk-app:pr-1``.
+`TOOL_DEF` is the **single source of truth** for the tool's slug, title, icon, and description. Import it everywhere — never hardcode these values.
 
-  #### with Python ecosystem:
-  * Follow the above [Build with Python ecosystem instructions](#with-python-ecosystem).
-  * Run ``uvicorn enzyme_tk_app.app.main:app --host 0.0.0.0 --port 8000``. _NOTE: This is just an example and is obviously application dependent._
+```python
+from enzyme_tk_app.app.components.icons import ICON_TOOL_TIMER
+from enzyme_tk_app.app.tools import ToolDef
 
-### Usage:
-To be completed by child repo.
+TOOL_DEF: ToolDef = {
+    "slug": "my-new-tool",          # URL-safe, hyphens not underscores
+    "title": "My New Tool",
+    "desc": "Short description of what the tool does.",
+    "icon": ICON_TOOL_TIMER,        # any constant from icons.py
+    "order": 10,                    # lower numbers appear first
+    "libraries": ["numpy"],         # optional — shown as badges on the card
+    "max_duration": 3600,           # optional — timeout in seconds (default 3600)
+}
+```
 
+Icon constants are defined in `enzyme_tk_app/app/components/icons.py`. The `ToolDef` type is imported from `enzyme_tk_app.app.tools`.
+
+### `modal.py` — input form
+
+Returns a `dbc.Modal` with the tool's input controls. Key conventions:
+
+- **Modal ID**: `f"id-modal-{TOOL_DEF['slug']}"`
+- **All component IDs** must use f-strings from `TOOL_DEF["slug"]` — never hardcode the slug.
+- **Use `TOOL_DEF["title"]`** for the modal header text.
+- **Dropdowns**: always use `dcc.Dropdown` (not `dbc.Select`).
+- **Form controls** (dropdowns, inputs, textareas, checkboxes, radio items): add CSS class `themed-control` for dark-mode support.
+
+```python
+import dash_bootstrap_components as dbc
+from dash import html
+
+from enzyme_tk_app.app.tools.my_new_tool import TOOL_DEF
+
+
+def modal():
+    return dbc.Modal(
+        id=f"id-modal-{TOOL_DEF['slug']}",
+        is_open=False,
+        size="lg",
+        centered=True,
+        children=[
+            dbc.ModalHeader(dbc.ModalTitle(TOOL_DEF["title"])),
+            dbc.ModalBody([
+                dbc.Label("Duration (seconds)"),
+                dbc.Input(
+                    id=f"id-input-{TOOL_DEF['slug']}-duration",
+                    type="number", min=1, value=5,
+                    className="mb-3 themed-control",
+                ),
+                html.Div(id=f"id-div-{TOOL_DEF['slug']}-results"),
+            ]),
+            dbc.ModalFooter([
+                dbc.Button("Close", id=f"id-btn-{TOOL_DEF['slug']}-cancel",
+                           color="secondary", outline=True, className="me-2"),
+                dbc.Button("Submit", id=f"id-btn-{TOOL_DEF['slug']}-submit",
+                           color="primary"),
+            ]),
+        ],
+    )
+```
+
+### `callbacks.py` — Dash callbacks
+
+Callbacks open/close the modal, sync form controls, and submit jobs. Conventions:
+
+- Import `TOOL_DEF` from the tool's own package — use `TOOL_DEF["slug"]` in all component IDs.
+- Use `TOOL_DEF["slug"]` when calling `scheduler.submit_job()`.
+- The launch button ID `f"id-btn-launch-{TOOL_DEF['slug']}"` is auto-generated by `tool_cards.py`.
+- Access the anonymous session via `flask.g.session_id`.
+
+```python
+from dash import Input, Output, State, callback, ctx
+from flask import g
+
+from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.tools.my_new_tool import TOOL_DEF
+
+
+@callback(
+    Output(f"id-modal-{TOOL_DEF['slug']}", "is_open"),
+    [Input(f"id-btn-launch-{TOOL_DEF['slug']}", "n_clicks"),
+     Input(f"id-btn-{TOOL_DEF['slug']}-cancel", "n_clicks")],
+    prevent_initial_call=True,
+)
+def toggle_modal(launch_clicks, cancel_clicks):
+    if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
+        return True
+    return False
+
+
+@callback(
+    Output(f"id-div-{TOOL_DEF['slug']}-results", "children"),
+    Input(f"id-btn-{TOOL_DEF['slug']}-submit", "n_clicks"),
+    State(f"id-input-{TOOL_DEF['slug']}-duration", "value"),
+    prevent_initial_call=True,
+)
+def submit_job(n_clicks, duration):
+    scheduler = get_task_scheduler()
+    job_id = scheduler.submit_job(
+        tool_slug=TOOL_DEF["slug"],
+        params={"seconds": int(duration)},
+        session_id=g.session_id,
+    )
+    return f"Job submitted — ID: {job_id}"
+```
+
+### `compute.py` — backend computation
+
+Exports `run(params) → dict`. This function executes on the Celery worker. The `params` dict matches the form fields submitted by the callback. The returned dict must be JSON-serialisable.
+
+```python
+import time
+
+
+def run(params: dict) -> dict:
+    seconds = int(params["seconds"])
+    time.sleep(seconds)
+    return {"message": f"Completed after {seconds}s"}
+```
+
+### `results.py` — custom results page (optional)
+
+Exports `results_layout(job) → html.Div`. If absent, the job results page shows raw JSON. The `job` argument is a `JobInfo` object whose `.result` attribute contains the dict returned by `compute.run()`.
+
+```python
+from dash import html
+
+from enzyme_tk_app.app.backend.models import JobInfo
+
+
+def results_layout(job: JobInfo) -> html.Div:
+    result = job.result or {}
+    return html.Div(html.P(result.get("message", "No result data.")))
+```
+
+### Component ID conventions
+
+All Dash component IDs follow the pattern `id-<component-type>-<name>` and must be built from `TOOL_DEF["slug"]`:
+
+| Component | ID pattern |
+|-----------|------------|
+| Modal | `f"id-modal-{TOOL_DEF['slug']}"` |
+| Launch button (auto-generated) | `f"id-btn-launch-{TOOL_DEF['slug']}"` |
+| Submit button | `f"id-btn-{TOOL_DEF['slug']}-submit"` |
+| Close button | `f"id-btn-{TOOL_DEF['slug']}-cancel"` |
+| Inputs | `f"id-input-{TOOL_DEF['slug']}-<name>"` |
+| Dropdowns | `f"id-dropdown-{TOOL_DEF['slug']}-<name>"` |
+| Results div | `f"id-div-{TOOL_DEF['slug']}-results"` |
+
+Only assign an `id` to a component if it is used in a callback (`Input`, `Output`, or `State`).
+
+See `enzyme_tk_app/app/tools/timer_tool_template/` for a complete working reference implementation.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL (broker + result backend) |
+| `JOB_TTL_SECONDS` | `86400` (24 h) | How long job metadata is retained in Redis |
+| `JOB_OUTPUTS_PATH` | `/data/job_outputs` | Directory for large result files |
+| `SHARED_VOLUME_PATH` | `/data` | Base path for the shared Docker volume |
+| `MAX_RESULT_BYTES` | `524288` (512 KB) | Threshold above which results are offloaded to disk |
 
 # Testing
-_NOTE: The following steps require ``pip install -r requirements/dev.txt``._
 
-## Using tox
+_Requires `pip install -r requirements/test.txt`._
 
-* Run tox ``tox``. This will run all of linting, security, test, docs and package building within tox virtual environments.
-* To run an individual step, use ``tox -e {step}`` for example, ``tox -e test``, ``tox -e build-docs``, etc.
+## Using tox (recommended)
 
-Typically, the CI tests run in github actions will use tox to run as above. See also [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
+```bash
+tox                     # run all environments (lint, security, test, docs, build)
+tox -e test             # unit tests only
+tox -e check-style      # ruff format + lint check
+tox -e check-security   # bandit security scan
+tox -e format           # auto-format and fix imports
+tox -e build-docs       # build Sphinx documentation
+tox -e build-dist       # build distribution package
+```
 
-## Outside of tox:
-
-The below assume you are running steps without tox, and that all requirements are installed into a conda environment, e.g. with ``pip install -r requirements/all.txt``.
-
-_NOTE: Tox will run these for you, this is specifically if there is a requirement to setup environment and run these outside the purview of tox._
-
-### Linting:
-Facilitates in testing typos, syntax, style, and other simple code analysis tests.
-  * ``cd`` into repo dir.
-  * Switch/activate correct environment: ``conda activate <environment_name>``
-  * Run ``ruff .``
-  * This can be automatically run (recommended for devs) every time you ``git push`` by installing the provided
-    ``pre-push`` git hook available in ``./githooks``.
-    Instructions are in that file - just ``cp ./githooks/pre-push .git/hooks/;chmod +x .git/hooks/pre-push``.
-
-### Security Checks:
-Facilitates in checking for security concerns using [Bandit](https://bandit.readthedocs.io/en/latest/index.html).
- * ``cd`` into repo dir.
- * ``bandit --severity-level=medium -r enzyme_tk_app``
-
-### Unit Tests:
-Facilitates in testing core package functionality at a modular level.
-  * ``cd`` into repo dir.
-  * Run all available tests: ``pytest .``
-  * Run specific test: ``pytest tests/test_util.py::test_base_dummy``.
-
-### Regression tests:
-Facilitates in testing whether core data results differ during development.
-  * WIP
-
-### Smoke Tests:
-Facilitates in testing at the application and infrastructure level.
-  * WIP
-
-### Build Docs:
-Facilitates in building, testing & viewing the docs.
- * ``cd`` into repo dir.
- * ``pip install -r requirements/docs.txt``
- * ``cd docs``
- * ``make clean``
- * ``make html``
- * To view the docs in your default browser run ``open docs/_build/html/index.html``.
+CI runs these same tox environments. See [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
