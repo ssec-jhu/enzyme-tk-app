@@ -24,6 +24,7 @@ dev = [
     "bandit>=1.7",
     "build",
     "fakeredis>=2.21",
+    "gitpython>=3.1",
     "pytest",
     "pytest-cov",
     "ruff",
