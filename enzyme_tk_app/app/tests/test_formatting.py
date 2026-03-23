@@ -155,13 +155,3 @@ def test_expires_in_naive_timestamp():
     result = expires_in(naive_iso)
     assert "h" in result, f"Expected hours in result, got: {result}"
     assert result != "Expired"
-
-
-def test_expires_in_naive_timestamp():
-    """Naive timestamps (no tzinfo) are treated as UTC."""
-    # Submit 1 hour ago → should have ~23 h remaining
-    one_hour_ago = datetime.now(tz=timezone.utc) - timedelta(hours=1)
-    naive_iso = one_hour_ago.strftime("%Y-%m-%dT%H:%M:%S")
-    result = expires_in(naive_iso)
-    assert "h" in result, f"Expected hours in result, got: {result}"
-    assert result != "Expired"
