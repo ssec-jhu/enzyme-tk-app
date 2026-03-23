@@ -1,8 +1,8 @@
-"""My Jobs page — lists all jobs submitted by the current session.
+"""My Tasks page — lists all tasks submitted by the current session.
 
-Displays a stats summary, toolbar with bulk actions, and a table of jobs
+Displays a stats summary, toolbar with bulk actions, and a table of tasks
 with per-row cancel and view-results buttons.  Auto-polls every 5 seconds
-to refresh running job statuses.
+to refresh running task statuses.
 """
 
 import dash
@@ -15,21 +15,21 @@ from enzyme_tk_app.app.components.icons import (
     ICON_JOBS_PAGE,
 )
 
-dash.register_page(__name__, path="/my-jobs")
+dash.register_page(__name__, path="/my-tasks")
 
 
 # --- Layout ----------------------------------------------------------------
 
 
 def layout() -> html.Div:
-    """Return the My Jobs page layout.
+    """Return the My Tasks page layout.
 
-    The stats summary and jobs table are populated by callbacks
+    The stats summary and tasks table are populated by callbacks
     in ``my_jobs_callbacks.py``.
 
     Returns:
         An ``html.Div`` containing the page header, stats, toolbar,
-        and auto-refreshing jobs table.
+        and auto-refreshing tasks table.
     """
     return html.Div(
         className="jobs-page",
@@ -41,16 +41,18 @@ def layout() -> html.Div:
                     html.I(
                         className=f"{ICON_JOBS_PAGE} jobs-page-header-icon",
                     ),
-                    html.H2("My Jobs", style={"margin": "0"}),
+                    html.H2("My Tasks", style={"margin": "0"}),
                 ],
             ),
             html.P(
-                "Track your submitted jobs, view results, or cancel running tasks.",
+                "Track your submitted tasks, view results, or cancel running ones.",
                 className="jobs-page-subtitle",
             ),
             # Stats summary — populated by callback
             html.Div(id="id-div-jobs-stats", className="jobs-stats-row"),
-            # Toolbar — bulk actions
+            # -------------------------------------
+            # Buttons for bulk actions on multiple jobs
+            # -------------------------------------
             html.Div(
                 className="jobs-toolbar",
                 children=[
@@ -83,7 +85,9 @@ def layout() -> html.Div:
                     ),
                 ],
             ),
+            # -------------------------------------
             # Jobs table — populated by callback
+            # -------------------------------------
             html.Div(id="id-div-jobs-table"),
             # Auto-poll interval (5 s)
             dcc.Interval(

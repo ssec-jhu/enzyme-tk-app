@@ -1,5 +1,5 @@
 /* ==========================================================================
-   My Jobs Page — status badges and table
+   My Tasks Page — status badges and table
    CSS is used here for :hover pseudo-classes and shared table styling.
    ========================================================================== */
 
@@ -82,7 +82,8 @@
     border-radius: var(--radius-sm);
     font-size: 0.75rem;
     font-weight: 500;
-    border: 1px solid transparent; /* Ghost style: invisible border */
+    border: 1px solid transparent;
+    /* Ghost style: invisible border */
     background: transparent;
     color: var(--text-secondary);
     cursor: pointer;
@@ -208,7 +209,7 @@
     padding: 2rem 1rem;
 }
 
-/* --- My Jobs page header ------------------------------------------------- */
+/* --- My Tasks page header ------------------------------------------------- */
 .jobs-page-header {
     display: flex;
     align-items: center;

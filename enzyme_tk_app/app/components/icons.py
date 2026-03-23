@@ -25,7 +25,7 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
 ICON_MODAL_DATABASE = "fa-solid fa-database"
 
-# --- My Jobs Page ---
+# --- My Tasks Page ---
 ICON_JOBS_PAGE = "fa-solid fa-list-check"
 ICON_JOB_CANCEL = "fa-solid fa-ban"
 ICON_JOB_VIEW = "fa-solid fa-eye"
@@ -36,7 +36,7 @@ ICON_JOB_BACK = "fa-solid fa-arrow-left"
 
 # --- Job Status Icons ---
 ICON_STATUS_PENDING = "fa-solid fa-clock"
-ICON_STATUS_STARTED = "fa-solid fa-spinner"
+ICON_STATUS_STARTED = "fa-solid fa-gear"
 ICON_STATUS_SUCCESS = "fa-solid fa-circle-check"
 ICON_STATUS_FAILURE = "fa-solid fa-circle-xmark"
 ICON_STATUS_REVOKED = "fa-solid fa-ban"
