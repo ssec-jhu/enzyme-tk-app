@@ -71,11 +71,20 @@ def format_duration(seconds: float | int, *, precise: bool = False) -> str:
     return f"{minutes}m {secs}s" if precise else f"{minutes}m"
 
 
-def expires_in(iso_str: str | None) -> str:
+def expires_in(
+    iso_str: str | None,
+    *,
+    now: datetime | None = None,
+    ttl: int | None = None,
+) -> str:
     """Compute how much time remains before a job expires from Redis.
 
     Args:
         iso_str: The ``submitted_at`` ISO-8601 timestamp.
+        now: Optional reference time (defaults to ``datetime.now(UTC)``).
+            Useful for deterministic testing.
+        ttl: Optional TTL override in seconds (defaults to
+            ``JOB_TTL_SECONDS`` from config).
 
     Returns:
         Human-readable string like ``"23h 15m"`` or ``"Expired"``.
@@ -86,7 +95,9 @@ def expires_in(iso_str: str | None) -> str:
         submitted = datetime.fromisoformat(iso_str)
         if submitted.tzinfo is None:
             submitted = submitted.replace(tzinfo=timezone.utc)
-        remaining = (submitted + timedelta(seconds=JOB_TTL_SECONDS) - datetime.now(tz=timezone.utc)).total_seconds()
+        effective_ttl = ttl if ttl is not None else JOB_TTL_SECONDS
+        effective_now = now if now is not None else datetime.now(tz=timezone.utc)
+        remaining = (submitted + timedelta(seconds=effective_ttl) - effective_now).total_seconds()
         if remaining <= 0:
             return "Expired"
         return format_duration(int(remaining))

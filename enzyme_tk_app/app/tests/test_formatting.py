@@ -17,6 +17,7 @@ from enzyme_tk_app.app.utils.formatting import (
     format_timestamp,
 )
 
+
 # ── format_timestamp ─────────────────────────────────────────────────────
 
 
@@ -26,25 +27,13 @@ from enzyme_tk_app.app.utils.formatting import (
         ("2026-03-25T14:32:10", "2026-03-25 14:32"),
         ("2026-03-25T14:32:10+00:00", "2026-03-25 14:32"),
         ("2026-01-01T00:00:00", "2026-01-01 00:00"),
-    ],
-    ids=["naive", "tz-aware", "midnight"],
-)
-def test_format_timestamp_valid(iso_str, expected):
-    """Well-formed ISO strings are formatted as 'YYYY-MM-DD HH:MM'."""
-    assert format_timestamp(iso_str) == expected
-
-
-@pytest.mark.parametrize(
-    ("iso_str", "expected"),
-    [
         (None, "—"),
         ("", "—"),
         ("not-a-date", "not-a-date"),
     ],
-    ids=["none", "empty", "invalid"],
 )
-def test_format_timestamp_fallback(iso_str, expected):
-    """None/empty returns em-dash; unparseable strings are returned as-is."""
+def test_format_timestamp_valid(iso_str, expected):
+    """Well-formed ISO strings are formatted as 'YYYY-MM-DD HH:MM'."""
     assert format_timestamp(iso_str) == expected
 
 
@@ -64,7 +53,6 @@ def test_format_timestamp_fallback(iso_str, expected):
         (7200, "2h 0m"),
         (5400, "1h 30m"),
     ],
-    ids=["0s", "5s", "59s", "2m", "2m-30s-rounded", "1h", "1h1m", "2h", "1h30m"],
 )
 def test_format_duration_rounded(seconds, expected):
     """Default (non-precise) mode rounds to the nearest whole unit."""
@@ -123,6 +111,11 @@ def test_compute_duration_returns_dash(started, completed):
 
 # ── expires_in ───────────────────────────────────────────────────────────
 
+# Fixed reference point and TTL used by all expires_in tests.
+# Passed via keyword args (dependency injection) — no mocking needed.
+_NOW = datetime(2026, 3, 25, 12, 0, 0, tzinfo=timezone.utc)
+_TTL = 86400  # 24 h
+
 
 @pytest.mark.parametrize(
     "iso_str",
@@ -130,28 +123,23 @@ def test_compute_duration_returns_dash(started, completed):
     ids=["none", "empty", "invalid"],
 )
 def test_expires_in_returns_dash(iso_str):
-    """None, empty, or unparseable input returns em-dash."""
+    """None, empty input returns em-dash."""
     assert expires_in(iso_str) == "—"
 
 
 def test_expires_in_recently_submitted():
-    """A job submitted just now has nearly a full TTL remaining."""
-    now = datetime.now(tz=timezone.utc)
-    result = expires_in(now.isoformat())
-    # Should show approximately 24 h (JOB_TTL_SECONDS defaults to 86400)
-    assert "h" in result, f"Expected hours in result, got: {result}"
+    """A job submitted at 'now' has a full 24 h TTL remaining."""
+    assert expires_in(_NOW.isoformat(), now=_NOW, ttl=_TTL) == "24h 0m"
 
 
 def test_expires_in_expired():
-    """A job submitted more than JOB_TTL_SECONDS ago shows 'Expired'."""
-    long_ago = datetime.now(tz=timezone.utc) - timedelta(days=2)
-    assert expires_in(long_ago.isoformat()) == "Expired"
+    """A job submitted more than TTL seconds ago shows 'Expired'."""
+    long_ago = _NOW - timedelta(days=2)
+    assert expires_in(long_ago.isoformat(), now=_NOW, ttl=_TTL) == "Expired"
 
 
 def test_expires_in_naive_timestamp():
     """Naive timestamps (no tzinfo) are treated as UTC."""
-    one_hour_ago = datetime.now(tz=timezone.utc) - timedelta(hours=1)
+    one_hour_ago = _NOW - timedelta(hours=1)
     naive_iso = one_hour_ago.strftime("%Y-%m-%dT%H:%M:%S")
-    result = expires_in(naive_iso)
-    assert "h" in result, f"Expected hours in result, got: {result}"
-    assert result != "Expired"
+    assert expires_in(naive_iso, now=_NOW, ttl=_TTL) == "23h 0m"
