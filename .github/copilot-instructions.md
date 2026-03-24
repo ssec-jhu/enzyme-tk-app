@@ -69,11 +69,12 @@
 - Jobs are stored in Redis with a TTL (default 24h).
 - **Redis TTL invariant — dual-key sync:** Every job has two Redis keys: a *hash* (`job:<job_id>`) and a membership entry in a *session set* (`session:<session_id>:jobs`). Whenever code refreshes, sets, or resets the TTL on the job hash it **must also refresh the TTL on the session set** (and vice-versa). If only one key's TTL is extended, the other can expire first — breaking ownership checks (`_owns_job`), job listing (`list_jobs`), or leaving orphan data. Audit both keys any time you add or modify a method that calls `expire`, `hset` on a status transition, or `delete` on either key.
 - The `docker-compose.yml` orchestrates web, Redis, and worker containers with a shared volume.
-- **Dual-scheduler invariant — keep Local in sync with Celery:** There are two `TaskScheduler` implementations: `CeleryTaskScheduler` (production, Redis + Celery) and `LocalTaskScheduler` (dev, in-memory dicts). Both must honour the same behavioural contract defined in the `TaskScheduler` ABC and its docstrings. When modifying any method in `CeleryTaskScheduler`, **always review the corresponding method in `LocalTaskScheduler`** to ensure the same semantics (e.g., terminal-status guards on delete/clear, ownership checks, return-value schema). Shared constants like `TERMINAL_STATUSES` live in `models.py` — import from there, never duplicate. Run `test_backend_task_scheduler_local.py` after any change to either scheduler.
+- Shared constants like `TERMINAL_STATUSES` live in `models.py` — import from there, never duplicate.
 
 ## Callback Naming
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
+- In callbacks with early-exit guard clauses (e.g., no click, no triggered ID), use `raise PreventUpdate` (from `dash.exceptions`) instead of returning an empty string or `None`. This tells Dash to skip the update entirely, avoiding unnecessary DOM writes. See `my_tasks.py` for examples.
 
 ## Inline Styles
 - Group related styles into constants at the top of the file (e.g., `STYLE_NAVBAR`, `STYLE_FOOTER`).
@@ -93,7 +94,6 @@
   - Value: `jobs-stat-value` (large, bold, primary color).
   - Label: `jobs-stat-label` (small, uppercase, secondary text).
 - **Never create page-specific stat card classes** (e.g., no `jobs-detail-card`, `jobs-meta-card`). Reuse the shared set everywhere — My Jobs stats, Job Results header, tool-specific results meta, etc.
-- See `enzyme_tk_app/app/components/results_helpers.py` and `enzyme_tk_app/app/pages/my_jobs_callbacks.py` for existing usage of these classes.
 - When adding new pages with summary statistics, follow the same pattern.
 
 ## Icons

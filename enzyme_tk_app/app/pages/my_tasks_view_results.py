@@ -1,30 +1,15 @@
-"""Task Results page — renders tool-specific output for a given task.
-
-URL pattern: ``/my-tasks/<job_id>``
-
-Every results page shares a common **task info header** showing tool name,
-status badge, timestamps, duration, and expiry countdown.  Below that,
-the tool-specific renderer (from ``results.py``) provides rich output
-(DataTables, charts, molecule viewers…).  If a tool has no custom
-renderer, ``default_results_layout`` shows the raw JSON.
-
-For tasks that are still running (``PENDING`` / ``STARTED``), the page
-shows a status banner with a cancel button, the input parameters, and
-``TBD`` for unknown stats.  A ``dcc.Interval`` auto-refreshes the page
-until the task reaches a terminal state.
-"""
+"""Task Results page — renders tool-specific output for a given task."""
 
 from __future__ import annotations
 
 import dash
-from dash import dcc, html
+from dash import Input, Output, dcc, html
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
     ICON_JOB_BACK,
-    ICON_JOB_CANCEL,
     ICON_JOBS_PAGE,
     ICON_STATUS_FAILURE,
     ICON_STATUS_PENDING,
@@ -93,7 +78,7 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
     tool_title = _TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
     status_icon = _STATUS_ICONS.get(job.status, ICON_STATUS_PENDING)
 
-    # Page header: icon + title + status badge (matches my_jobs page header)
+    # Page header: icon + title + status badge (matches my_tasks page header)
     page_header = html.Div(
         className="jobs-page-header",
         children=[
@@ -244,24 +229,10 @@ def layout(job_id: str | None = None) -> html.Div:
                         "This page refreshes automatically.",
                         className="jobs-status-banner-hint",
                     ),
-                    # Cancel button to revoke the task (only shown for active tasks).
-                    html.Button(
-                        id="id-btn-job-cancel-detail",
-                        className="btn-job-action cancel",
-                        children=[
-                            html.I(className=ICON_JOB_CANCEL),
-                            "Cancel Task",
-                        ],
-                        n_clicks=0,
-                    ),
                 ],
             ),
         )
-        # Plumbing for auto-refresh and cancel callbacks.
-        # The dcc.Store and dcc.Location components allow callbacks to trigger a
-        # page refresh when the job status changes or when the cancel button is clicked.
-        tool_result_content.append(dcc.Store(id="id-store-job-detail-id", data=job_id))
-        tool_result_content.append(dcc.Location(id="id-location-job-detail", refresh=True))
+        # Plumbing for auto-refresh callback.
         tool_result_content.append(html.Div(id="id-div-job-detail-refresh-sink", style={"display": "none"}))
         tool_result_content.append(
             dcc.Interval(
@@ -326,5 +297,15 @@ def layout(job_id: str | None = None) -> html.Div:
     )
 
 
-# Import callbacks for side effect registration (Dash @callback decorators).
-from enzyme_tk_app.app.pages import job_results_callbacks  # noqa: E402, F401
+# ---------------------------------------------------------------------------
+# Auto-refresh: reload the browser every 5 s while the job is active.
+# The dcc.Interval only exists in the DOM for active jobs, so once the
+# page re-renders with a terminal status the interval (and this callback)
+# disappear automatically.
+# ---------------------------------------------------------------------------
+dash.clientside_callback(
+    "function(n) { if (n > 0) { window.location.reload(); } return ''; }",
+    Output("id-div-job-detail-refresh-sink", "children"),
+    Input("id-interval-job-detail-poll", "n_intervals"),
+    prevent_initial_call=True,
+)
