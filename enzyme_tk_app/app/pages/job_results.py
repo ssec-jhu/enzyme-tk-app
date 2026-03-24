@@ -83,10 +83,6 @@ def _build_back_link() -> html.A:
 def _build_job_info_header(job: JobInfo) -> html.Div:
     """Build the unified task info header shown on every results page.
 
-    Mirrors the My Tasks page header style: an icon + title row with
-    status badge, a subtitle, and a row of stat cards using the shared
-    ``jobs-stat-card`` pattern.
-
     Args:
         job: The ``JobInfo`` object to display.
 
