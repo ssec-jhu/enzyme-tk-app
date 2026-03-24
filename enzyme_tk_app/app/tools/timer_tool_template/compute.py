@@ -1,8 +1,36 @@
-"""Compute function for the Timer tool.
+"""Compute function for the Timer tool — **canonical example** for new tools.
 
 Sleeps for the requested number of seconds, then generates a random
-enzyme-activity DataFrame — useful for testing and demonstrating the
-backend job scheduling pipeline and the results-viewing system.
+DataFrame — useful for testing and demonstrating the backend job
+scheduling pipeline and the results-viewing system.
+
+How compute functions work
+--------------------------
+- Each tool exposes ``run(params: dict) → dict`` in ``compute.py``.
+- ``params`` is the exact dict passed by the callback to
+  ``scheduler.submit_job(params=...)``.  Its keys match the form
+  fields from the modal.
+- The returned dict **must be JSON-serialisable** (plain dicts, lists,
+  strings, numbers, bools, ``None``).  No custom objects.  Pandas
+  DataFrames must be serialised to ``{"columns": [...], "data": [...]}``.
+- Large results (> 512 KB) are automatically offloaded to disk by the
+  backend — tool authors just return a plain dict.
+
+Special return-dict keys
+~~~~~~~~~~~~~~~~~~~~~~~~
+``_meta`` : list[dict]
+    A list of ``{"label": "...", "value": "..."}`` dicts rendered as
+    stat cards at the top of the results page by
+    ``build_result_meta()`` in ``results_helpers.py``.  Every tool
+    should include at least one or two timing/summary stats here.
+
+``_params_exclude`` : list[str]
+    Keys from ``params`` that should **not** appear in the "Input
+    Parameters" table on the results page.  For example, a large
+    SMILES string or a binary payload that would clutter the display.
+
+All other keys are tool-specific and rendered by the tool's
+``results.py`` (or the raw-JSON fallback if ``results.py`` is absent).
 """
 
 import random
@@ -10,25 +38,27 @@ import time
 
 import pandas as pd
 
-# Enzyme IDs used to populate the demo DataFrame.
-_ENZYME_PREFIXES = ["ENZ", "MUT", "WT", "VAR"]
 
+def _generate_random_dataframe(n_rows: int = 20) -> pd.DataFrame:
+    """Create a random DataFrame of simulated assay results.
 
-def _generate_enzyme_dataframe(n_rows: int = 20) -> pd.DataFrame:
-    """Create a random DataFrame of simulated enzyme assay results.
+    This is a **demo helper** — real tools would call an algorithm
+    library (e.g. enzymetk, RDKit) instead of generating random data.
 
     Args:
         n_rows: Number of rows to generate.
 
     Returns:
-        A ``pd.DataFrame`` with columns: enzyme_id, activity_U_mg,
-        stability_Tm_C, temperature_C, yield_pct.
+        A ``pd.DataFrame`` with columns: sample_id, activity_score,
+        stability_score, temperature_c, yield_pct.
     """
+    # Row-ID prefixes used to populate the demo DataFrame.
+    _ROW_ID_PREFIXES = ["ENZ", "MUT", "WT", "VAR"]
     data = {
-        "enzyme_id": [f"{random.choice(_ENZYME_PREFIXES)}-{i:03d}" for i in range(1, n_rows + 1)],
-        "activity_U_mg": [round(random.uniform(0.5, 150.0), 2) for _ in range(n_rows)],
-        "stability_Tm_C": [round(random.uniform(35.0, 85.0), 1) for _ in range(n_rows)],
-        "temperature_C": [random.randint(20, 80) for _ in range(n_rows)],
+        "sample_id": [f"{random.choice(_ROW_ID_PREFIXES)}-{i:03d}" for i in range(1, n_rows + 1)],
+        "activity_score": [round(random.uniform(0.5, 150.0), 2) for _ in range(n_rows)],
+        "stability_score": [round(random.uniform(35.0, 85.0), 1) for _ in range(n_rows)],
+        "temperature_c": [random.randint(20, 80) for _ in range(n_rows)],
         "yield_pct": [round(random.uniform(5.0, 98.0), 1) for _ in range(n_rows)],
     }
     return pd.DataFrame(data)
@@ -37,30 +67,75 @@ def _generate_enzyme_dataframe(n_rows: int = 20) -> pd.DataFrame:
 def run(params: dict) -> dict:
     """Sleep for the specified number of seconds, then return a random DataFrame.
 
+    This is the **canonical example** of a ``compute.run()`` function.
+    Study the return dict carefully — it shows how ``_meta`` and
+    ``_params_exclude`` are used by the results page.
+
     Args:
-        params: Dictionary with key ``"seconds"`` (int) indicating how
-            long the task should run.
+        params: Dictionary submitted by the modal callback.  Keys:
+            - ``"seconds"`` (int): how long the task should run.
+            - ``"simulate_failure"`` (bool, optional): if ``True``, raise
+              an exception halfway through to test the failure path.
 
     Returns:
-        A JSON-serializable dict with timing metadata and a ``"dataframe"``
-        key containing ``{"columns": [...], "data": [...]}``.
+        A JSON-serializable dict with:
+        - ``_meta``: stat-card data rendered at the top of the results page.
+        - ``_params_exclude``: params keys to hide from the "Input Parameters" table.
+        - ``requested_seconds``, ``actual_elapsed``, ``status``: plain
+          scalar values accessible by ``results.py``.
+        - ``dataframe``: ``{"columns": [...], "data": [...]}``.
+
+    Raises:
+        RuntimeError: When ``simulate_failure`` is ``True`` — thrown after
+            sleeping for half the requested duration.
     """
     seconds = int(params["seconds"])
+    simulate_failure = bool(params.get("simulate_failure", False))
     start = time.monotonic()
+
+    # ── Failure simulation ──────────────────────────────────────────
+    # Useful for testing the failure / error-details UI on the results
+    # page.  Real tools should NOT include this — it is demo-only.
+    if simulate_failure:
+        time.sleep(seconds / 2)
+        raise RuntimeError(
+            f"Simulated failure after {round(time.monotonic() - start, 3)}s "
+            f"(requested {seconds}s). This error was triggered intentionally "
+            "via the 'Simulate failure' checkbox."
+        )
+
+    # ── Main work ───────────────────────────────────────────────────
+    # In a real tool this would call an algorithm library.
     time.sleep(seconds)
     elapsed = time.monotonic() - start
 
-    df = _generate_enzyme_dataframe(n_rows=20)
+    # Generate a random DataFrame to demonstrate tabular results.
+    df = _generate_random_dataframe(n_rows=20)
 
     return {
-        # this _meta data will be at the top of the job results page
+        # ── _meta: stat cards shown at the top of the results page ──
+        # Each item is a dict with "label" (small uppercase text) and
+        # "value" (large bold text).  The shared ``build_result_meta``
+        # helper renders these automatically — no custom code needed.
         "_meta": [
             {"label": "Timer Set to", "value": f"{seconds}s"},
             {"label": "Actual Elapsed", "value": f"{round(elapsed, 3)}s"},
+            {"label": "Rows Generated", "value": str(len(df))},
         ],
+        # ── _params_exclude: hide noisy params from the results page ──
+        # The "Input Parameters" table auto-renders every key from the
+        # submitted ``params`` dict.  List keys here that should be
+        # suppressed (e.g. large binary payloads, internal flags).
+        # In this demo we hide ``simulate_failure`` — it is only useful
+        # for developers, not end-users reviewing results.
+        "_params_exclude": ["simulate_failure"],
+        # ── Tool-specific scalar values ─────────────────────────────
+        # These are available in ``results.py`` via ``job.result``.
         "requested_seconds": seconds,
         "actual_elapsed": round(elapsed, 3),
-        "status": "completed",
+        # ── Tabular data ────────────────────────────────────────────
+        # Serialised as {"columns": [...], "data": [records]} so it
+        # can be fed directly into ``dash_table.DataTable``.
         "dataframe": {
             "columns": df.columns.tolist(),
             "data": df.to_dict(orient="records"),
