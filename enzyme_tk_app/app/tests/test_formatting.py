@@ -17,7 +17,6 @@ from enzyme_tk_app.app.utils.formatting import (
     format_timestamp,
 )
 
-
 # ── format_timestamp ─────────────────────────────────────────────────────
 
 
