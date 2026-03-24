@@ -260,7 +260,7 @@ def _build_jobs_table(jobs: list[JobInfo]) -> Div | Table:
                         html.Th("Task Name"),
                         html.Th("Tool"),
                         html.Th("Status"),
-                        html.Th("Submitted"),
+                        html.Th("Submitted (UTC)"),
                         html.Th("Max Runtime"),
                         html.Th("Expires In"),
                         html.Th("Actions"),
