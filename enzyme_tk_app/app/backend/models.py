@@ -66,8 +66,8 @@ class JobInfo:
 # Terminal statuses — once a job reaches one of these states it is
 # considered "done" and will not change again.  Only terminal jobs can
 # be deleted by the user (you can't delete a job that is still running).
-# This constant is the single source of truth; both CeleryTaskScheduler
-# and LocalTaskScheduler import it from here.
+# This constant is the single source of truth; CeleryTaskScheduler
+# imports it from here.
 TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
     {
         JobStatus.SUCCESS,

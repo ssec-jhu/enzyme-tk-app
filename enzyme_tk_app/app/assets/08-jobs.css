@@ -155,6 +155,7 @@
     margin-bottom: 1.5rem;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: flex-end;
 }
 
 .btn-toolbar {

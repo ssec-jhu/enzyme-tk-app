@@ -23,16 +23,16 @@ from enzyme_tk_app.app.utils.formatting import (
 @pytest.mark.parametrize(
     ("iso_str", "expected"),
     [
-        ("2026-03-25T14:32:10", "2026-03-25 14:32"),
-        ("2026-03-25T14:32:10+00:00", "2026-03-25 14:32"),
-        ("2026-01-01T00:00:00", "2026-01-01 00:00"),
+        ("2026-03-25T14:32:10", "2026-03-25 14:32:10"),
+        ("2026-03-25T14:32:10+00:00", "2026-03-25 14:32:10"),
+        ("2026-01-01T00:00:00", "2026-01-01 00:00:00"),
         (None, "—"),
         ("", "—"),
         ("not-a-date", "not-a-date"),
     ],
 )
 def test_format_timestamp_valid(iso_str, expected):
-    """Well-formed ISO strings are formatted as 'YYYY-MM-DD HH:MM'."""
+    """Well-formed ISO strings are formatted as 'YYYY-MM-DD HH:MM:SS'."""
     assert format_timestamp(iso_str) == expected
 
 

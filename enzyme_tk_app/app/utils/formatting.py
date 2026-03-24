@@ -12,7 +12,7 @@ from enzyme_tk_app.app.backend.config import JOB_TTL_SECONDS
 
 
 def format_timestamp(iso_str: str | None) -> str:
-    """Format an ISO-8601 timestamp to ``"2026-03-25 14:32"``.
+    """Format an ISO-8601 timestamp to ``"2025-10-13 09:20:29"``.
 
     Args:
         iso_str: ISO-8601 datetime string, or ``None``.
@@ -24,7 +24,7 @@ def format_timestamp(iso_str: str | None) -> str:
         return "—"
     try:
         dt = datetime.fromisoformat(iso_str)
-        return dt.strftime("%Y-%m-%d %H:%M")
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
     except (ValueError, TypeError):
         return iso_str
 
