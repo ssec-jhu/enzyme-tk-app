@@ -139,12 +139,12 @@ def create_modal_footer(slug):
 def create_modal_submission_results(slug):
     """Return the job-ID / status placeholder div.
 
-    This is populated by the submit callback with a job-ID
-    confirmation message or a validation error.
+    This is populated by the submit callback in callbacks.py of the tool
+    with a job-ID confirmation message or a validation error.
     Args:
         slug: The tool slug from ``TOOL_DEF["slug"]``.
 
     Returns:
         An ``html.Div`` with ``id=f"id-div-{slug}-results"``.
     """
-    return html.Div(id=f"id-div-{slug}-results")
+    return html.Div(id=f"id-div-{slug}-results", className="modal-submission-results")

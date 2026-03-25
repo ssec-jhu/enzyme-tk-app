@@ -91,16 +91,15 @@ def sync_quick_select_to_input(quick_value):
 
 
 @callback(
+    # Output to the job-ID / status placeholder div in the modal.
     Output(f"id-div-{TOOL_DEF['slug']}-results", "children"),
-    [
-        Input(f"id-btn-{TOOL_DEF['slug']}-submit", "n_clicks"),
-        # Also listen to the launch button so we can clear stale state.
-        Input(f"id-btn-launch-{TOOL_DEF['slug']}", "n_clicks"),
-    ],
-    [
-        State(f"id-input-{TOOL_DEF['slug']}-duration", "value"),
-        State(f"id-check-{TOOL_DEF['slug']}-fail", "value"),
-    ],
+    # trigger on the submit button — and also the launch button to clear stale state.
+    Input(f"id-btn-{TOOL_DEF['slug']}-submit", "n_clicks"),
+    # trigger on the launch button so we can clear stale state.
+    Input(f"id-btn-launch-{TOOL_DEF['slug']}", "n_clicks"),
+    # input values needed to submit the job
+    State(f"id-input-{TOOL_DEF['slug']}-duration", "value"),
+    State(f"id-check-{TOOL_DEF['slug']}-fail", "value"),
     prevent_initial_call=True,
 )
 def submit_timer_job(submit_clicks, launch_clicks, duration, simulate_failure):
