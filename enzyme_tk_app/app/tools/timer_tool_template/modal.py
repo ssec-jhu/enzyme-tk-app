@@ -9,8 +9,9 @@ Layout rules  (see ``.github/agents/create-modal.md``)
 2. ``dbc.ModalBody`` gets ``className="p-4"``.
 3. Each logical section is wrapped in
    ``html.Div(className="bg-light p-3 rounded mb-3")``.
-4. Section headers use ``html.H6`` with an icon, uppercase, bold, muted,
-   and a bottom border.
+4. Shared helpers from ``modal_helpers`` handle all repeated
+   boilerplate — header, section headers, footer, and results
+   placeholder.
 5. Inputs use ``dbc.Row`` / ``dbc.Col`` for label ↔ control alignment.
 6. All interactive controls get ``className="... themed-control"`` for
    dark-mode-aware styling.
@@ -20,7 +21,12 @@ Key conventions
 - All component IDs are f-strings of ``TOOL_DEF["slug"]`` — never
   hardcode the slug string.
 - The modal ID **must** be ``f"id-modal-{TOOL_DEF['slug']}"``.
-- The modal title comes from ``TOOL_DEF["title"]``.
+- Use shared helpers for modal structure:
+  - ``create_modal_header(TOOL_DEF["icon"], TOOL_DEF["title"])``
+  - ``create_modal_input_section_header()``
+  - ``create_modal_config_section_header()``
+  - ``create_modal_submission_results(TOOL_DEF["slug"])``
+  - ``create_modal_footer(TOOL_DEF["slug"])``
 - Use ``dcc.Dropdown`` (not ``dbc.Select``) for dropdowns.
 - Use ``themed-control`` on every form control (Input, Dropdown,
   RadioItems, Checkbox, Textarea).
@@ -29,7 +35,13 @@ Key conventions
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.icons import ICON_SECTION_CONFIG, ICON_SECTION_INPUT
+from enzyme_tk_app.app.components.modal_helpers import (
+    create_modal_config_section_header,
+    create_modal_footer,
+    create_modal_header,
+    create_modal_input_section_header,
+    create_modal_submission_results,
+)
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 
 # Pre-defined quick-select durations shown as radio options.
@@ -61,44 +73,32 @@ def modal():
         size="lg",
         centered=True,
         children=[
-            # ── Header ──────────────────────────────────────────────
-            # Shows the tool icon and title from TOOL_DEF.
-            dbc.ModalHeader(
-                dbc.ModalTitle(
-                    children=[
-                        html.I(
-                            className=TOOL_DEF["icon"],
-                            style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
-                        ),
-                        TOOL_DEF["title"],
-                    ]
-                ),
-                close_button=True,
-            ),
-            # ── Body ────────────────────────────────────────────────
-            # className="p-4" adds consistent internal padding.
+            # ------------------------------------------------
+            # MODAL Header: MUST ADD using the shared helper for consistent styling.
+            # ------------------------------------------------
+            create_modal_header(TOOL_DEF["icon"], TOOL_DEF["title"]),
+            # ------------------------------------------------
+            # MODAL BODY
+            # ------------------------------------------------
             dbc.ModalBody(
                 className="p-4",
                 children=[
                     # ------------------------------------------------
                     # Section 1: Input Data
                     # ------------------------------------------------
-                    # Use bg-light + rounded wrapper for visual grouping.
                     html.Div(
                         className="bg-light p-3 rounded mb-3",
                         children=[
-                            # Section header: icon + uppercase title + bottom border
-                            html.H6(
-                                children=[
-                                    html.I(
-                                        className=ICON_SECTION_INPUT,
-                                        style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
-                                    ),
-                                    "Input Data",
-                                ],
-                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-3",
-                            ),
-                            # Duration Input — uses dbc.Row for label ↔ control alignment.
+                            # INPUT DATA HEADER:
+                            # MUST ADD the section header using the shared helper
+                            create_modal_input_section_header(),
+                            # MODAL INPUTS GO HERE — this example has a number input
+                            # and quick-select radios, but your tool may differ.
+                            # The ID pattern for inputs is:
+                            # id-<component-type>-<slug>-<name>
+                            # where <component-type> is input, dropdown, radio, check, etc.
+                            # and <name> is a descriptive name for the input's purpose.
+                            # uses dbc.Row for label ↔ control alignment.
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -152,20 +152,15 @@ def modal():
                     # ------------------------------------------------
                     # Section 2: Timer Configuration
                     # ------------------------------------------------
-                    # Second section — optional tuning / advanced settings.
                     html.Div(
                         className="bg-light p-3 rounded mb-2",
                         children=[
-                            html.H6(
-                                children=[
-                                    html.I(
-                                        className=ICON_SECTION_CONFIG,
-                                        style={"marginRight": "0.5rem", "color": "var(--text-secondary)"},
-                                    ),
-                                    "Timer Configuration",
-                                ],
-                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-3",
-                            ),
+                            # CONFIGURATION HEADER:
+                            # MUST ADD the section header using the shared helper
+                            create_modal_config_section_header(),
+                            # MODAL CONFIGURATION INPUTS GO HERE
+                            # This example has a single simulate-failure toggle,
+                            # but your tool may have different or additional config options.
                             # Simulate failure toggle — demonstrates a boolean config option.
                             dbc.Row(
                                 [
@@ -188,29 +183,17 @@ def modal():
                             ),
                         ],
                     ),
-                    # ── Status / job ID placeholder ────────────────
+                    # ------------------------------------------------
+                    # Section 3: MUST ADD Status / job ID placeholder
+                    # ------------------------------------------------
                     # This div is populated by the submit callback with
                     # a job-ID confirmation message or a validation error.
-                    html.Div(id=f"id-div-{TOOL_DEF['slug']}-results"),
+                    create_modal_submission_results(TOOL_DEF["slug"]),
                 ],
             ),
-            # ── Footer ─────────────────────────────────────────────
-            # Cancel (outline) + Submit (primary) — standard for all modals.
-            dbc.ModalFooter(
-                children=[
-                    dbc.Button(
-                        "Close",
-                        id=f"id-btn-{TOOL_DEF['slug']}-cancel",
-                        color="secondary",
-                        outline=True,
-                        className="me-2",
-                    ),
-                    dbc.Button(
-                        "Start Timer",
-                        id=f"id-btn-{TOOL_DEF['slug']}-submit",
-                        color="primary",
-                    ),
-                ],
-            ),
+            # ------------------------------------------------
+            # Footer:  Cancel (outline) + Submit (primary) — standard for all modals.
+            # ------------------------------------------------
+            create_modal_footer(TOOL_DEF["slug"]),
         ],
     )
