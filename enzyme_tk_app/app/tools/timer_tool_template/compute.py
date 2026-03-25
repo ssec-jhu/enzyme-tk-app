@@ -81,7 +81,7 @@ def run(params: dict) -> dict:
         A JSON-serializable dict with:
         - ``_meta``: stat-card data rendered at the top of the results page.
         - ``_params_exclude``: params keys to hide from the "Input Parameters" table.
-        - ``requested_seconds``, ``actual_elapsed``, ``status``: plain
+        - ``requested_seconds``, ``actual_elapsed``: plain
           scalar values accessible by ``results.py``.
         - ``dataframe``: ``{"columns": [...], "data": [...]}``.
 

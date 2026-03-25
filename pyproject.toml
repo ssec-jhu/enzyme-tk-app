@@ -107,8 +107,12 @@ target-version = "py312"
 [tool.ruff.lint.pydocstyle] # https://docs.astral.sh/ruff/settings/#lint_pydocstyle_convention
 convention = "google"
 
+# **/tests.py — a file named tests.py
+# **/test.py — a file named test.py
+# **/tests/*.py — any .py inside a tests/ directory
+# **/test/*.py — any .py inside a test/ directory
 [tool.ruff.lint.per-file-ignores]
-"**/test{s,}/*.py" = [
+"**/test{s,}{.py,/*.py}" = [
     "S101",  # https://docs.astral.sh/ruff/rules/assert/
     "D",  # https://docs.astral.sh/ruff/rules/#pydocstyle-d
     "ARG001",  # https://docs.astral.sh/ruff/rules/unused-function-argument/
@@ -122,6 +126,7 @@ inline-quotes = "double"  # https://docs.astral.sh/ruff/settings/#lint_flake8-qu
 multiline-quotes = "double"  # https://docs.astral.sh/ruff/settings/#lint_flake8-quotes_multiline-quotes
 
 [tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py", "test.py", "tests.py"]
 markers = [
     "integration: tests requiring a running Redis server (deselected by default)",
 ]
