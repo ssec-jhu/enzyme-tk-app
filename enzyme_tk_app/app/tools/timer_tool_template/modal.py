@@ -29,6 +29,7 @@ Key conventions
 import dash_bootstrap_components as dbc
 from dash import html
 
+from enzyme_tk_app.app.components.icons import ICON_SECTION_CONFIG, ICON_SECTION_INPUT
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 
 # Pre-defined quick-select durations shown as radio options.
@@ -90,7 +91,7 @@ def modal():
                             html.H6(
                                 children=[
                                     html.I(
-                                        className="fas fa-flask",
+                                        className=ICON_SECTION_INPUT,
                                         style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
                                     ),
                                     "Input Data",
@@ -158,7 +159,7 @@ def modal():
                             html.H6(
                                 children=[
                                     html.I(
-                                        className="fas fa-cog",
+                                        className=ICON_SECTION_CONFIG,
                                         style={"marginRight": "0.5rem", "color": "var(--text-secondary)"},
                                     ),
                                     "Timer Configuration",

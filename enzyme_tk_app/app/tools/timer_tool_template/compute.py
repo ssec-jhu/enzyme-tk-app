@@ -53,9 +53,9 @@ def _generate_random_dataframe(n_rows: int = 20) -> pd.DataFrame:
         stability_score, temperature_c, yield_pct.
     """
     # Row-ID prefixes used to populate the demo DataFrame.
-    _ROW_ID_PREFIXES = ["ENZ", "MUT", "WT", "VAR"]
+    ids = ["ENZ", "MUT", "WT", "VAR"]
     data = {
-        "sample_id": [f"{random.choice(_ROW_ID_PREFIXES)}-{i:03d}" for i in range(1, n_rows + 1)],
+        "sample_id": [f"{random.choice(ids)}-{i:03d}" for i in range(1, n_rows + 1)],
         "activity_score": [round(random.uniform(0.5, 150.0), 2) for _ in range(n_rows)],
         "stability_score": [round(random.uniform(35.0, 85.0), 1) for _ in range(n_rows)],
         "temperature_c": [random.randint(20, 80) for _ in range(n_rows)],
