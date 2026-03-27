@@ -18,10 +18,10 @@ How compute functions work
 
 Special return-dict keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
-``_meta`` : list[dict]
+``_stat_cards`` : list[dict]
     A list of ``{"label": "...", "value": "..."}`` dicts rendered as
     stat cards at the top of the results page by
-    ``build_result_meta()`` in ``results_helpers.py``.  Every tool
+    ``build_result_stat_cards()`` in ``results_helpers.py``.  Every tool
     should include at least one or two timing/summary stats here.
 
 ``_params_exclude`` : list[str]
@@ -68,7 +68,7 @@ def run(params: dict) -> dict:
     """Sleep for the specified number of seconds, then return a random DataFrame.
 
     This is the **canonical example** of a ``compute.run()`` function.
-    Study the return dict carefully — it shows how ``_meta`` and
+    Study the return dict carefully — it shows how ``_stat_cards`` and
     ``_params_exclude`` are used by the results page.
 
     Args:
@@ -79,7 +79,7 @@ def run(params: dict) -> dict:
 
     Returns:
         A JSON-serializable dict with:
-        - ``_meta``: stat-card data rendered at the top of the results page.
+        - ``_stat_cards``: stat-card data rendered at the top of the results page.
         - ``_params_exclude``: params keys to hide from the "Input Parameters" table.
         - ``requested_seconds``, ``actual_elapsed``: plain
           scalar values accessible by ``results.py``.
@@ -113,11 +113,11 @@ def run(params: dict) -> dict:
     df = _generate_random_dataframe(n_rows=20)
 
     return {
-        # ── _meta: stat cards shown at the top of the results page ──
+        # ── _stat_cards: stat cards shown at the top of the results page ──
         # Each item is a dict with "label" (small uppercase text) and
-        # "value" (large bold text).  The shared ``build_result_meta``
+        # "value" (large bold text).  The shared ``build_result_stat_cards``
         # helper renders these automatically — no custom code needed.
-        "_meta": [
+        "_stat_cards": [
             {"label": "Timer Set to", "value": f"{seconds}s"},
             {"label": "Actual Elapsed", "value": f"{round(elapsed, 3)}s"},
             {"label": "Rows Generated", "value": str(len(df))},

@@ -8,8 +8,8 @@ How results rendering works
 The results page (``my_tasks_view_results.py``) calls two shared
 helpers **before** invoking this function:
 
-1. ``build_result_meta(job)`` — reads ``job.result["_meta"]`` and
-   renders stat cards.  Tool authors populate ``_meta`` in
+1. ``build_result_stat_cards(job)`` — reads ``job.result["_stat_cards"]`` and
+   renders stat cards.  Tool authors populate ``_stat_cards`` in
    ``compute.run()`` and get the stat-card strip for free.
 2. ``build_result_input_params(job)`` — reads ``job.params`` and
    renders a label/value table of what the user submitted.  Keys
@@ -47,8 +47,8 @@ def results_layout(job: JobInfo) -> html.Div:
     """Render Timer job results: random DataFrame table.
 
     Timing metadata (requested, elapsed, rows generated) is rendered
-    automatically by the shared ``build_result_meta`` helper via the
-    ``_meta`` key in the compute result.  This function only handles
+    automatically by the shared ``build_result_stat_cards`` helper via the
+    ``_stat_cards`` key in the compute result.  This function only handles
     the tool-specific table.
 
     Args:
