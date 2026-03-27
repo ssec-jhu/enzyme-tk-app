@@ -186,31 +186,31 @@ def test_submit_with_simulate_failure_flag():
 
 
 def test_compute_run_returns_expected_keys():
-    """compute.run() must return _meta, _params_exclude."""
+    """compute.run() must return _stat_cards, _params_exclude."""
     from enzyme_tk_app.app.tools.timer_tool_template.compute import run  # noqa: PLC0415
 
     # Use 0 seconds to avoid sleeping
     with patch("enzyme_tk_app.app.tools.timer_tool_template.compute.time.sleep"):
         result = run({"seconds": 1, "simulate_failure": False})
 
-    assert "_meta" in result, "Result must contain '_meta' for stat cards"
+    assert "_stat_cards" in result, "Result must contain '_stat_cards' for stat cards"
     assert "_params_exclude" in result, "Result must contain '_params_exclude'"
     assert "dataframe" in result, "Result must contain 'dataframe'"
 
 
-def test_compute_run_meta_is_list_of_dicts():
-    """_meta must be a list of dicts with 'label' and 'value' keys."""
+def test_compute_run_stat_cards_is_list_of_dicts():
+    """_stat_cards must be a list of dicts with 'label' and 'value' keys."""
     from enzyme_tk_app.app.tools.timer_tool_template.compute import run  # noqa: PLC0415
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.compute.time.sleep"):
         result = run({"seconds": 1})
 
-    meta = result["_meta"]
-    assert isinstance(meta, list)
-    assert len(meta) >= 2, "Expected at least 2 meta items"
-    for item in meta:
-        assert "label" in item, f"Meta item missing 'label': {item}"
-        assert "value" in item, f"Meta item missing 'value': {item}"
+    stat_cards = result["_stat_cards"]
+    assert isinstance(stat_cards, list)
+    assert len(stat_cards) >= 2, "Expected at least 2 stat card items"
+    for item in stat_cards:
+        assert "label" in item, f"Stat card item missing 'label': {item}"
+        assert "value" in item, f"Stat card item missing 'value': {item}"
 
 
 def test_compute_run_params_exclude_is_list():
@@ -342,28 +342,28 @@ def test_compute_result_is_json_serializable():
 # ── Compute — meta values are consistent with scalar values ─────────────
 
 
-def test_compute_meta_timer_label_matches_requested_seconds():
-    """The 'Timer Set to' meta card must reflect the requested_seconds scalar."""
+def test_compute_stat_cards_timer_label_matches_requested_seconds():
+    """The 'Timer Set to' stat card must reflect the requested_seconds scalar."""
     from enzyme_tk_app.app.tools.timer_tool_template.compute import run  # noqa: PLC0415
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.compute.time.sleep"):
         result = run({"seconds": 42})
 
-    meta_timer = next(m for m in result["_meta"] if m["label"] == "Timer Set to")
-    assert meta_timer["value"] == "42s"
+    stat_card_timer = next(m for m in result["_stat_cards"] if m["label"] == "Timer Set to")
+    assert stat_card_timer["value"] == "42s"
     assert result["requested_seconds"] == 42
 
 
-def test_compute_meta_rows_generated_matches_dataframe_length():
-    """The 'Rows Generated' meta card must match the actual data row count."""
+def test_compute_stat_cards_rows_generated_matches_dataframe_length():
+    """The 'Rows Generated' stat card must match the actual data row count."""
     from enzyme_tk_app.app.tools.timer_tool_template.compute import run  # noqa: PLC0415
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.compute.time.sleep"):
         result = run({"seconds": 1})
 
-    meta_rows = next(m for m in result["_meta"] if m["label"] == "Rows Generated")
+    stat_card_rows = next(m for m in result["_stat_cards"] if m["label"] == "Rows Generated")
     actual_rows = len(result["dataframe"]["data"])
-    assert meta_rows["value"] == str(actual_rows)
+    assert stat_card_rows["value"] == str(actual_rows)
 
 
 # ── Compute — _params_exclude hides simulate_failure ─────────────────────
