@@ -1,6 +1,6 @@
-celery[redis]==5.6.2
-dash==4.0.0
+celery[redis]==5.6.3
+dash==4.1.0
 dash-bootstrap-components==2.0.4
-gunicorn==25.1.0
-pandas==3.0.1
+gunicorn==25.3.0
+pandas==3.0.2
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
