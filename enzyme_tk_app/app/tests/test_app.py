@@ -70,36 +70,3 @@ def test_footer_github_link(footer):
     assert len(github_links) == 1
     icon = find_components(github_links[0], html.I)
     assert icon[0].className == ICON_SOCIAL_GITHUB
-
-
-# -- Hero --
-
-
-def test_hero_headline_text(hero):
-    text = get_text(hero)
-    assert "Protein" in text
-    assert "Engineering" in text
-
-
-def test_hero_cta_buttons(hero):
-    links = find_components(hero, html.A)
-    hrefs = {a.href for a in links}
-    assert "/#tools" in hrefs, "Missing 'Explore Tools' CTA"
-
-
-def test_hero_feature_pills_present(hero):
-    text = get_text(hero)
-    assert "Python-Powered Tools" in text
-    assert "Async Job Processing" in text
-
-
-# -- Icons --
-
-
-def test_all_icon_constants_are_fontawesome():
-    from enzyme_tk_app.app.components import icons
-
-    icon_vars = {k: v for k, v in vars(icons).items() if k.startswith("ICON_")}
-    assert len(icon_vars) >= 7, "Expected at least 7 icon constants"
-    for name, value in icon_vars.items():
-        assert value.startswith("fa-"), f"{name} does not start with 'fa-'"

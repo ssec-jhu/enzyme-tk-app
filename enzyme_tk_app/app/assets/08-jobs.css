@@ -210,6 +210,13 @@
     padding: 2rem 1rem;
 }
 
+/* Wider layout for the results detail page (AG Grid tables need room). */
+.jobs-page-wide {
+    max-width: 95%;
+    margin: 0 auto;
+    padding: 2rem 2rem;
+}
+
 /* --- My Tasks page header ------------------------------------------------- */
 .jobs-page-header {
     display: flex;
@@ -361,14 +368,34 @@
     font-size: 0.9rem;
     color: var(--text-primary);
     word-break: break-word;
-}
-
-.jobs-params-value-long {
-    padding: 0.6rem 1rem;
-    font-family: monospace;
-    font-size: 0.8rem;
-    color: var(--text-primary);
     white-space: pre;
     overflow-x: auto;
     max-width: 0;
+}
+
+/*.jobs-params-value-long {*/
+/*    padding: 0.6rem 1rem;*/
+/*    font-family: monospace;*/
+/*    font-size: 0.8rem;*/
+/*    color: var(--text-primary);*/
+/*    white-space: pre;*/
+/*    overflow-x: auto;*/
+/*    max-width: 0;*/
+/*}*/
+
+/*
+    max-width: 100% with object-fit: contain and a max-height: 220px cap — 
+    the image now fills the available table cell width instead of being squeezed into 400px. 
+*/
+.jobs-params-preview {
+    display: block;
+    max-width: 100%;
+    max-height: 220px;
+    width: auto;
+    height: auto;
+    border-radius: var(--radius-sm);
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    padding: 0.25rem;
+    object-fit: contain;
 }
