@@ -1,0 +1,123 @@
+/* ============================================================
+   09-ag-grid.css — AG Grid theme overrides
+
+   Maps AG Grid Balham surfaces to the app's CSS-variable
+   colour scheme defined in 00-variables.css.
+   ============================================================ */
+
+/* ---- Cell & header alignment -------------------------------- */
+
+/* Vertically center cell content within variable-height rows */
+.ag-theme-balham .ag-cell-wrapper {
+    align-items: center;
+}
+
+/* ---- Header — navy background, white text ------------------- */
+
+.ag-theme-balham .ag-header {
+    background-color: var(--primary-color);
+    border-bottom: 2px solid var(--primary-dark);
+}
+
+.ag-theme-balham .ag-header-cell {
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Header hover — slightly lighter navy */
+.ag-theme-balham .ag-header-cell:hover {
+    background-color: var(--secondary-color) !important;
+}
+
+/* Sort / filter icons — white to match header text */
+.ag-theme-balham .ag-header-icon .ag-icon {
+    color: #fff;
+}
+
+/* Sort arrows (ascending / descending indicators) */
+.ag-theme-balham .ag-sort-indicator-icon .ag-icon {
+    color: #fff;
+}
+
+/* Filter menu button (hamburger/funnel in header) */
+.ag-theme-balham .ag-header-cell-menu-button .ag-icon {
+    color: #fff;
+}
+
+/* Active filter indicator — amber so it stands out on navy */
+.ag-theme-balham .ag-header-cell-filtered .ag-icon {
+    color: var(--accent-color);
+}
+
+/* Sorted column header — subtle darker cue */
+.ag-theme-balham .ag-header-cell-sorted-asc,
+.ag-theme-balham .ag-header-cell-sorted-desc {
+    background-color: var(--primary-dark);
+}
+
+/* ---- Row stripes, hover & selection ------------------------- */
+
+.ag-theme-balham .ag-row-odd {
+    background-color: var(--bg-body);
+}
+
+.ag-theme-balham .ag-row-even {
+    background-color: var(--bg-surface);
+}
+
+.ag-theme-balham .ag-row-selected {
+    background-color: color-mix(in srgb, var(--secondary-color) 15%, #fff);
+}
+
+.ag-theme-balham .ag-row-hover {
+    background-color: color-mix(in srgb, var(--secondary-color) 10%, #fff) !important;
+}
+
+/* ---- Pagination panel --------------------------------------- */
+
+.ag-theme-balham .ag-paging-panel {
+    color: var(--text-secondary);
+    border-top: 1px solid var(--border-color);
+}
+
+/* ============================================================
+   SVG overlay — click-to-enlarge lightbox for molecule images
+   ============================================================ */
+.svg-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.75);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.svg-overlay img {
+    max-width: 90vw;
+    max-height: 85vh;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+    padding: 16px;
+}
+
+.svg-overlay-close {
+    position: absolute;
+    top: 20px;
+    right: 28px;
+    font-size: 36px;
+    color: #fff;
+    cursor: pointer;
+    line-height: 1;
+    user-select: none;
+}
+
+.cell-wrap-dash-ag-grid{
+    word-break: normal !important;
+    white-space: normal !important;
+    line-height:120% !important;
+    /*padding: 10 !important;*/
+    font-size: 10px !important;
+}
