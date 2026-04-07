@@ -2,7 +2,7 @@
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 
-# ── 1. JobStatus enum ────────────────────────────────────────────────────────
+# ── JobStatus enum ────────────────────────────────────────────────────────
 
 
 def test_job_status_members():
@@ -29,7 +29,7 @@ def test_job_status_values_match_names():
         assert member.value == member.name
 
 
-# ── 2. JobInfo dataclass ─────────────────────────────────────────────────────
+# ── JobInfo dataclass ─────────────────────────────────────────────────────
 
 
 def test_job_info_minimal_construction():

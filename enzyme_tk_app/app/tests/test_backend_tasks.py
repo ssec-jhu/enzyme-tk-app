@@ -54,7 +54,7 @@ def mock_compute(fake_redis, tmp_path):
         yield compute
 
 
-# ── 1. _make_preview ─────────────────────────────────────────────────────────
+# ── _make_preview ─────────────────────────────────────────────────────────
 # _make_preview builds a lightweight summary of a result dict so the
 # jobs-list page can show a useful snippet without loading megabytes of
 # data from Redis.  Each test below exercises one distinct summarisation
@@ -108,7 +108,7 @@ def test_make_preview_limits_top_level_keys():
     assert len(preview) == 5
 
 
-# ── 2. _store_result ─────────────────────────────────────────────────────────
+# ── _store_result ─────────────────────────────────────────────────────────
 # _store_result decides whether to keep a result inline in Redis or
 # offload it to the shared Docker volume.  The threshold is set by
 # config.MAX_RESULT_BYTES (default 512 KB).
@@ -162,7 +162,7 @@ def test_store_result_offloads_large(tmp_path):
     assert loaded == result
 
 
-# ── 3. run_tool_task (mocked execution) ──────────────────────────────────────
+# ── run_tool_task (mocked execution) ──────────────────────────────────────
 # run_tool_task is the Celery task entry-point.  It dynamically imports a
 # tool's compute module, runs it, and writes the outcome to Redis.
 # These tests call the function directly (bypassing the Celery broker)
@@ -255,7 +255,7 @@ def test_run_tool_task_timeout(fake_redis, mock_compute):
     assert "exceeded" in job_data["error"].lower()
 
 
-# ── 4. Session set TTL refresh ───────────────────────────────────────────────
+# ── Session set TTL refresh ───────────────────────────────────────────────────
 # The session-set key (session:<id>:jobs) must have its TTL refreshed
 # every time the job hash TTL is refreshed, otherwise the set can expire
 # before the job hash and break ownership checks / job listing.
