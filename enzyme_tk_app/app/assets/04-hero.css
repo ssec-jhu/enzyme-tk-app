@@ -5,18 +5,17 @@
 .hero {
    background-color: #ffffff;
    background-image: linear-gradient(135deg,
-         hsla(215, 30%, 97%, 1) 0%,
-         hsla(210, 25%, 98%, 1) 50%,
-         hsla(40, 15%, 99%, 1) 100%);
-   padding: 1rem 1.5rem 1rem;
-   min-height: 480px;
+         hsla(215, 20%, 97.5%, 1) 0%,
+         hsla(215, 15%, 98%, 1) 50%,
+         hsla(210, 12%, 98.5%, 1) 100%);
+   padding: 2rem 1.5rem;
+   min-height: 280px;
    display: flex;
    align-items: center;
    justify-content: center;
-   text-align: center;
    position: relative;
    overflow: hidden;
-   margin-bottom: 1rem;
+   margin-bottom: 0.5rem;
 }
 
 /* Decorative side blobs to fill the empty flanks */
@@ -34,7 +33,7 @@
    height: 420px;
    top: -8%;
    left: -6%;
-   background: radial-gradient(circle, hsla(215, 60%, 82%, 0.25) 0%, transparent 70%);
+   background: radial-gradient(circle, hsla(215, 60%, 82%, 0.2) 0%, transparent 70%);
 }
 
 .hero::after {
@@ -42,15 +41,43 @@
    height: 360px;
    bottom: -10%;
    right: -4%;
-   background: radial-gradient(circle, hsla(40, 50%, 85%, 0.22) 0%, transparent 70%);
+   background: radial-gradient(circle, hsla(40, 50%, 85%, 0.18) 0%, transparent 70%);
 }
 
-/* --- Centred content overlay --------------------------------------------- */
+/* --- Split content layout ----------------------------------------------- */
 
 .hero-content {
    position: relative;
-   z-index: 1;
+   z-index: 2;
+   max-width: 1200px;
+   width: 100%;
+   display: flex;
+   align-items: center;
+   justify-content: flex-start; /* Align text area to left */
+   min-height: 280px;
+}
+
+.hero-text {
+   position: relative;
+   z-index: 5; /* Ensure text is above EVERYTHING */
+   flex: 1;
    max-width: 680px;
+   text-align: left;
+}
+
+.hero-graphic {
+   position: absolute;
+   right: -15%; /* Moved slightly left */
+   top: -10%;
+   bottom: -10%;
+   min-height: 420px; /* Keep graphic large despite reduced hero height */
+   width: 80%; /* Increased width to overlap more with text */
+   display: flex;
+   justify-content: center; /* Center the zoomed graphic */
+   align-items: center;
+   z-index: 1; /* Behind the text */
+   pointer-events: none;
+   overflow: visible;
 }
 
 /* --- Headline ------------------------------------------------------------ */
@@ -58,10 +85,12 @@
 .hero-headline {
    font-size: 2.75rem;
    font-weight: 800;
-   line-height: 1.15;
+   line-height: 1.1;
    letter-spacing: -0.03em;
    color: var(--text-primary);
-   margin-bottom: 1.25rem;
+   margin-bottom: 1rem;
+   text-shadow: 0 0 20px #ffffff;
+   animation: heroFadeUp 0.8s ease-out both;
 }
 
 .hero-headline .accent {
@@ -75,9 +104,10 @@
 
 .hero-subtitle {
    font-size: 1.05rem;
-   line-height: 1.7;
+   line-height: 1.6;
    color: var(--text-secondary);
-   margin-bottom: 1.5rem;
+   margin-bottom: 1.75rem;
+   animation: heroFadeUp 0.8s ease-out 0.15s both;
 }
 
 /* --- CTA buttons row ----------------------------------------------------- */
@@ -85,63 +115,155 @@
 .hero-actions {
    display: flex;
    align-items: center;
-   justify-content: center;
+   justify-content: flex-start;
    gap: 1rem;
-   margin-bottom: 1.25rem;
+   margin-bottom: 0;
    flex-wrap: wrap;
+   animation: heroFadeUp 0.8s ease-out 0.3s both;
 }
 
-/* --- Feature pills row --------------------------------------------------- */
+/* --- Protein background and graphic -------------------------------------- */
 
-.hero-features {
-   display: flex;
-   align-items: center;
-   justify-content: center;
-   gap: 1.25rem;
-   flex-wrap: wrap;
-}
-
-.hero-feature-pill {
-   display: inline-flex;
-   align-items: center;
-   gap: 0.4rem;
-   font-size: 0.82rem;
-   font-weight: 500;
-   color: var(--text-secondary);
-}
-
-/* --- Protein background image -------------------------------------------- */
-
+/* Subtitle background — hidden on desktop to avoid clutter */
 .hero-protein-bg {
    position: absolute;
    inset: 0;
-   background-image: url('bg.png');
+   background-image: url('ribbon-structure.png');
    background-size: 90%;
    background-repeat: no-repeat;
-   background-position: center;
-   opacity: 0.12;
-   filter: grayscale(0.55) brightness(1.2) saturate(0.3);
-   pointer-events: none;
-   z-index: 0;
+   background-position: center right 15%;
+   opacity: 0.15;
+    /* Washed-out primary-color tint: grayscale → sepia base → hue-rotate to blue → desaturate */
+    filter: grayscale(1) sepia(1) hue-rotate(180deg) saturate(0.5) brightness(0.85);
+    pointer-events: none;
+    z-index: 0;
+    display: none;
+}
+
+/* The primary background graphic — Zoomed and right-aligned */
+.hero-protein-graphic {
+   width: 100%;
+   height: 120%; /* Restored to a visible height */
+   background-image: url('ribbon-structure.png');
+   background-size: contain;
+   background-repeat: no-repeat;
+   background-position: 40% center;
+   opacity: 0.15;
+    /* Washed-out primary-color tint: grayscale → sepia base → hue-rotate to blue → desaturate */
+    filter: grayscale(0.6) sepia(0.4) hue-rotate(180deg) saturate(0.5) brightness(1);
+    pointer-events: none;
+    transform: scale(1.5); /* Bold zoomed effect */
+}
+
+/* --- Feature badges (diagonal cascade) ----------------------------------- */
+
+@keyframes heroFadeUp {
+   from {
+      opacity: 0;
+      transform: translateY(15px);
+   }
+   to {
+      opacity: 1;
+      transform: translateY(0);
+   }
+}
+
+@keyframes badgeSlideIn {
+   from { opacity: 0; transform: translateX(20px); }
+   to   { opacity: 1; transform: translateX(0); }
+}
+
+.hero-badges {
+   position: absolute;
+   right: 6%;
+   top: 12%;
+   display: flex;
+   flex-direction: column;
+   gap: 0.65rem;
+   z-index: 4;
+   pointer-events: auto;
+}
+
+.hero-badge {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.5rem;
+   padding: 0.45rem 1rem;
+   font-size: 0.78rem;
+   font-weight: 500;
+   letter-spacing: 0.02em;
+   color: var(--primary-color);
+   background: rgba(255, 255, 255, 0.3);
+   backdrop-filter: blur(10px);
+   -webkit-backdrop-filter: blur(10px);
+   border: 1px solid rgba(30, 58, 95, 0.08);
+   border-radius: 999px;
+   box-shadow: 0 2px 8px rgba(30, 58, 95, 0.05);
+   white-space: nowrap;
+   transition: transform 0.25s ease, box-shadow 0.25s ease;
+   animation: badgeSlideIn 0.5s ease-out both;
+}
+
+/* Diagonal stagger: each badge shifts further right */
+.hero-badge:nth-child(1) { animation-delay: 0.1s; margin-left: 6rem; }
+.hero-badge:nth-child(2) { animation-delay: 0.2s; margin-left: 4rem; }
+.hero-badge:nth-child(3) { animation-delay: 0.3s; margin-left: 2rem; }
+.hero-badge:nth-child(4) { animation-delay: 0.4s; margin-left: 0; }
+
+.hero-badge:hover {
+   transform: translateY(-1px);
+   box-shadow: 0 4px 12px rgba(30, 58, 95, 0.1);
+}
+
+.hero-badge i {
+   font-size: 0.85rem;
+   color: var(--secondary-color);
+   opacity: 0.7;
 }
 
 /* --- Responsive ---------------------------------------------------------- */
 
+@media (max-width: 992px) {
+   .hero-content {
+      flex-direction: column;
+      text-align: center;
+   }
+
+   .hero-text {
+      text-align: center;
+   }
+
+   .hero-actions {
+      justify-content: center;
+   }
+
+   .hero-graphic {
+      display: none; /* Hide main graphic on small screens to save space */
+   }
+
+   .hero-badges {
+      display: none; /* Hide badges on small screens */
+   }
+
+   .hero-protein-bg {
+      display: block; /* Show background as subtle texture on mobile */
+      background-position: center;
+      background-size: 80%;
+      opacity: 0.15;
+   }
+}
+
 @media (max-width: 768px) {
    .hero {
-      padding: 3rem 1rem 2rem;
+      padding: 2.5rem 1rem;
       min-height: auto;
    }
 
    .hero-headline {
-      font-size: 2rem;
+      font-size: 1.85rem;
    }
 
-   .hero-protein-bg {
-      opacity: 0.08;
-   }
-
-   .hero-features {
-      gap: 0.75rem;
+   .hero-subtitle {
+      font-size: 0.95rem;
    }
 }

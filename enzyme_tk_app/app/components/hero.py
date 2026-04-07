@@ -1,13 +1,11 @@
 """Hero banner component for the landing page.
 
 Renders the main hero section with an accent-colored headline,
-description, call-to-action buttons, feature pills, and a decorative protein
-background image.
+description, call-to-action buttons, and a decorative protein
+background image with feature badges.
 """
 
 from dash import html
-
-from enzyme_tk_app.app.components.icons import ICON_HERO_ASYNC, ICON_HERO_PYTHON
 
 
 def hero():
@@ -16,12 +14,6 @@ def hero():
     Returns:
         An ``html.Div`` Dash component styled as the hero section.
     """
-    # Feature pills displayed at the bottom of the hero.
-    features = [
-        {"icon": ICON_HERO_PYTHON, "label": "Python-Powered Tools"},
-        {"icon": ICON_HERO_ASYNC, "label": "Async Job Processing"},
-    ]
-
     return html.Div(
         className="hero",
         children=[
@@ -31,51 +23,84 @@ def hero():
             html.Div(
                 className="hero-content",
                 children=[
-                    html.H1(
-                        className="hero-headline",
+                    # Left side: Text content
+                    html.Div(
+                        className="hero-text",
                         children=[
-                            "Accelerate Your ",
-                            html.Span("Protein", className="accent"),
-                            html.Br(),
-                            html.Span("Engineering", className="accent"),
-                            " Workflow",
+                            html.H1(
+                                className="hero-headline",
+                                children=[
+                                    "Accelerate Your ",
+                                    html.Span("Protein", className="accent"),
+                                    html.Br(),
+                                    html.Span("Engineering", className="accent"),
+                                    " Workflow",
+                                ],
+                            ),
+                            # Subtitle
+                            html.P(
+                                "A unified platform for computational enzyme design. "
+                                "Run reaction similarities, structure predictions, directed "
+                                "evolution, and more — all powered by leading Python packages.",
+                                className="hero-subtitle",
+                            ),
+                            # CTA buttons
+                            html.Div(
+                                className="hero-actions",
+                                children=[
+                                    html.A(
+                                        children=["Explore Tools  →"],
+                                        href="/#tools",
+                                        className="btn btn-primary",
+                                    ),
+                                    html.A(
+                                        "View My Tasks",
+                                        href="#",
+                                        className="btn btn-outline",
+                                    ),
+                                ],
+                            ),
                         ],
                     ),
-                    # Subtitle
-                    html.P(
-                        "A unified platform for computational enzyme design. "
-                        "Run reaction similarities, structure predictions, directed "
-                        "evolution, and more — all powered by leading Python packages.",
-                        className="hero-subtitle",
-                    ),
-                    # CTA buttons
+                    # Right side: Decorative graphic
                     html.Div(
-                        className="hero-actions",
+                        className="hero-graphic",
                         children=[
-                            html.A(
-                                children=["Explore Tools  →"],
-                                href="/#tools",
-                                className="btn btn-primary",
-                            ),
-                            html.A(
-                                "View My Tasks",
-                                href="#",
-                                className="btn btn-outline",
-                            ),
+                            html.Div(className="hero-protein-graphic"),
                         ],
                     ),
-                    # Feature pills
+                    # Diagonal feature badges (positioned within hero bounds)
                     html.Div(
-                        className="hero-features",
+                        className="hero-badges",
                         children=[
                             html.Div(
-                                className="hero-feature-pill",
+                                className="hero-badge",
                                 children=[
-                                    html.I(className=f"{feat['icon']}"),
-                                    feat["label"],
+                                    html.I(className="fa-brands fa-osi"),
+                                    html.Span("Open Source"),
                                 ],
-                            )
-                            for feat in features
+                            ),
+                            html.Div(
+                                className="hero-badge",
+                                children=[
+                                    html.I(className="fa-brands fa-python"),
+                                    html.Span("Python-Powered"),
+                                ],
+                            ),
+                            html.Div(
+                                className="hero-badge",
+                                children=[
+                                    html.I(className="fa-solid fa-globe"),
+                                    html.Span("Browser-Based"),
+                                ],
+                            ),
+                            html.Div(
+                                className="hero-badge",
+                                children=[
+                                    html.I(className="fa-solid fa-bolt"),
+                                    html.Span("Async Processing"),
+                                ],
+                            ),
                         ],
                     ),
                 ],

@@ -12,6 +12,7 @@ requires-python = ">=3.12"
 dependencies = [
     "celery[redis]>=5.3",
     "dash>=2.0",
+    "dash-ag-grid>=31.0",
     "dash-bootstrap-components",
     #"enzymetk>=0.0.9",
     "gunicorn",
