@@ -13,7 +13,7 @@ from unittest import mock
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.tests.conftest import write_job_into_fake_redis
 
-# ── 1. submit_job ────────────────────────────────────────────────────────────
+# ── submit_job ──────────────────────────────────────────────────────────────────
 
 
 def test_submit_job_returns_uuid(task_scheduler_celery_service):
@@ -55,7 +55,7 @@ def test_submit_job_dispatches_celery_task(task_scheduler_celery_service):
     assert celery_task_id == job_id
 
 
-# ── 2. get_job / get_job_status ──────────────────────────────────────────────
+# ── get_job / get_job_status ──────────────────────────────────────────────
 
 
 def test_get_job_returns_job_info(task_scheduler_celery_service, fake_redis):
@@ -110,7 +110,7 @@ def test_get_job_status_none_for_wrong_session(task_scheduler_celery_service, fa
     assert task_scheduler_celery_service.get_job_status("j1", "sess-OTHER") is None
 
 
-# ── 3. list_jobs ─────────────────────────────────────────────────────────────
+# ── list_jobs ───────────────────────────────────────────────────────────────────
 
 
 def test_list_jobs_returns_session_jobs(task_scheduler_celery_service, fake_redis):
@@ -144,7 +144,7 @@ def test_admin_list_all_jobs_returns_everything(task_scheduler_celery_service, f
     assert len(task_scheduler_celery_service.admin_list_all_jobs()) == 2
 
 
-# ── 4. Session isolation ────────────────────────────────────────────────────
+# ── Session isolation ───────────────────────────────────────────────────────────
 
 
 def test_session_isolation_delete_job(task_scheduler_celery_service, fake_redis):
@@ -159,7 +159,7 @@ def test_session_isolation_delete_job(task_scheduler_celery_service, fake_redis)
     assert fake_redis.hgetall("job:j-secret") != {}
 
 
-# ── 5. delete_job ────────────────────────────────────────────────────────────
+# ── delete_job ──────────────────────────────────────────────────────────────────
 
 
 def test_delete_terminal_job(task_scheduler_celery_service, fake_redis):
@@ -186,7 +186,7 @@ def test_delete_running_job_refuses(task_scheduler_celery_service, fake_redis):
     assert fake_redis.hgetall("job:j1") != {}
 
 
-# ── 6. clear_jobs ────────────────────────────────────────────────────────────
+# ── clear_jobs ──────────────────────────────────────────────────────────────────
 
 
 def test_clear_jobs_removes_terminal_only(task_scheduler_celery_service, fake_redis):
@@ -205,7 +205,7 @@ def test_clear_jobs_removes_terminal_only(task_scheduler_celery_service, fake_re
     assert fake_redis.hgetall("job:j1") == {}
 
 
-# ── 7. cancel_job ────────────────────────────────────────────────────────────
+# ── cancel_job ──────────────────────────────────────────────────────────────────
 
 
 def test_cancel_job_revokes_pending(task_scheduler_celery_service, fake_redis):
@@ -269,7 +269,7 @@ def test_cancel_job_wrong_session(task_scheduler_celery_service, fake_redis):
     assert task_scheduler_celery_service.cancel_job("j1", "sess-OTHER") is False
 
 
-# ── 7b. cancel_job admin mode (session_id=None) ───────────────────────────────
+# ── cancel_job admin mode (session_id=None) ───────────────────────────────
 
 
 def test_cancel_job_admin_ignores_session(task_scheduler_celery_service, fake_redis):
@@ -303,7 +303,7 @@ def test_cancel_job_admin_nonexistent(task_scheduler_celery_service):
     assert task_scheduler_celery_service.cancel_job("no-such-job") is False
 
 
-# ── 8. admin_purge_all ───────────────────────────────────────────────────────
+# ── admin_purge_all ───────────────────────────────────────────────────────
 
 
 def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_redis, tmp_path):
@@ -334,7 +334,7 @@ def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_r
     assert summary["sessions_cleared"] >= 1
 
 
-# ── 9. Read-time stale-job timeout detection ─────────────────────────────────
+# ── Read-time stale-job timeout detection ─────────────────────────────────
 
 
 def test_get_job_marks_stale_started_as_timeout(task_scheduler_celery_service, fake_redis):
