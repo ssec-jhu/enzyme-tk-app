@@ -163,4 +163,3 @@ All files at 100% coverage ✓
 - After running the script, **delete it**: `rm /tmp/_cov_report.py`.
 - If the user scoped the review to specific files, still show overall coverage
   but highlight the scoped files.
-````
