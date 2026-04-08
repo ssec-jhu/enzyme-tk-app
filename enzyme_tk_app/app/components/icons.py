@@ -25,6 +25,10 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
 ICON_MODAL_DATABASE = "fa-solid fa-database"
 
+# --- Modal Section Headers ---
+ICON_SECTION_INPUT = "fa-solid fa-flask"
+ICON_SECTION_CONFIG = "fa-solid fa-gear"
+
 # --- My Tasks Page ---
 ICON_JOBS_PAGE = "fa-solid fa-list-check"
 ICON_JOB_CANCEL = "fa-solid fa-ban"
