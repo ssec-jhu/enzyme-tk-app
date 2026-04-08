@@ -1,66 +1,38 @@
-# Agent Instructions
+# Agent Instructions (Router)
 
-This file defines on-demand workflows that can be invoked explicitly.
-They do **not** run automatically — ask for them by name when needed
-(e.g., "run the verify agent", "verify everything").
+This file acts as a central router for on-demand workflows and specialized agent rules. 
+These sub-agents do **not** run automatically unless their trigger condition is explicitly met — ask for them by name when needed!
 
 ---
 
 ## Verify Agent
-
 **Trigger:** Ask the agent to "verify", "run verification", or "run the verify agent".
+**Action:** The agent must execute the complete test and security verification workflow defined securely inside [`.github/agents/verify.md`](.github/agents/verify.md).
 
-Run every step below **in order**. Stop and report the first failure.
+## Modal Creation Agent
+**Trigger:** When asked to generate, design, restyle, or fundamentally modify frontend UI modals.
+**Action:** The agent MUST strictly follow the architectural layout constraints and CSS variable styling guidelines defined in [`.github/agents/create-modal.md`](.github/agents/create-modal.md).
 
-### Steps
+## Test Coverage Agent
+**Trigger:** Ask the agent to "check coverage", "run tests with coverage", or "find uncovered lines".
+**Action:** The agent must execute the test suite and coverage reporting workflow defined in [`.github/agents/check-coverage.md`](.github/agents/check-coverage.md).
 
-1. **Format & lint**
-   ```bash
-   tox run -e format && tox run -e check-style
-   ```
-   All code must pass with zero warnings.
+## Architecture Diagram Agent
+**Trigger:** When asked to "generate a diagram", "show architecture", or "diagram the [scope]".
+**Action:** The agent must explore the codebase and generate a Mermaid diagram following the guidelines in [`.github/agents/architecture-diagram.md`](.github/agents/architecture-diagram.md).
 
-2. **Security scan**
-   ```bash
-   tox run -e check-security
-   ```
+## Dead Code Cleanup Agent
+**Trigger:** After completing any task that removes or replaces code (e.g., deleting a tool, renaming a slug, removing a component, refactoring a module). Ask the agent to "run cleanup", "check for dead code", or "find unused exports".
+**Action:** The agent must scan for orphaned symbols — unused Python functions, icon constants, CSS classes, and static assets — following the workflow in [`.github/agents/cleanup.md`](.github/agents/cleanup.md).
 
-3. **Unit tests**
-   ```bash
-   tox run -e test
-   ```
-   All tests must pass. Report the count (e.g., "23 passed").
+## Write-Tests Agent
+**Trigger:** When asked to "write tests", "create a test", or "add test coverage" for a module or feature.
+**Action:** The agent must follow the strictly defined pytest patterns and architectural guidelines defined in [`.github/agents/write-tests.md`](.github/agents/write-tests.md).
 
-4. **App smoke test**
-   ```bash
-   lsof -ti:8050 | xargs kill -9 2>/dev/null; sleep 1
-   python3 -m enzyme_tk_app.app.app &
-   sleep 5
-   curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8050/
-   ```
-   Expect HTTP `200`. Kill the process after checking.
+## Create Tool Agent
+**Trigger:** When asked to "create a new tool", "add a new algorithm", or "generate a tool scaffold".
+**Action:** The agent MUST follow the architectural guidelines for tool discovery, single-source slug invariants, and module structure defined in [`.github/agents/create-tool.md`](.github/agents/create-tool.md). For any modal UI generation, it MUST delegate to the Modal Creation Agent.
 
-5. **Docker build & smoke test**
-   ```bash
-   docker build -t enzyme-tk-app .
-   docker run -d --name enzyme-tk-verify -p 8050:8050 enzyme-tk-app
-   sleep 5
-   curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8050/
-   docker rm -f enzyme-tk-verify
-   ```
-   Expect HTTP `200`. Remove the container after checking.
-
-### Reporting
-
-After all steps pass, print a summary:
-
-```
-Verification ✓
-  Format & lint:    pass
-  Security scan:    pass
-  Tests:            <N> passed
-  App smoke test:   HTTP 200
-  Docker smoke:     HTTP 200
-```
-
-If any step fails, stop immediately and report which step failed and the error output.
+## AG Grid Table Agent
+**Trigger:** When creating, modifying, or adding columns to an AG Grid results table (e.g., `results.py`).
+**Action:** The agent MUST follow the column definition rules, theme conventions, and `autoHeight` guidelines defined in [`.github/agents/create-ag-grid.md`](.github/agents/create-ag-grid.md).
