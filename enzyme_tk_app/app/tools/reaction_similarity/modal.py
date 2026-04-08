@@ -2,12 +2,47 @@
 
 This modal appears when the user clicks the Launch button on the Reaction Similarity
 tool card. It collects inputs needed to run the reaction similarity search.
+
+Layout rules  (see ``.github/agents/create-modal.md``)
+------------------------------------------------------
+1. Top-level: ``dbc.Modal(size="lg", centered=True)``.
+2. ``dbc.ModalBody`` gets ``className="p-4"``.
+3. Each logical section is wrapped in
+   ``html.Div(className="bg-light p-3 rounded mb-3")``.
+4. Shared helpers from ``modal_helpers`` handle all repeated
+   boilerplate — header, section headers, footer, and results
+   placeholder.
+5. Inputs use ``dbc.Row`` / ``dbc.Col`` for label ↔ control alignment.
+6. All interactive controls get ``className="... themed-control"`` for
+   dark-mode-aware styling.
+
+Key conventions
+---------------
+- All component IDs are f-strings of ``TOOL_DEF["slug"]`` — never
+  hardcode the slug string.
+- The modal ID **must** be ``f"id-modal-{TOOL_DEF['slug']}"``.
+- Use shared helpers for modal structure:
+  - ``create_modal_header(TOOL_DEF["icon"], TOOL_DEF["title"])``
+  - ``create_modal_input_section_header()``
+  - ``create_modal_config_section_header()``
+  - ``create_modal_submission_results(TOOL_DEF["slug"])``
+  - ``create_modal_footer(TOOL_DEF["slug"])``
+- Use ``dcc.Dropdown`` (not ``dbc.Select``) for dropdowns.
+- Use ``themed-control`` on every form control (Input, Dropdown,
+  RadioItems, Checkbox, Textarea).
 """
 
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
+from enzyme_tk_app.app.components.modal_helpers import (
+    create_modal_config_section_header,
+    create_modal_footer,
+    create_modal_header,
+    create_modal_input_section_header,
+    create_modal_submission_results,
+)
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF, get_similarity_algorithms
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
@@ -61,42 +96,37 @@ def modal():
     all_algo_values = [a["value"] for a in algo_options]
 
     return dbc.Modal(
+        # Modal ID follows the convention: id-modal-<slug>
         id=f"id-modal-{TOOL_DEF['slug']}",
         is_open=False,
         size="lg",
         centered=True,
         children=[
-            dbc.ModalHeader(
-                dbc.ModalTitle(
-                    children=[
-                        html.I(
-                            className=TOOL_DEF["icon"],
-                            style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
-                        ),
-                        TOOL_DEF["title"],
-                    ]
-                ),
-                close_button=True,
-            ),
+            # ------------------------------------------------
+            # MODAL Header: MUST ADD using the shared helper for consistent styling.
+            # ------------------------------------------------
+            create_modal_header(TOOL_DEF["icon"], TOOL_DEF["title"]),
+            # ------------------------------------------------
+            # MODAL BODY
+            # ------------------------------------------------
             dbc.ModalBody(
                 className="p-4",
                 children=[
-                    # --------------------------------------------
+                    # ------------------------------------------------
                     # Section 1: Input Data
-                    # --------------------------------------------
+                    # ------------------------------------------------
                     html.Div(
                         className="bg-light p-3 rounded mb-3",
                         children=[
-                            html.H6(
-                                children=[
-                                    html.I(
-                                        className="fas fa-flask",
-                                        style={"marginRight": "0.5rem", "color": "var(--primary-color)"},
-                                    ),
-                                    "Input Data",
-                                ],
-                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
-                            ),
+                            # INPUT DATA HEADER:
+                            # MUST ADD the section header using the shared helper
+                            create_modal_input_section_header(),
+                            # MODAL INPUTS GO HERE — this tool collects a task name
+                            # and reaction SMILES string with example picker.
+                            # The ID pattern for inputs is:
+                            # id-<component-type>-<slug>-<name>
+                            # where <component-type> is input, dropdown, radio, check, etc.
+                            # and <name> is a descriptive name for the input's purpose.
                             # Task Name
                             dbc.Row(
                                 [
@@ -106,7 +136,7 @@ def modal():
                                     ),
                                     dbc.Col(
                                         dbc.Input(
-                                            id="id-input-reaction-task-name",
+                                            id=f"id-input-{TOOL_DEF['slug']}-task-name",
                                             type="text",
                                             placeholder="e.g. 'Hydrolysis search'",
                                             className="themed-control",
@@ -127,7 +157,7 @@ def modal():
                                     dbc.Col(
                                         [
                                             dbc.Textarea(
-                                                id="id-textarea-reaction-smiles",
+                                                id=f"id-textarea-{TOOL_DEF['slug']}-smiles",
                                                 placeholder="e.g. CC(=O)O.CCO>>CC(=O)OCC.O",
                                                 rows=3,
                                                 className="themed-control",
@@ -169,22 +199,18 @@ def modal():
                             ),
                         ],
                     ),
-                    # --------------------------------------------
+                    # ------------------------------------------------
                     # Section 2: Search Configuration
-                    # --------------------------------------------
+                    # ------------------------------------------------
                     html.Div(
                         className="bg-light p-3 rounded mb-2",
                         children=[
-                            html.H6(
-                                children=[
-                                    html.I(
-                                        className="fas fa-cog",
-                                        style={"marginRight": "0.5rem", "color": "var(--text-secondary)"},
-                                    ),
-                                    "Search Configuration",
-                                ],
-                                className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
-                            ),
+                            # CONFIGURATION HEADER:
+                            # MUST ADD the section header using the shared helper
+                            create_modal_config_section_header(),
+                            # MODAL CONFIGURATION INPUTS GO HERE
+                            # This tool has database selection, algorithm selection,
+                            # and top-N results limit.
                             # Database Selection
                             dbc.Row(
                                 [
@@ -255,25 +281,17 @@ def modal():
                             ),
                         ],
                     ),
-                    # --------------------------------------------
-                    html.Div(id=f"id-div-{TOOL_DEF['slug']}-results"),
+                    # ------------------------------------------------
+                    # Section 3: MUST ADD Status / job ID placeholder
+                    # ------------------------------------------------
+                    # This div is populated by the submit callback with
+                    # a job-ID confirmation message or a validation error.
+                    create_modal_submission_results(TOOL_DEF["slug"]),
                 ],
             ),
-            dbc.ModalFooter(
-                children=[
-                    dbc.Button(
-                        "Cancel",
-                        id="id-btn-reaction-cancel",
-                        color="secondary",
-                        outline=True,
-                        className="me-2",
-                    ),
-                    dbc.Button(
-                        "Run Search",
-                        id="id-btn-reaction-submit",
-                        color="primary",
-                    ),
-                ],
-            ),
+            # ------------------------------------------------
+            # Footer:  Cancel (outline) + Submit (primary) — standard for all modals.
+            # ------------------------------------------------
+            create_modal_footer(TOOL_DEF["slug"]),
         ],
     )

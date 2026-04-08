@@ -18,6 +18,7 @@ TOOL_DEF: ToolDef = {
     "icon": ICON_TOOL_REACTION,
     "order": 1,
     "libraries": ["rdkit"],
+    "max_duration": 180,
 }
 
 
