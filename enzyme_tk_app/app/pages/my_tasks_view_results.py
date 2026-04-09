@@ -116,11 +116,11 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
     ]
 
     # ------------------------------
-    # If the tool returns custom _meta stats,
+    # If the tool returns custom _stat_cards stats,
     # they will be appended to the Duration and Expires In cards.
     # ---------------------------------
-    # Merge tool-specific _meta items (e.g. Summary stats) into the grid
-    meta_items = (job.result or {}).get("_meta")
+    # Merge tool-specific _stat_cards items (e.g. Summary stats) into the grid
+    meta_items = (job.result or {}).get("_stat_cards")
     if meta_items and isinstance(meta_items, list):
         stats.extend(
             (str(item.get("label", "")), str(item.get("value", ""))) for item in meta_items if isinstance(item, dict)
@@ -172,7 +172,9 @@ def layout(job_id: str | None = None) -> html.Div:
     # Validate job_id and fetch job info.
     # If invalid or inaccessible, show an error message but keep the back link.
     if not job_id:
-        return html.Div(className="jobs-page", children=[shared_back_to_my_tasks_link, html.P("No task ID provided.")])
+        return html.Div(
+            className="jobs-page-wide", children=[shared_back_to_my_tasks_link, html.P("No task ID provided.")]
+        )
 
     # get_job may return None if the job_id is invalid or does not belong to this session
     job = get_task_scheduler().get_job(job_id, g.session_id)
@@ -180,7 +182,7 @@ def layout(job_id: str | None = None) -> html.Div:
     if job is None:
         # Show an error message if the job doesn't exist or isn't accessible, but still render the back link.
         return html.Div(
-            className="jobs-page",
+            className="jobs-page-wide",
             children=[
                 shared_back_to_my_tasks_link,
                 html.H3("Task Not Found", style={"marginTop": "1rem"}),
@@ -287,7 +289,7 @@ def layout(job_id: str | None = None) -> html.Div:
         tool_result_content.append(html.Div(job.output_log, className="jobs-log-box"))
 
     return html.Div(
-        className="jobs-page",
+        className="jobs-page-wide",
         children=[
             shared_back_to_my_tasks_link,  # Back link at top for easy navigation.
             shared_info_header,  # Tool name, status, timestamps, duration, expiry.
