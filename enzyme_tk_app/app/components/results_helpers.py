@@ -5,8 +5,7 @@ stat-card strip from a job's ``_stat_cards`` key using the shared
 ``jobs-stat-card`` / ``jobs-stats-row`` CSS classes.
 
 Also provides :func:`build_result_input_params` which auto-renders the job's
-input parameters in a label → value table.  Long values (protein
-sequences, CMILES strings, etc.) get a scrollable monospace container.
+input parameters in a label → value table.
 
 Provides shared ``TABLE_STYLE_*`` constants for ``dash_table.DataTable``.
 ``DataTable`` does **not** support ``className`` — it only accepts
@@ -140,10 +139,6 @@ def build_result_stat_cards(job: JobInfo) -> html.Div | None:
     )
 
 
-# Threshold (characters) above which a value is rendered in a
-# scrollable monospace container instead of inline text.
-_LONG_VALUE_THRESHOLD = 60
-
 # Keys that are internal to the framework and should never be shown
 # to the user in the input parameters section.
 _INTERNAL_KEYS = frozenset({"_stat_cards", "_params_exclude"})
@@ -202,8 +197,8 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
     """Build an "Input Parameters" section from the job's stored params.
 
     Automatically renders every key in ``job.params`` as a label → value
-    row.  Long values (protein sequences, CMILES, SMILES, etc.) are
-    displayed in a scrollable monospace container.
+    row.  SMILES parameters get a structure-preview image inserted above
+    their text value.
 
     Tools can suppress specific parameters by returning a
     ``_params_exclude`` list from ``compute.py``::
