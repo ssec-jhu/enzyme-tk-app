@@ -375,6 +375,9 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
     ``df_payload["columns"]``, sets a default ``tooltipField`` on
     every column, and returns a fully configured ``dag.AgGrid``.
 
+    Non-field column defs (e.g. selection or row-number columns without
+    a ``field`` key) are passed through unmodified.
+
     Cell text selection is enabled (``enableCellTextSelection`` +
     ``ensureDomOrder``) so users can copy/paste string content.
 
@@ -387,15 +390,34 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
 
     Returns:
         A configured ``dag.AgGrid`` component.
+
+    Raises:
+        ValueError: If *df_payload* is not a dict or is missing the
+            required ``columns`` / ``data`` keys.
     """
+    if not isinstance(df_payload, dict):
+        raise ValueError(f"df_payload must be a dict, got {type(df_payload).__name__}")
+    missing = {"columns", "data"} - df_payload.keys()
+    if missing:
+        raise ValueError(f"df_payload is missing required key(s): {', '.join(sorted(missing))}")
+
     data_cols = set(df_payload["columns"])
 
-    # Keep only columns that exist in the actual data.
-    filtered_defs = [cd for cd in column_defs if cd["field"] in data_cols]
+    # Keep columns whose field exists in the data; pass through non-field
+    # column defs (e.g. selection checkboxes, row-number columns).
+    filtered_defs: list[dict] = []
+    for cd in column_defs:
+        field = cd.get("field")
+        if field is not None and field not in data_cols:
+            continue
+        # Copy to avoid mutating the caller's dicts.
+        filtered_defs.append(dict(cd))
 
-    # Ensure every column shows its own value as a hover tooltip.
+    # Ensure every field column shows its own value as a hover tooltip.
     for cd in filtered_defs:
-        cd.setdefault("tooltipField", cd["field"])
+        field = cd.get("field")
+        if field is not None:
+            cd.setdefault("tooltipField", field)
 
     return dag.AgGrid(
         columnDefs=filtered_defs,
