@@ -1,6 +1,8 @@
 celery[redis]==5.6.2
 dash==4.0.0
+dash-ag-grid==32.3.1
 dash-bootstrap-components==2.0.4
+enzymetk==0.0.9
 gunicorn==25.1.0
 pandas==3.0.1
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
