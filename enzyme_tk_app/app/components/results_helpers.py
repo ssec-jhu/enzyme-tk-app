@@ -4,7 +4,7 @@ Provides :func:`build_result_stat_cards` which automatically renders a
 stat-card strip from a job's ``_stat_cards`` key using the shared
 ``jobs-stat-card`` / ``jobs-stats-row`` CSS classes.
 
-Also provides :func:`build_input_params` which auto-renders the job's
+Also provides :func:`build_result_input_params` which auto-renders the job's
 input parameters in a label → value table.  Long values (protein
 sequences, CMILES strings, etc.) get a scrollable monospace container.
 
