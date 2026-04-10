@@ -12,10 +12,9 @@ production reactions database is used as the test fixture.
 import json
 from unittest.mock import patch
 
-import pandas as pd
 import pytest
 
-from enzyme_tk_app.app.tests.conftest import TEST_REACTIONS_CSV, make_reaction_df
+from enzyme_tk_app.app.tests.conftest import make_reaction_df
 from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
 from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
 from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
@@ -31,93 +30,8 @@ from enzyme_tk_app.app.utils.data_loading import (
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
-# Query SMILES used for similarity search — water (O) appears in 13/20
-# test reactions as a substrate, guaranteeing hits for regression testing.
-_QUERY_SMILES = "O"
-
 # All similarity column names produced by enzymetk — the core regression signal.
 _ALL_SIM_COLUMNS = [a["column"] for a in get_similarity_algorithms()]
-
-
-# Trivial molecules excluded from exact-match testing — too simple for
-# meaningful fingerprint comparison or not real "target" molecules.
-_TRIVIAL_SMILES = {"O", "[H+]", "Cl"}
-
-# Maximum SMILES length for exact-match testing — excludes huge cofactors
-# (CoA, NADPH) that would slow tests without adding coverage value.
-_MAX_SMILES_LEN = 100
-
-
-@pytest.fixture()
-def _patch_data_dir(reactions_dir, monkeypatch):
-    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
-    monkeypatch.setattr("enzyme_tk_app.app.tools.substrate_product_similarity.compute.DATA_DIR", reactions_dir)
-
-
-@pytest.fixture()
-def csv_molecules():
-    """Extract unique substrate and product SMILES from the 20-row test CSV.
-
-    Parses the ``unmapped`` column of ``test_reactions_20.csv``, splits
-    each reaction on ``>>``, then splits each side on ``.`` to collect
-    individual molecule SMILES.  Trivial molecules (water, H+, Cl) and
-    very long cofactors (CoA, NADPH) are excluded.
-
-    Returns:
-        Dict with ``"substrates"`` and ``"products"`` keys, each mapping
-        to a sorted list of unique SMILES strings.
-    """
-    df = pd.read_csv(TEST_REACTIONS_CSV)
-    substrates: set[str] = set()
-    products: set[str] = set()
-
-    for unmapped in df["unmapped"].dropna():
-        if ">>" not in unmapped:
-            continue
-        left, right = unmapped.split(">>", 1)
-        for smi in left.split("."):
-            smi = smi.strip()
-            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
-                substrates.add(smi)
-        for smi in right.split("."):
-            smi = smi.strip()
-            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
-                products.add(smi)
-
-    return {"substrates": sorted(substrates), "products": sorted(products)}
-
-
-@pytest.fixture()
-def csv_molecules_known_scores():
-    """Molecules with hardcoded expected similarity scores for regression testing.
-
-    Each entry specifies a query SMILES, the role to search, and the
-    expected top-result scores for all three algorithms.  If
-    ``expected_top_smiles`` is set, the SMILES of the top-ranked result
-    is also verified.
-
-    These values were obtained from a known-good run of the tool and
-    pinned here to catch any change in the underlying enzymetk or RDKit
-    fingerprint calculation.
-    """
-    return [
-        {
-            "query": "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
-            "role": "product",
-            "expected_top_smiles": None,
-            "expected_tanimoto": 1.0,
-            "expected_cosine": 1.0,
-            "expected_russell": 0.0083,
-        },
-        {
-            "query": "[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
-            "role": "substrate",
-            "expected_top_smiles": "O[C@@H]1[C@@H](O)[C@H](O)OC[C@H]1O",
-            "expected_tanimoto": 0.2917,
-            "expected_cosine": 0.4518,
-            "expected_russell": 0.0034,
-        },
-    ]
 
 
 def _default_params(**overrides):
@@ -128,7 +42,7 @@ def _default_params(**overrides):
     defaults = {
         "task_name": "test-run",
         "databases": ["test_reactions_20.csv"],
-        "smiles": _QUERY_SMILES,
+        "smiles": "O",
         "algorithms": ["tanimoto"],
         "top_n": 10,
         "role": "substrate",
