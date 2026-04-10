@@ -24,6 +24,7 @@ import re
 from unittest.mock import MagicMock, patch
 
 import dash_bootstrap_components as dbc
+import pytest
 from dash import html
 
 from enzyme_tk_app.app.tools import TOOLS, ToolDef, _discover_tools, _modal_funcs, tool_modals
@@ -51,7 +52,7 @@ def _load_tool_folder(folder_name):
 
 
 # ---------------------------------------------------------------------------
-# 1. Discovery — is every tool folder picked up correctly?
+# Discovery — is every tool folder picked up correctly?
 # ---------------------------------------------------------------------------
 
 
@@ -105,7 +106,7 @@ def test_no_duplicate_slugs():
 
 
 # ---------------------------------------------------------------------------
-# 2. ToolDef shape — does each tool have the right fields?
+# ToolDef shape — does each tool have the right fields?
 # ---------------------------------------------------------------------------
 
 
@@ -186,7 +187,7 @@ def test_libraries_are_list_of_strings():
 
 
 # ---------------------------------------------------------------------------
-# 3. Modals — do modal dialogs load correctly?
+# Modals — do modal dialogs load correctly?
 # ---------------------------------------------------------------------------
 
 
@@ -251,7 +252,7 @@ def test_modal_ids_follow_naming_convention():
 
 
 # ---------------------------------------------------------------------------
-# 4. Callbacks — do callback modules load without errors?
+# Callbacks — do callback modules load without errors?
 # ---------------------------------------------------------------------------
 
 
@@ -268,7 +269,7 @@ def test_callbacks_importable():
 
 
 # ---------------------------------------------------------------------------
-# 5. Regression guards — protect against common mistakes
+# Regression guards — protect against common mistakes
 # ---------------------------------------------------------------------------
 
 
@@ -287,7 +288,7 @@ def test_tool_def_type_has_expected_fields():
 
 
 # ---------------------------------------------------------------------------
-# 6. Discovery error paths — does _discover_tools handle failures gracefully?
+# Discovery error paths — does _discover_tools handle failures gracefully?
 # ---------------------------------------------------------------------------
 # These tests call ``_discover_tools()`` directly with mocked sub-packages
 # to exercise the error/warning branches that never fire when all real tools
@@ -468,7 +469,7 @@ def test_discover_logs_warning_for_modal_dependency_error(monkeypatch, caplog):
 
 
 # ---------------------------------------------------------------------------
-# 7. Callback logic — do the callback functions behave correctly?
+# Callback logic — do the callback functions behave correctly?
 # ---------------------------------------------------------------------------
 # These tests call the *functions* defined in ``callbacks.py`` directly,
 # mocking ``dash.ctx`` where needed.  They do not require a running Dash app.
@@ -480,7 +481,7 @@ def test_toggle_modal_opens_on_launch_click():
 
     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = "id-btn-launch-reaction-similarity"
-        result = toggle_reaction_similarity_modal(1, 0, 0)
+        result = toggle_reaction_similarity_modal(1, 0)
 
     assert result is True
 
@@ -490,19 +491,19 @@ def test_toggle_modal_closes_on_cancel_click():
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
 
     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-reaction-cancel"
-        result = toggle_reaction_similarity_modal(0, 1, 0)
+        mock_ctx.triggered_id = "id-btn-reaction-similarity-cancel"
+        result = toggle_reaction_similarity_modal(0, 1)
 
     assert result is False
 
 
-def test_toggle_modal_closes_on_submit_click():
-    """The modal must close when the submit button triggers the callback."""
+def test_toggle_modal_stays_closed_for_non_launch_trigger():
+    """The modal must stay closed for any trigger other than the launch button."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
 
     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-reaction-submit"
-        result = toggle_reaction_similarity_modal(0, 0, 1)
+        mock_ctx.triggered_id = "id-btn-reaction-similarity-submit"
+        result = toggle_reaction_similarity_modal(0, 0)
 
     assert result is False
 
@@ -516,164 +517,54 @@ def test_populate_example_returns_value():
 
 
 def test_populate_example_returns_empty_for_none():
-    """Clearing the example dropdown must return an empty string."""
+    """Clearing the example dropdown must raise PreventUpdate."""
+    from dash.exceptions import PreventUpdate
+
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import populate_example_reaction
 
-    assert populate_example_reaction(None) == ""
+    with pytest.raises(PreventUpdate):
+        populate_example_reaction(None)
 
 
 def test_validate_form_disabled_when_both_empty():
     """Submit must be disabled when both fields are empty."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("", "") is True
-    assert validate_reaction_form(None, None) is True
+    assert validate_reaction_form("", "", ["db.csv"], ["tanimoto"]) is True
+    assert validate_reaction_form(None, None, ["db.csv"], ["tanimoto"]) is True
 
 
 def test_validate_form_disabled_when_name_missing():
-    """Submit must be disabled when query name is empty."""
+    """Submit must be disabled when task name is empty."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("", "CC>>CC") is True
+    assert validate_reaction_form("", "CC>>CC", ["db.csv"], ["tanimoto"]) is True
 
 
 def test_validate_form_disabled_when_smiles_missing():
     """Submit must be disabled when SMILES is empty."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("My Query", "") is True
+    assert validate_reaction_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
 
 
 def test_validate_form_enabled_when_both_filled():
-    """Submit must be enabled when both fields have content."""
+    """Submit must be enabled when all fields have content."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("My Query", "CC>>CC") is False
+    assert validate_reaction_form("My Query", "CC>>CC", ["db.csv"], ["tanimoto"]) is False
 
 
 def test_validate_form_disabled_when_whitespace_only():
     """Submit must be disabled when fields contain only whitespace."""
     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("   ", "   ") is True
+    assert validate_reaction_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
 
 
-# ---------------------------------------------------------------------------
-# 8. Substrate/Product Similarity callbacks
-# ---------------------------------------------------------------------------
+def test_validate_form_disabled_when_no_databases():
+    """Submit must be disabled when no databases are selected."""
+    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-
-def test_subprod_toggle_modal_opens_on_launch_click():
-    """The substrate/product modal must open when the launch button is clicked."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
-        toggle_substrate_product_similarity_modal,
-    )
-
-    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-launch-substrate-product-similarity"
-        result = toggle_substrate_product_similarity_modal(1, 0, 0)
-
-    assert result is True
-
-
-def test_subprod_toggle_modal_closes_on_cancel_click():
-    """The substrate/product modal must close when the cancel button is clicked."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
-        toggle_substrate_product_similarity_modal,
-    )
-
-    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-subprod-cancel"
-        result = toggle_substrate_product_similarity_modal(0, 1, 0)
-
-    assert result is False
-
-
-def test_subprod_toggle_modal_closes_on_submit_click():
-    """The substrate/product modal must close when the submit button is clicked."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
-        toggle_substrate_product_similarity_modal,
-    )
-
-    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-subprod-submit"
-        result = toggle_substrate_product_similarity_modal(0, 0, 1)
-
-    assert result is False
-
-
-def test_subprod_populate_example_sets_smiles_and_role():
-    """Selecting an example must populate both the SMILES field and the role selector."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
-
-    # Encoded as "role||smiles"
-    smiles, role = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
-
-    assert smiles == "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
-    assert role == "substrate"
-
-
-def test_subprod_populate_example_sets_product_role():
-    """A product example must set the role to 'product'."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
-
-    smiles, role = populate_example_smiles("product||CCO")
-
-    assert smiles == "CCO"
-    assert role == "product"
-
-
-def test_subprod_populate_example_returns_defaults_for_none():
-    """Clearing the example dropdown must return empty SMILES and default role."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
-
-    smiles, role = populate_example_smiles(None)
-
-    assert smiles == ""
-    assert role == "substrate"
-
-
-def test_subprod_populate_example_returns_defaults_for_invalid_value():
-    """A value without the '||' separator must return empty SMILES and default role."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
-
-    smiles, role = populate_example_smiles("no-separator-here")
-
-    assert smiles == ""
-    assert role == "substrate"
-
-
-def test_subprod_validate_form_disabled_when_both_empty():
-    """Submit must be disabled when both fields are empty."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
-
-    assert validate_substrate_product_form("", "") is True
-    assert validate_substrate_product_form(None, None) is True
-
-
-def test_subprod_validate_form_disabled_when_name_missing():
-    """Submit must be disabled when query name is empty."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
-
-    assert validate_substrate_product_form("", "CCO") is True
-
-
-def test_subprod_validate_form_disabled_when_smiles_missing():
-    """Submit must be disabled when SMILES is empty."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
-
-    assert validate_substrate_product_form("My Query", "") is True
-
-
-def test_subprod_validate_form_enabled_when_both_filled():
-    """Submit must be enabled when both fields have content."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
-
-    assert validate_substrate_product_form("Glucose search", "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O") is False
-
-
-def test_subprod_validate_form_disabled_when_whitespace_only():
-    """Submit must be disabled when fields contain only whitespace."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
-
-    assert validate_substrate_product_form("   ", "   ") is True
+    assert validate_reaction_form("My Query", "CC>>CC", [], ["tanimoto"]) is True
+    assert validate_reaction_form("My Query", "CC>>CC", None, ["tanimoto"]) is True

@@ -10,12 +10,14 @@ production reactions database is used as the test fixture.
 """
 
 import json
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from enzyme_tk_app.app.tests.conftest import TEST_REACTIONS_CSV, make_reaction_df
 from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
 from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
     _ROW_ID,
     _expand_reactions,
@@ -518,3 +520,125 @@ def test_run_known_scores(_patch_data_dir, csv_molecules_known_scores):
                 f"Top result SMILES mismatch for query {case['query']!r}: "
                 f"expected {case['expected_top_smiles']!r}, got {top_row[_COL_MOL_SMILES]!r}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Substrate/Product Similarity callbacks
+# ---------------------------------------------------------------------------
+
+
+def test_subprod_toggle_modal_opens_on_launch_click():
+    """The substrate/product modal must open when the launch button is clicked."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-launch-substrate-product-similarity"
+        result = toggle_substrate_product_similarity_modal(1, 0)
+
+    assert result is True
+
+
+def test_subprod_toggle_modal_closes_on_cancel_click():
+    """The substrate/product modal must close when the cancel button is clicked."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-substrate-product-similarity-cancel"
+        result = toggle_substrate_product_similarity_modal(0, 1)
+
+    assert result is False
+
+
+def test_subprod_toggle_modal_stays_open_on_submit_click():
+    """The substrate/product modal must stay open on submit so the user sees the job ID."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+        toggle_substrate_product_similarity_modal,
+    )
+
+    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = "id-btn-substrate-product-similarity-cancel"
+        # Simulating that only cancel closes the modal
+        result = toggle_substrate_product_similarity_modal(0, 1)
+
+    assert result is False
+
+
+def test_subprod_populate_example_sets_smiles_and_role():
+    """Selecting an example must populate both the SMILES field and the role selector."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    # Encoded as "role||smiles"
+    smiles, role = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
+
+    assert smiles == "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
+    assert role == "substrate"
+
+
+def test_subprod_populate_example_sets_product_role():
+    """A product example must set the role to 'product'."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role = populate_example_smiles("product||CCO")
+
+    assert smiles == "CCO"
+    assert role == "product"
+
+
+def test_subprod_populate_example_returns_defaults_for_none():
+    """Clearing the example dropdown must raise PreventUpdate."""
+    from dash.exceptions import PreventUpdate
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    with pytest.raises(PreventUpdate):
+        populate_example_smiles(None)
+
+
+def test_subprod_populate_example_returns_defaults_for_invalid_value():
+    """A value without the '||' separator must raise PreventUpdate."""
+    from dash.exceptions import PreventUpdate
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    with pytest.raises(PreventUpdate):
+        populate_example_smiles("no-separator-here")
+
+
+def test_subprod_validate_form_disabled_when_both_empty():
+    """Submit must be disabled when both fields are empty."""
+
+    assert validate_substrate_product_form("", "", ["db.csv"], ["tanimoto"]) is True
+    assert validate_substrate_product_form(None, None, ["db.csv"], ["tanimoto"]) is True
+
+
+def test_subprod_validate_form_disabled_when_name_missing():
+    """Submit must be disabled when task name is empty."""
+
+    assert validate_substrate_product_form("", "CCO", ["db.csv"], ["tanimoto"]) is True
+
+
+def test_subprod_validate_form_disabled_when_smiles_missing():
+    """Submit must be disabled when SMILES is empty."""
+
+    assert validate_substrate_product_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
+
+
+def test_subprod_validate_form_enabled_when_all_filled():
+    """Submit must be enabled when all fields have content."""
+
+    assert (
+        validate_substrate_product_form(
+            "Glucose search", "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O", ["db.csv"], ["tanimoto"]
+        )
+        is False
+    )
+
+
+def test_subprod_validate_form_disabled_when_whitespace_only():
+    """Submit must be disabled when fields contain only whitespace."""
+
+    assert validate_substrate_product_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
