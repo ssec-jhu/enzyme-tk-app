@@ -24,7 +24,6 @@ import re
 from unittest.mock import MagicMock, patch
 
 import dash_bootstrap_components as dbc
-import pytest
 from dash import html
 
 from enzyme_tk_app.app.tools import TOOLS, ToolDef, _discover_tools, _modal_funcs, tool_modals
