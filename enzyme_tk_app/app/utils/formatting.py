@@ -1,7 +1,8 @@
-"""Shared formatting helpers for timestamps, durations, and expiry countdowns.
+"""Shared formatting and validation helpers.
 
-These pure-string utilities are used by several pages (task results, my-tasks
-table) to render human-readable dates and times.
+Contains pure-string utilities used by several pages (task results, my-tasks
+table) to render human-readable dates and times, as well as common input
+validation helpers shared across tool callbacks.
 """
 
 from __future__ import annotations
@@ -103,3 +104,40 @@ def expires_in(
         return format_duration(int(remaining))
     except (ValueError, TypeError):
         return "—"
+
+
+def round_column_values(list_of_columns, df):
+    """Round values in specified columns of a DataFrame to 4 decimal places."""
+    for col in list_of_columns:
+        if col in df.columns:
+            df[col] = df[col].round(4)
+
+    return df
+
+
+# ── Input validation ─────────────────────────────────────────────────────
+
+
+def validate_top_n(value: object) -> str | None:
+    """Validate a Top-N input value.
+
+    Args:
+        value: The raw value from the ``dbc.Input`` component (may be
+            ``None``, a string, or a number).
+
+    Returns:
+        An error message string if validation fails, or ``None`` when the
+        value is a valid integer in the range ``[1, 500]``.
+    """
+    min_n = 1
+    max_n = 500
+
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return f"Invalid Top N \u2014 please enter a number between {min_n} and {max_n}."
+
+    if n < min_n or n > max_n:
+        return f"Top N must be between {min_n} and {max_n}."
+
+    return None
