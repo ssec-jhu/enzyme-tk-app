@@ -180,9 +180,6 @@ def run(params: dict) -> dict:
         # if enzymetk encounters an error.
         result_df = sd.execute(sim_input)
 
-        # TODO: remove later
-        print("DEBUG:result_df.columns.tolist()", result_df.columns.tolist())
-
         # Join similarity scores back to expanded metadata
         # SubstrateDist output has _ROW_ID, QuerySmiles, _MOL_SMILES_COL, and sim cols
         sim_cols_to_join = [_ROW_ID] + list(similarity_algorithm_columns.values())
@@ -238,9 +235,6 @@ def run(params: dict) -> dict:
     output_df = round_column_values(list_of_columns=selected_sim_cols, df=sorted_top_n_results)
 
     run_time = round(time.monotonic() - run_time_start, 3)
-
-    # TODO: remove later
-    print("DEBUG:output_df.columns.tolist())", print(output_df.columns.tolist()))
 
     return {
         "_stat_cards": [

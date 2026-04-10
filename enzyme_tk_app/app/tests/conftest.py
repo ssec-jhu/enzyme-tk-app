@@ -6,7 +6,10 @@ incompatibilities when ``redis-py`` or the server protocol is upgraded,
 without requiring a running Redis instance for unit tests.
 """
 
+from pathlib import Path
+
 import fakeredis
+import pandas as pd
 import pytest
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
@@ -15,6 +18,43 @@ from enzyme_tk_app.app.components.hero import hero as create_hero
 from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
+
+# Directory containing test data files (CSV fixtures, etc.).
+TEST_DATA_DIR = Path(__file__).parent / "data"
+
+# Small 20-row reaction CSV extracted from the production database.
+# Used by substrate/product similarity tests to run real enzymetk
+# computations without needing the full (large) data files.
+TEST_REACTIONS_CSV = TEST_DATA_DIR / "test_reactions_20.csv"
+
+
+# ── Reaction data helpers ────────────────────────────────────────────────────
+
+
+def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
+    """Build a minimal DataFrame with ``id`` and ``unmapped`` columns."""
+    return pd.DataFrame(
+        {
+            "id": list(range(len(reactions))),
+            "unmapped": reactions,
+        }
+    )
+
+
+@pytest.fixture()
+def reactions_dir(tmp_path):
+    """Copy the 20-row test CSV into a tmp_path/reactions/ directory.
+
+    Returns the ``tmp_path`` so it can be used to patch ``DATA_DIR``
+    when calling a tool's ``run()`` function.
+    """
+    import shutil  # noqa: PLC0415
+
+    dest = tmp_path / "reactions"
+    dest.mkdir()
+    shutil.copy(TEST_REACTIONS_CSV, dest / "test_reactions_20.csv")
+    return tmp_path
+
 
 # ── UI component fixtures ────────────────────────────────────────────────────
 
