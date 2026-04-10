@@ -1,0 +1,520 @@
+"""Tests for the Substrate/Product Similarity tool compute module.
+
+These tests exercise ``_expand_reactions()`` and ``run()`` with **real**
+enzymetk and rdkit calls — no mocking.  The goal is regression detection:
+if enzymetk changes its output column names, score types, or API, these
+tests will fail immediately.
+
+A small 20-row CSV (``test_reactions_20.csv``) extracted from the
+production reactions database is used as the test fixture.
+"""
+
+import json
+
+import pandas as pd
+import pytest
+
+from enzyme_tk_app.app.tests.conftest import TEST_REACTIONS_CSV, make_reaction_df
+from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
+    _ROW_ID,
+    _expand_reactions,
+    run,
+)
+from enzyme_tk_app.app.utils.data_loading import (
+    _COL_MOL_INDEX,
+    _COL_MOL_SMILES,
+    _COL_MOL_SVG,
+)
+
+# ── Shared helpers ────────────────────────────────────────────────────────────
+
+# Query SMILES used for similarity search — water (O) appears in 13/20
+# test reactions as a substrate, guaranteeing hits for regression testing.
+_QUERY_SMILES = "O"
+
+# All similarity column names produced by enzymetk — the core regression signal.
+_ALL_SIM_COLUMNS = [a["column"] for a in get_similarity_algorithms()]
+
+
+# Trivial molecules excluded from exact-match testing — too simple for
+# meaningful fingerprint comparison or not real "target" molecules.
+_TRIVIAL_SMILES = {"O", "[H+]", "Cl"}
+
+# Maximum SMILES length for exact-match testing — excludes huge cofactors
+# (CoA, NADPH) that would slow tests without adding coverage value.
+_MAX_SMILES_LEN = 100
+
+
+@pytest.fixture()
+def _patch_data_dir(reactions_dir, monkeypatch):
+    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
+    monkeypatch.setattr("enzyme_tk_app.app.tools.substrate_product_similarity.compute.DATA_DIR", reactions_dir)
+
+
+@pytest.fixture()
+def csv_molecules():
+    """Extract unique substrate and product SMILES from the 20-row test CSV.
+
+    Parses the ``unmapped`` column of ``test_reactions_20.csv``, splits
+    each reaction on ``>>``, then splits each side on ``.`` to collect
+    individual molecule SMILES.  Trivial molecules (water, H+, Cl) and
+    very long cofactors (CoA, NADPH) are excluded.
+
+    Returns:
+        Dict with ``"substrates"`` and ``"products"`` keys, each mapping
+        to a sorted list of unique SMILES strings.
+    """
+    df = pd.read_csv(TEST_REACTIONS_CSV)
+    substrates: set[str] = set()
+    products: set[str] = set()
+
+    for unmapped in df["unmapped"].dropna():
+        if ">>" not in unmapped:
+            continue
+        left, right = unmapped.split(">>", 1)
+        for smi in left.split("."):
+            smi = smi.strip()
+            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
+                substrates.add(smi)
+        for smi in right.split("."):
+            smi = smi.strip()
+            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
+                products.add(smi)
+
+    return {"substrates": sorted(substrates), "products": sorted(products)}
+
+
+@pytest.fixture()
+def csv_molecules_known_scores():
+    """Molecules with hardcoded expected similarity scores for regression testing.
+
+    Each entry specifies a query SMILES, the role to search, and the
+    expected top-result scores for all three algorithms.  If
+    ``expected_top_smiles`` is set, the SMILES of the top-ranked result
+    is also verified.
+
+    These values were obtained from a known-good run of the tool and
+    pinned here to catch any change in the underlying enzymetk or RDKit
+    fingerprint calculation.
+    """
+    return [
+        {
+            "query": "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
+            "role": "product",
+            "expected_top_smiles": None,
+            "expected_tanimoto": 1.0,
+            "expected_cosine": 1.0,
+            "expected_russell": 0.0083,
+        },
+        {
+            "query": "[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
+            "role": "substrate",
+            "expected_top_smiles": "O[C@@H]1[C@@H](O)[C@H](O)OC[C@H]1O",
+            "expected_tanimoto": 0.2917,
+            "expected_cosine": 0.4518,
+            "expected_russell": 0.0034,
+        },
+    ]
+
+
+def _default_params(**overrides):
+    """Return a valid ``run()`` params dict with sensible defaults.
+
+    Override any key by passing it as a keyword argument.
+    """
+    defaults = {
+        "task_name": "test-run",
+        "databases": ["test_reactions_20.csv"],
+        "smiles": _QUERY_SMILES,
+        "algorithms": ["tanimoto"],
+        "top_n": 10,
+        "role": "substrate",
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+# ── _expand_reactions() ───────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("reaction", "role", "expected_smiles"),
+    [
+        ("A.B>>C", "substrate", ["A", "B"]),
+        ("A.B>>C.D", "product", ["C", "D"]),
+    ],
+    ids=["substrate-side", "product-side"],
+)
+def test_expand_reactions_by_role(reaction, role, expected_smiles):
+    """Expanding a reaction splits the selected side on '.' to yield one row per molecule."""
+    df = make_reaction_df([reaction])
+    result = _expand_reactions(df, role)
+
+    assert len(result) == len(expected_smiles)
+    assert list(result[_COL_MOL_SMILES]) == expected_smiles
+    # molecule_index should be sequential (position within the molecule list)
+    assert list(result[_COL_MOL_INDEX]) == list(range(len(expected_smiles)))
+
+
+def test_expand_reactions_preserves_metadata():
+    """Original columns are carried through to every expanded row."""
+    df = make_reaction_df(["X.Y>>Z"])
+    df["ec_num"] = "1.2.3.4"
+    result = _expand_reactions(df, "substrate")
+
+    # Both expanded rows should carry the original ec_num value
+    assert all(result["ec_num"] == "1.2.3.4")
+
+
+@pytest.mark.parametrize(
+    ("reaction", "role"),
+    [
+        ("INVALID_NO_ARROW", "substrate"),
+        ("A.B>>", "product"),
+    ],
+    ids=["malformed-no-arrow", "empty-product-side"],
+)
+def test_expand_reactions_empty_result(reaction, role):
+    """Edge-case reactions (malformed or empty side) produce no rows."""
+    df = make_reaction_df([reaction])
+    result = _expand_reactions(df, role)
+
+    assert result.empty, f"Expected no rows for reaction={reaction!r}, role={role!r}"
+
+
+def test_expand_reactions_multiple_reactions():
+    """Multiple reactions expand independently, molecule_index resets per reaction."""
+    df = make_reaction_df(["A.B>>C", "D.E.F>>G"])
+    result = _expand_reactions(df, "substrate")
+
+    # 2 molecules from first reaction + 3 from second = 5 total
+    assert len(result) == 5
+
+    # molecule_index resets for each (id, unmapped) group
+    first_rxn = result[result["id"] == 0]
+    second_rxn = result[result["id"] == 1]
+    assert list(first_rxn[_COL_MOL_INDEX]) == [0, 1]
+    assert list(second_rxn[_COL_MOL_INDEX]) == [0, 1, 2]
+
+
+# ── run() — return contract ──────────────────────────────────────────────────
+
+
+def test_run_returns_expected_top_level_keys(_patch_data_dir):
+    """run() must return _stat_cards and dataframe at the top level."""
+    result = run(_default_params())
+
+    assert "_stat_cards" in result, "Result must contain '_stat_cards'"
+    assert "dataframe" in result, "Result must contain 'dataframe'"
+
+
+def test_run_stat_cards_shape(_patch_data_dir):
+    """_stat_cards must be a list of dicts, each with 'label' and 'value'."""
+    result = run(_default_params())
+    stat_cards = result["_stat_cards"]
+
+    assert isinstance(stat_cards, list)
+    assert len(stat_cards) >= 4, "Expected at least 4 stat cards"
+    for card in stat_cards:
+        assert "label" in card, f"Stat card missing 'label': {card}"
+        assert "value" in card, f"Stat card missing 'value': {card}"
+
+
+def test_run_dataframe_has_columns_and_data(_patch_data_dir):
+    """The dataframe payload must have 'columns' and 'data' keys."""
+    result = run(_default_params())
+    df_payload = result["dataframe"]
+
+    assert "columns" in df_payload
+    assert "data" in df_payload
+    assert isinstance(df_payload["columns"], list)
+    assert isinstance(df_payload["data"], list)
+
+
+def test_run_result_is_json_serializable(_patch_data_dir):
+    """The entire return dict must be JSON-serializable — backend requirement.
+
+    Large results are offloaded to disk as JSON; non-serializable objects
+    (e.g. numpy arrays, bare datetimes) would break the pipeline silently.
+    """
+    result = run(_default_params())
+
+    # json.dumps will raise TypeError for non-serializable values.
+    serialized = json.dumps(result)
+    assert isinstance(serialized, str)
+
+
+# ── run() — enzymetk column regression ───────────────────────────────────────
+
+
+def test_run_enzymetk_similarity_columns_present(_patch_data_dir):
+    """enzymetk must produce TanimotoSimilarity, CosineSimilarity, RusselSimilarity.
+
+    This is the core regression signal — if enzymetk renames any of these
+    columns, this test fails immediately.
+    """
+    # Request all three algorithms so all columns appear in output
+    params = _default_params(algorithms=["tanimoto", "cosine", "russell"])
+    result = run(params)
+    output_columns = result["dataframe"]["columns"]
+
+    for col in _ALL_SIM_COLUMNS:
+        assert col in output_columns, f"enzymetk column '{col}' missing from output — possible API change"
+
+
+def test_run_similarity_scores_are_floats_in_valid_range(_patch_data_dir):
+    """All similarity scores must be floats in [0.0, 1.0]."""
+    params = _default_params(algorithms=["tanimoto", "cosine", "russell"])
+    result = run(params)
+
+    for row in result["dataframe"]["data"]:
+        for col in _ALL_SIM_COLUMNS:
+            score = row[col]
+            assert isinstance(score, float), f"Score in '{col}' is {type(score)}, expected float"
+            assert 0.0 <= score <= 1.0, f"Score {score} in '{col}' out of [0, 1] range"
+
+
+def test_run_single_algorithm_only_includes_selected_column(_patch_data_dir):
+    """When only one algorithm is selected, the output still contains that column."""
+    params = _default_params(algorithms=["cosine"])
+    result = run(params)
+    output_columns = result["dataframe"]["columns"]
+
+    assert "CosineSimilarity" in output_columns
+
+
+# ── run() — output quality ───────────────────────────────────────────────────
+
+
+def test_run_internal_row_id_not_in_output(_patch_data_dir):
+    """The internal _row_id join key must be dropped from the final output."""
+    result = run(_default_params())
+    output_columns = result["dataframe"]["columns"]
+
+    assert _ROW_ID not in output_columns, f"Internal column '{_ROW_ID}' leaked into output"
+
+
+def test_run_molecule_svg_column_present(_patch_data_dir):
+    """Each result row must have a molecule_svg column with a valid data URI."""
+    result = run(_default_params())
+    output_columns = result["dataframe"]["columns"]
+
+    assert _COL_MOL_SVG in output_columns, "molecule_svg column missing from output"
+
+    # Check that SVG data URIs are base64-encoded SVGs
+    for row in result["dataframe"]["data"]:
+        svg = row[_COL_MOL_SVG]
+        assert isinstance(svg, str), "SVG data URI should be a string"
+        assert svg.startswith("data:image/svg+xml;base64,"), f"SVG data URI has unexpected prefix: {svg[:40]}..."
+
+
+def test_run_database_column_derived_from_filename(_patch_data_dir):
+    """Each result row must carry a 'database' column derived from the CSV filename."""
+    result = run(_default_params())
+
+    for row in result["dataframe"]["data"]:
+        assert "database" in row, "Missing 'database' column in result row"
+        # CSV is "test_reactions_20.csv" → stem "test_reactions_20" → title "Test Reactions 20"
+        assert row["database"] == "Test Reactions 20"
+
+
+def test_run_similarity_scores_rounded_to_4_decimals(_patch_data_dir):
+    """Selected similarity columns should be rounded to at most 4 decimal places."""
+    params = _default_params(algorithms=["tanimoto"])
+    result = run(params)
+
+    for row in result["dataframe"]["data"]:
+        score = row["TanimotoSimilarity"]
+        # Convert to string and check decimal places
+        score_str = f"{score:.10f}".rstrip("0")
+        if "." in score_str:
+            decimal_part = score_str.split(".")[1]
+            assert len(decimal_part) <= 4, f"Score {score} has {len(decimal_part)} decimal places, expected <= 4"
+
+
+def test_run_respects_top_n(_patch_data_dir):
+    """The number of result rows must not exceed the requested top_n."""
+    params = _default_params(top_n=3)
+    result = run(params)
+
+    assert len(result["dataframe"]["data"]) <= 3
+
+
+def test_run_molecule_smiles_column_present(_patch_data_dir):
+    """Each result row must include the individual molecule SMILES."""
+    result = run(_default_params())
+    output_columns = result["dataframe"]["columns"]
+
+    assert _COL_MOL_SMILES in output_columns, "molecule_smiles column missing from output"
+
+
+# ── run() — stat card consistency ────────────────────────────────────────────
+
+
+def test_run_stat_card_databases_searched_matches_input(_patch_data_dir):
+    """The 'Databases Searched' stat card must match len(databases)."""
+    result = run(_default_params())
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+
+    assert stat_cards["Databases Searched"] == "1"
+
+
+def test_run_stat_card_results_returned_matches_data(_patch_data_dir):
+    """The 'Results Returned' stat card must match the actual row count."""
+    result = run(_default_params())
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    actual_rows = len(result["dataframe"]["data"])
+
+    assert stat_cards["Results Returned"] == str(actual_rows)
+
+
+def test_run_stat_card_run_time_is_numeric(_patch_data_dir):
+    """The 'Run Time' stat card must be a numeric value followed by 's'."""
+    result = run(_default_params())
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+
+    run_time = stat_cards["Run Time"]
+    assert run_time.endswith("s"), f"Run time '{run_time}' should end with 's'"
+    # The numeric part should be parseable as a float
+    float(run_time[:-1])  # raises ValueError if not numeric
+
+
+# ── run() — product role ─────────────────────────────────────────────────────
+
+
+def test_run_product_role(_patch_data_dir):
+    """run() with role='product' should search against product side molecules."""
+    params = _default_params(role="product")
+    result = run(params)
+
+    # Should still return valid structure — the test CSV has products on the
+    # right side of >> in every reaction.
+    assert "dataframe" in result
+    assert "_stat_cards" in result
+    assert len(result["dataframe"]["data"]) > 0, "Expected results for product role search"
+
+
+# ── run() — edge cases ───────────────────────────────────────────────────────
+
+
+def test_run_nonexistent_database_returns_empty(_patch_data_dir):
+    """When the CSV file does not exist, run() returns empty results gracefully."""
+    params = _default_params(databases=["nonexistent_database.csv"])
+    result = run(params)
+
+    assert result["dataframe"]["data"] == []
+    assert result["dataframe"]["columns"] == []
+    # Stat cards should show zero counts
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["Results Returned"] == "0"
+
+
+def test_run_data_rows_have_consistent_columns(_patch_data_dir):
+    """Every data row must have exactly the same keys as the 'columns' list."""
+    result = run(_default_params())
+    columns = set(result["dataframe"]["columns"])
+
+    for i, row in enumerate(result["dataframe"]["data"]):
+        assert set(row.keys()) == columns, f"Row {i} keys {set(row.keys())} differ from columns {columns}"
+
+
+# ── run() — exact molecule match (score = 1.0) ──────────────────────────────
+# Uses the ``csv_molecules`` fixture to iterate over real molecules
+# extracted from the test CSV.  When a molecule is used as the query
+# against the side it belongs to, the self-vs-self fingerprint
+# comparison MUST yield a similarity score of exactly 1.0.
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "score_column"),
+    [
+        ("tanimoto", "TanimotoSimilarity"),
+        ("cosine", "CosineSimilarity"),
+    ],
+    ids=["tanimoto", "cosine"],
+)
+def test_run_exact_substrate_returns_score_1(_patch_data_dir, csv_molecules, algorithm, score_column):
+    """Every substrate from the CSV must have a top-result score of 1.0.
+
+    Iterates over the non-trivial substrates extracted by the
+    ``csv_molecules`` fixture and asserts that the top-ranked result
+    has a perfect similarity score.  The SMILES string of the top
+    result is *not* checked because Morgan fingerprints are folded
+    into a fixed-length bit vector, so structurally similar molecules
+    (e.g. xylobiose vs xylotetraose) can share identical fingerprints
+    and tie at 1.0, and RDKit may also canonicalise the SMILES
+    differently from the raw CSV form.
+    """
+    for smiles in csv_molecules["substrates"]:
+        params = _default_params(smiles=smiles, role="substrate", algorithms=[algorithm], top_n=20)
+        result = run(params)
+
+        top_score = result["dataframe"]["data"][0][score_column]
+        assert top_score == 1.0, (
+            f"Top result {score_column} for exact substrate query {smiles!r} should be 1.0, got {top_score}"
+        )
+
+
+@pytest.mark.parametrize(
+    ("algorithm", "score_column"),
+    [
+        ("tanimoto", "TanimotoSimilarity"),
+        ("cosine", "CosineSimilarity"),
+    ],
+    ids=["tanimoto", "cosine"],
+)
+def test_run_exact_product_returns_score_1(_patch_data_dir, csv_molecules, algorithm, score_column):
+    """Every product from the CSV must have a top-result score of 1.0.
+
+    See the substrate counterpart for why the SMILES string is not checked.
+    """
+    for smiles in csv_molecules["products"]:
+        params = _default_params(smiles=smiles, role="product", algorithms=[algorithm], top_n=20)
+        result = run(params)
+
+        top_score = result["dataframe"]["data"][0][score_column]
+        assert top_score == 1.0, (
+            f"Top result {score_column} for exact product query {smiles!r} should be 1.0, got {top_score}"
+        )
+
+
+# ── run() — pinned score regression ──────────────────────────────────────────
+
+
+def test_run_known_scores(_patch_data_dir, csv_molecules_known_scores):
+    """Similarity scores for known query molecules must match pinned values.
+
+    Guards against silent changes in enzymetk's fingerprint calculation
+    or RDKit version upgrades that alter Morgan fingerprint bit-sets.
+    All three algorithms (Tanimoto, Cosine, Russell) are requested in a
+    single ``run()`` call and checked against hardcoded expected scores.
+    """
+    for case in csv_molecules_known_scores:
+        params = _default_params(
+            smiles=case["query"],
+            role=case["role"],
+            algorithms=["tanimoto", "cosine", "russell"],
+            top_n=20,
+        )
+        result = run(params)
+        top_row = result["dataframe"]["data"][0]
+
+        assert top_row["TanimotoSimilarity"] == case["expected_tanimoto"], (
+            f"Tanimoto mismatch for query {case['query']!r}: "
+            f"expected {case['expected_tanimoto']}, got {top_row['TanimotoSimilarity']}"
+        )
+        assert top_row["CosineSimilarity"] == case["expected_cosine"], (
+            f"Cosine mismatch for query {case['query']!r}: "
+            f"expected {case['expected_cosine']}, got {top_row['CosineSimilarity']}"
+        )
+        assert top_row["RusselSimilarity"] == case["expected_russell"], (
+            f"Russell mismatch for query {case['query']!r}: "
+            f"expected {case['expected_russell']}, got {top_row['RusselSimilarity']}"
+        )
+
+        if case["expected_top_smiles"] is not None:
+            assert top_row[_COL_MOL_SMILES] == case["expected_top_smiles"], (
+                f"Top result SMILES mismatch for query {case['query']!r}: "
+                f"expected {case['expected_top_smiles']!r}, got {top_row[_COL_MOL_SMILES]!r}"
+            )
