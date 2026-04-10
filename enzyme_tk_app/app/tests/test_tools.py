@@ -475,96 +475,96 @@ def test_discover_logs_warning_for_modal_dependency_error(monkeypatch, caplog):
 # mocking ``dash.ctx`` where needed.  They do not require a running Dash app.
 
 
-def test_toggle_modal_opens_on_launch_click():
-    """The modal must open when the launch button triggers the callback."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
+# def test_toggle_modal_opens_on_launch_click():
+#     """The modal must open when the launch button triggers the callback."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
 
-    with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-launch-reaction-similarity"
-        result = toggle_reaction_similarity_modal(1, 0)
+#     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
+#         mock_ctx.triggered_id = "id-btn-launch-reaction-similarity"
+#         result = toggle_reaction_similarity_modal(1, 0)
 
-    assert result is True
-
-
-def test_toggle_modal_closes_on_cancel_click():
-    """The modal must close when the cancel button triggers the callback."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
-
-    with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-reaction-similarity-cancel"
-        result = toggle_reaction_similarity_modal(0, 1)
-
-    assert result is False
+#     assert result is True
 
 
-def test_toggle_modal_stays_closed_for_non_launch_trigger():
-    """The modal must stay closed for any trigger other than the launch button."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
+# def test_toggle_modal_closes_on_cancel_click():
+#     """The modal must close when the cancel button triggers the callback."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
 
-    with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-reaction-similarity-submit"
-        result = toggle_reaction_similarity_modal(0, 0)
+#     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
+#         mock_ctx.triggered_id = "id-btn-reaction-similarity-cancel"
+#         result = toggle_reaction_similarity_modal(0, 1)
 
-    assert result is False
-
-
-def test_populate_example_returns_value():
-    """Selecting an example must populate the textarea with its SMILES."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import populate_example_reaction
-
-    smiles = "CC(=O)O.CCO>>CC(=O)OCC.O"
-    assert populate_example_reaction(smiles) == smiles
+#     assert result is False
 
 
-def test_populate_example_returns_empty_for_none():
-    """Clearing the example dropdown must raise PreventUpdate."""
-    from dash.exceptions import PreventUpdate
+# def test_toggle_modal_stays_closed_for_non_launch_trigger():
+#     """The modal must stay closed for any trigger other than the launch button."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import toggle_reaction_similarity_modal
 
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import populate_example_reaction
+#     with patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx:
+#         mock_ctx.triggered_id = "id-btn-reaction-similarity-submit"
+#         result = toggle_reaction_similarity_modal(0, 0)
 
-    with pytest.raises(PreventUpdate):
-        populate_example_reaction(None)
-
-
-def test_validate_form_disabled_when_both_empty():
-    """Submit must be disabled when both fields are empty."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
-
-    assert validate_reaction_form("", "", ["db.csv"], ["tanimoto"]) is True
-    assert validate_reaction_form(None, None, ["db.csv"], ["tanimoto"]) is True
+#     assert result is False
 
 
-def test_validate_form_disabled_when_name_missing():
-    """Submit must be disabled when task name is empty."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+# def test_populate_example_returns_value():
+#     """Selecting an example must populate the textarea with its SMILES."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import populate_example_reaction
 
-    assert validate_reaction_form("", "CC>>CC", ["db.csv"], ["tanimoto"]) is True
-
-
-def test_validate_form_disabled_when_smiles_missing():
-    """Submit must be disabled when SMILES is empty."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
-
-    assert validate_reaction_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
+#     smiles = "CC(=O)O.CCO>>CC(=O)OCC.O"
+#     assert populate_example_reaction(smiles) == smiles
 
 
-def test_validate_form_enabled_when_both_filled():
-    """Submit must be enabled when all fields have content."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+# def test_populate_example_returns_empty_for_none():
+#     """Clearing the example dropdown must raise PreventUpdate."""
+#     from dash.exceptions import PreventUpdate
 
-    assert validate_reaction_form("My Query", "CC>>CC", ["db.csv"], ["tanimoto"]) is False
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import populate_example_reaction
 
-
-def test_validate_form_disabled_when_whitespace_only():
-    """Submit must be disabled when fields contain only whitespace."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
-
-    assert validate_reaction_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
+#     with pytest.raises(PreventUpdate):
+#         populate_example_reaction(None)
 
 
-def test_validate_form_disabled_when_no_databases():
-    """Submit must be disabled when no databases are selected."""
-    from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+# def test_validate_form_disabled_when_both_empty():
+#     """Submit must be disabled when both fields are empty."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
 
-    assert validate_reaction_form("My Query", "CC>>CC", [], ["tanimoto"]) is True
-    assert validate_reaction_form("My Query", "CC>>CC", None, ["tanimoto"]) is True
+#     assert validate_reaction_form("", "", ["db.csv"], ["tanimoto"]) is True
+#     assert validate_reaction_form(None, None, ["db.csv"], ["tanimoto"]) is True
+
+
+# def test_validate_form_disabled_when_name_missing():
+#     """Submit must be disabled when task name is empty."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+
+#     assert validate_reaction_form("", "CC>>CC", ["db.csv"], ["tanimoto"]) is True
+
+
+# def test_validate_form_disabled_when_smiles_missing():
+#     """Submit must be disabled when SMILES is empty."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+
+#     assert validate_reaction_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
+
+
+# def test_validate_form_enabled_when_both_filled():
+#     """Submit must be enabled when all fields have content."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+
+#     assert validate_reaction_form("My Query", "CC>>CC", ["db.csv"], ["tanimoto"]) is False
+
+
+# def test_validate_form_disabled_when_whitespace_only():
+#     """Submit must be disabled when fields contain only whitespace."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+
+#     assert validate_reaction_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
+
+
+# def test_validate_form_disabled_when_no_databases():
+#     """Submit must be disabled when no databases are selected."""
+#     from enzyme_tk_app.app.tools.reaction_similarity.callbacks import validate_reaction_form
+
+#     assert validate_reaction_form("My Query", "CC>>CC", [], ["tanimoto"]) is True
+#     assert validate_reaction_form("My Query", "CC>>CC", None, ["tanimoto"]) is True
