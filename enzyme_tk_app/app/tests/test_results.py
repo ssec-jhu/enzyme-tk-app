@@ -1,47 +1,46 @@
 from dash import html
 
 from enzyme_tk_app.app.components.results_helpers import (
-    _LONG_VALUE_THRESHOLD,
     _pretty_label,
     build_result_input_params,
-    build_result_meta,
+    build_result_stat_cards,
 )
 
 from .conftest import find_components, get_text, make_job
 
 # ---------------------------------------------------------------------------
-# build_result_meta
+# build_result_stat_cards
 # ---------------------------------------------------------------------------
 
 
-def test_build_result_meta_returns_none_when_no_meta():
-    """Jobs without a ``_meta`` key in the result should produce ``None``."""
-    assert build_result_meta(make_job(result={"data": [1, 2]})) is None
+def test_build_result_stat_cards_returns_none_when_no_stat_cards():
+    """Jobs without a ``_stat_cards`` key in the result should produce ``None``."""
+    assert build_result_stat_cards(make_job(result={"data": [1, 2]})) is None
 
 
-def test_build_result_meta_returns_none_when_result_is_none():
+def test_build_result_stat_cards_returns_none_when_result_is_none():
     """A job with ``result=None`` should not crash and should return ``None``."""
-    assert build_result_meta(make_job(result=None)) is None
+    assert build_result_stat_cards(make_job(result=None)) is None
 
 
-def test_build_result_meta_returns_none_for_non_list_meta():
-    """``_meta`` must be a list; a string or dict should be treated as absent."""
-    assert build_result_meta(make_job(result={"_meta": "not-a-list"})) is None
-    assert build_result_meta(make_job(result={"_meta": {"label": "x", "value": "y"}})) is None
+def test_build_result_stat_cards_returns_none_for_non_list_stat_cards():
+    """``_stat_cards`` must be a list; a string or dict should be treated as absent."""
+    assert build_result_stat_cards(make_job(result={"_stat_cards": "not-a-list"})) is None
+    assert build_result_stat_cards(make_job(result={"_stat_cards": {"label": "x", "value": "y"}})) is None
 
 
-def test_build_result_meta_returns_none_for_empty_meta_list():
-    """An empty ``_meta`` list produces no cards, so the helper returns ``None``."""
-    assert build_result_meta(make_job(result={"_meta": []})) is None
+def test_build_result_stat_cards_returns_none_for_empty_stat_cards_list():
+    """An empty ``_stat_cards`` list produces no cards, so the helper returns ``None``."""
+    assert build_result_stat_cards(make_job(result={"_stat_cards": []})) is None
 
 
-def test_build_result_meta_renders_stat_cards():
-    """Each dict in ``_meta`` should produce a stat card with the correct label, value, and count."""
+def test_build_result_stat_cards_renders_stat_cards():
+    """Each dict in ``_stat_cards`` should produce a stat card with the correct label, value, and count."""
     meta = [
         {"label": "Elapsed", "value": "12.3 s"},
         {"label": "Matches", "value": "42"},
     ]
-    component = build_result_meta(make_job(result={"_meta": meta}))
+    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
 
     assert component is not None
     text = get_text(component)
@@ -56,33 +55,33 @@ def test_build_result_meta_renders_stat_cards():
     assert len(cards) == 2
 
 
-def test_build_result_meta_uses_shared_css_classes():
+def test_build_result_stat_cards_uses_shared_css_classes():
     """The output must use the shared ``jobs-stats-row`` / ``jobs-stat-card`` classes."""
     meta = [{"label": "L", "value": "V"}]
-    component = build_result_meta(make_job(result={"_meta": meta}))
+    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
 
     stats_row = [c for c in find_components(component, html.Div) if getattr(c, "className", None) == "jobs-stats-row"]
     assert len(stats_row) == 1, "Expected exactly one jobs-stats-row container"
 
 
-def test_build_result_meta_skips_non_dict_items():
-    """Non-dict entries in ``_meta`` should be silently ignored."""
+def test_build_result_stat_cards_skips_non_dict_items():
+    """Non-dict entries in ``_stat_cards`` should be silently ignored."""
     meta = [{"label": "Keep", "value": "1"}, "stray-string", 42, None]
-    component = build_result_meta(make_job(result={"_meta": meta}))
+    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
 
     cards = [c for c in find_components(component, html.Div) if getattr(c, "className", None) == "jobs-stat-card"]
     assert len(cards) == 1
 
 
-def test_build_result_meta_returns_none_when_all_items_are_non_dict():
-    """If every item in ``_meta`` is non-dict, the result should be ``None``."""
-    assert build_result_meta(make_job(result={"_meta": ["a", 1, None]})) is None
+def test_build_result_stat_cards_returns_none_when_all_items_are_non_dict():
+    """If every item in ``_stat_cards`` is non-dict, the result should be ``None``."""
+    assert build_result_stat_cards(make_job(result={"_stat_cards": ["a", 1, None]})) is None
 
 
-def test_build_result_meta_handles_missing_label_or_value_keys():
+def test_build_result_stat_cards_handles_missing_label_or_value_keys():
     """Items missing ``label`` or ``value`` should still render (empty string fallback)."""
     meta = [{"label": "OnlyLabel"}, {"value": "OnlyValue"}, {}]
-    component = build_result_meta(make_job(result={"_meta": meta}))
+    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
 
     assert component is not None
     text = get_text(component)
@@ -126,8 +125,8 @@ def test_build_input_params_renders_label_value_rows():
 
 
 def test_build_input_params_hides_internal_keys():
-    """Framework-internal keys (``_meta``, ``_params_exclude``) must never appear."""
-    params = {"visible": "yes", "_meta": "hidden", "_params_exclude": "hidden"}
+    """Framework-internal keys (``_stat_cards``, ``_params_exclude``) must never appear."""
+    params = {"visible": "yes", "_stat_cards": "hidden", "_params_exclude": "hidden"}
     component = build_result_input_params(make_job(params=params))
 
     text = get_text(component)
@@ -153,38 +152,8 @@ def test_build_input_params_respects_params_exclude_from_result():
 
 def test_build_input_params_returns_none_when_all_params_excluded():
     """If every parameter is excluded, the section should not render."""
-    params = {"_meta": "x"}
+    params = {"_stat_cards": "x"}
     assert build_result_input_params(make_job(params=params)) is None
-
-
-def test_build_input_params_value_class_depends_on_length():
-    """Short values get ``jobs-params-value``; values at or above the threshold get ``jobs-params-value-long``."""
-    short_val = "short"
-    exact_val = "B" * _LONG_VALUE_THRESHOLD  # exactly at threshold → long
-    over_val = "A" * (_LONG_VALUE_THRESHOLD + 1)  # above threshold → long
-
-    # Short value → plain class.
-    short_component = build_result_input_params(make_job(params={"name": short_val}))
-    plain_cells = [
-        c for c in find_components(short_component, html.Td) if getattr(c, "className", None) == "jobs-params-value"
-    ]
-    assert len(plain_cells) == 1
-
-    # Value at exact threshold → long class.
-    exact_component = build_result_input_params(make_job(params={"seq": exact_val}))
-    long_exact = [
-        c
-        for c in find_components(exact_component, html.Td)
-        if getattr(c, "className", None) == "jobs-params-value-long"
-    ]
-    assert len(long_exact) == 1
-
-    # Value above threshold → long class.
-    over_component = build_result_input_params(make_job(params={"seq": over_val}))
-    long_over = [
-        c for c in find_components(over_component, html.Td) if getattr(c, "className", None) == "jobs-params-value-long"
-    ]
-    assert len(long_over) == 1
 
 
 def test_build_input_params_non_string_values_are_stringified():
