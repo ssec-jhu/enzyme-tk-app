@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
+import pandas as pd
+
 from enzyme_tk_app.app.backend.config import JOB_TTL_SECONDS
 
 
@@ -106,8 +108,18 @@ def expires_in(
         return "—"
 
 
-def round_column_values(list_of_columns, df):
-    """Round values in specified columns of a DataFrame to 4 decimal places."""
+def round_column_values(list_of_columns: list[str], df: pd.DataFrame) -> pd.DataFrame:
+    """Round values in specified columns of a DataFrame to 4 decimal places.
+
+    Mutates *df* in place and also returns it for convenience.
+
+    Args:
+        list_of_columns: Column names whose values should be rounded.
+        df: The DataFrame to modify.
+
+    Returns:
+        The same DataFrame with the specified columns rounded.
+    """
     for col in list_of_columns:
         if col in df.columns:
             df[col] = df[col].round(4)
@@ -133,6 +145,14 @@ def validate_top_n(value: object) -> str | None:
     max_n = 500
 
     try:
+        # Reject floats that are not whole numbers (e.g. 3.5)
+        if isinstance(value, float) and not value.is_integer():
+            return f"Invalid Top N \u2014 please enter a whole number between {min_n} and {max_n}."
+        # Also reject string representations of non-integers (e.g. "3.5")
+        if isinstance(value, str) and "." in value:
+            float_val = float(value)
+            if not float_val.is_integer():
+                return f"Invalid Top N \u2014 please enter a whole number between {min_n} and {max_n}."
         n = int(value)
     except (TypeError, ValueError):
         return f"Invalid Top N \u2014 please enter a number between {min_n} and {max_n}."
