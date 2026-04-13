@@ -144,7 +144,7 @@ def submit_substrate_product_similarity_job(
         when clearing stale state.
     """
     # Clear stale results when the modal is freshly opened
-    # do not use prevent update here because we want to return 
+    # do not use prevent update here because we want to return
     # an empty string to clear the results div
 
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
