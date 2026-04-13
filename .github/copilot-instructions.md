@@ -28,6 +28,8 @@
 - Callback functions names should start with a verb that describes the action they perform (e.g., `update`, `toggle`, `get`) then followed by a description of what they update or toggle (e.g., `update_active_link`, `toggle_dark_mode`).
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
 - In callbacks with early-exit guard clauses (e.g., no click, no triggered ID), use `raise PreventUpdate` (from `dash.exceptions`) instead of returning an empty string or `None`. This tells Dash to skip the update entirely, avoiding unnecessary DOM writes. See `my_tasks.py` for examples.
+- Pass `Output`, `Input`, and `State` as **positional arguments** to `@callback()` — do not wrap them in `[...]` lists (legacy Dash v1 pattern).
+- **For detailed callback authoring patterns** (guard clauses vs. intentional DOM writes, decorator syntax, naming), follow the [Write-Callback Agent](agents/write-callback.md).
 
 
 ## Inline Styles

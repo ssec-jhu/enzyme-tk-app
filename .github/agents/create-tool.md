@@ -46,8 +46,12 @@ To add a tool, create a folder with:
 ## 4. Backend & Callbacks
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
 - `compute.py` must export `def run(params: dict) -> dict`.
-- Callback functions names should start with a verb (e.g., `update_`, `toggle_`).
-- Use `raise PreventUpdate` for early-exit guard clauses.
+- **Do NOT echo input parameters back in the return dict.** The system stores `params` separately from `result` at submission time. The shared `build_result_input_params(job)` helper auto-renders all `job.params` on the results page. Only return keys that are **computed outputs** or **display metadata**:
+  - `_stat_cards` — summary stat cards for the results header.
+  - `_params_exclude` — list of param keys to hide from the auto-rendered input parameters table.
+  - `dataframe` — tabular results (`{"columns": [...], "data": [...]}`).
+  - Any tool-specific computed values that `results.py` explicitly reads from `job.result`.
+- For callback implementation patterns (guard clauses, decorator syntax, naming), follow the [Write-Callback Agent](write-callback.md) and examine existing tools.
 
-## 5. Canonical Template
-Always refer to the `timer_tool_template` folder for the canonical implementation pattern. If you need to make any deviation from this pattern, you MUST justify and ask for permission and document it in the code before implementing.
+## 5. Reference Material
+Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, follow the [Write-Callback Agent](write-callback.md) and examine existing tools like `substrate_product_similarity`.

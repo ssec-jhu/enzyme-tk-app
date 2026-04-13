@@ -106,14 +106,12 @@ def run(params: dict) -> dict:
     Returns:
         A JSON-serialisable dict with:
         - ``_stat_cards``: list of stat-card dicts (label/value).
-        - ``algorithms``: the selected algorithm keys.
-        - ``top_n``: requested result count.
-        - ``role``: the molecule role searched.
         - ``dataframe``: ``{"columns": [...], "data": [records]}``.
 
     Raises:
-        ValueError: When no valid databases are provided or the query
-            SMILES cannot be parsed.
+        ValueError: When no algorithms are selected, no valid
+            databases are provided, or the query SMILES cannot
+            be parsed.
     """
     # NOTE: Exceptions are not caught here — they propagate to
     # run_tool_task (tasks.py), which records the traceback and
@@ -131,6 +129,9 @@ def run(params: dict) -> dict:
     top_n: int = int(params["top_n"])
     role: str = params.get("role", "substrate")
 
+    if not similarity_algorithms:
+        raise ValueError("At least one similarity algorithm must be selected.")
+
     # Map algorithm value keys to their corresponding column names in the SubstrateDist output.
     similarity_algorithm_columns = {a["value"]: a["column"] for a in get_similarity_algorithms()}
 
@@ -140,11 +141,14 @@ def run(params: dict) -> dict:
     all_results: list[pd.DataFrame] = []
     total_scanned_rows_in_dbs = 0
     total_molecules = 0
+    databases_loaded = 0
 
     for db_filename in databases:
         csv_path = DATA_DIR / "reactions" / db_filename
         if not csv_path.exists():
             continue
+
+        databases_loaded += 1
 
         # for each selected database, load the CSV and clean it (e.g., drop unusable rows).
         db_df = load_and_clean_data(csv_path)
@@ -197,7 +201,7 @@ def run(params: dict) -> dict:
         return {
             # stat cards for the UI to display summary information about the search.
             "_stat_cards": [
-                {"label": "Databases Searched", "value": str(len(databases))},
+                {"label": "Databases Searched", "value": f"{databases_loaded}/{len(databases)}"},
                 {"label": "Reactions Scanned", "value": "0"},
                 {"label": "Molecules Compared", "value": "0"},
                 {"label": "Results Returned", "value": "0"},
@@ -238,7 +242,7 @@ def run(params: dict) -> dict:
 
     return {
         "_stat_cards": [
-            {"label": "Databases Searched", "value": str(len(databases))},
+            {"label": "Databases Searched", "value": f"{databases_loaded}/{len(databases)}"},
             {"label": "Reactions Scanned", "value": f"{total_scanned_rows_in_dbs:,}"},
             {"label": "Molecules Compared", "value": f"{total_molecules:,}"},
             {"label": "Results Returned", "value": str(len(output_df))},
