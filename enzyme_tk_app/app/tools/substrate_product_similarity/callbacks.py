@@ -144,8 +144,24 @@ def submit_substrate_product_similarity_job(
         when clearing stale state.
     """
     # Clear stale results when the modal is freshly opened
+    # do not use prevent update here because we want to return 
+    # an empty string to clear the results div
+
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
         return ""
+
+    # Server-side validation — the client disables the submit button
+    # when fields are empty, but a crafted request could bypass that.
+    if (
+        not task_name
+        or not task_name.strip()
+        or not smiles
+        or not smiles.strip()
+        or not databases
+        or not algorithms
+        or not role
+    ):
+        raise PreventUpdate
 
     # Validate top_n
     error = validate_top_n(top_n)
