@@ -273,7 +273,7 @@ def test_run_stat_card_databases_searched_matches_input(_patch_data_dir):
     result = run(_default_params())
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
 
-    assert stat_cards["Databases Searched"] == "1"
+    assert stat_cards["Databases Searched"] == "1/1"
 
 
 def test_run_stat_card_results_returned_matches_data(_patch_data_dir):
