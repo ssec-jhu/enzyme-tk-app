@@ -467,20 +467,6 @@ def test_subprod_toggle_modal_closes_on_cancel_click():
     assert result is False
 
 
-def test_subprod_toggle_modal_stays_open_on_submit_click():
-    """The substrate/product modal must stay open on submit so the user sees the job ID."""
-    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
-        toggle_substrate_product_similarity_modal,
-    )
-
-    with patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx:
-        mock_ctx.triggered_id = "id-btn-substrate-product-similarity-cancel"
-        # Simulating that only cancel closes the modal
-        result = toggle_substrate_product_similarity_modal(0, 1)
-
-    assert result is False
-
-
 def test_subprod_populate_example_sets_smiles_and_role():
     """Selecting an example must populate both the SMILES field and the role selector."""
     from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles

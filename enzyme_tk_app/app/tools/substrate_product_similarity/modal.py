@@ -250,13 +250,26 @@ def modal():
                                         width=3,
                                     ),
                                     dbc.Col(
-                                        dcc.Dropdown(
-                                            id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
-                                            options=db_options,
-                                            value=all_db_values,
-                                            multi=True,
-                                            placeholder="Select one or more databases...",
-                                            className="themed-control",
+                                        [
+                                            dcc.Dropdown(
+                                                id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
+                                                options=db_options,
+                                                value=all_db_values,
+                                                multi=True,
+                                                placeholder="Select one or more databases...",
+                                                className="themed-control",
+                                            ),
+                                        ]
+                                        + (
+                                            [
+                                                html.Small(
+                                                    "No reaction databases found. "
+                                                    "Check that CSV files exist in data/reactions/.",
+                                                    className="text-danger mt-1 d-block",
+                                                ),
+                                            ]
+                                            if not db_options
+                                            else []
                                         ),
                                         width=9,
                                     ),
