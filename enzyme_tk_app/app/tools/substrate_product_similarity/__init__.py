@@ -10,6 +10,7 @@ import enum
 
 from enzyme_tk_app.app.components.icons import ICON_TOOL_REACTION
 from enzyme_tk_app.app.tools import ToolDef
+from enzyme_tk_app.app.utils.columns import ENZYMETK_SIMILARITY_COLUMNS
 
 
 class MoleculeRole(enum.StrEnum):
@@ -59,14 +60,7 @@ class SimilarityAlgorithm(enum.StrEnum):
     @property
     def column(self) -> str:
         """Exact DataFrame column name produced by enzymetk."""
-        return _ENZYMETK_COLUMNS[self]
-
-
-_ENZYMETK_COLUMNS: dict[SimilarityAlgorithm, str] = {
-    SimilarityAlgorithm.TANIMOTO: "TanimotoSimilarity",
-    SimilarityAlgorithm.COSINE: "CosineSimilarity",
-    SimilarityAlgorithm.RUSSELL: "RusselSimilarity",
-}
+        return ENZYMETK_SIMILARITY_COLUMNS[self.value]
 
 
 TOOL_DEF: ToolDef = {

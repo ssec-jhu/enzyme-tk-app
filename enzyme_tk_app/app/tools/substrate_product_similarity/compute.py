@@ -19,11 +19,14 @@ from pathlib import Path
 import pandas as pd
 
 from enzyme_tk_app.app.tools.substrate_product_similarity import MoleculeRole, SimilarityAlgorithm
+from enzyme_tk_app.app.utils.columns import (
+    COL_DATABASE,
+    COL_MOL_INDEX,
+    COL_MOL_SMILES,
+    COL_MOL_SVG,
+    COL_UNMAPPED_SMILES,
+)
 from enzyme_tk_app.app.utils.data_loading import (
-    _COL_MOL_INDEX,
-    _COL_MOL_SMILES,
-    _COL_MOL_SVG,
-    _COL_UNMAPPED_SMILES,
     DATA_DIR,
     get_top_n_sorted_results,
     load_and_clean_data,
@@ -81,17 +84,17 @@ def _expand_reactions(db_df: pd.DataFrame, role: MoleculeRole) -> pd.DataFrame:
     db_df = db_df.copy()
     # The "_col_unmapped_smiles" column contains the original reaction SMILES string,
     # which we parse to extract the individual molecule SMILES for the chosen role.
-    db_df[_COL_MOL_SMILES] = db_df[_COL_UNMAPPED_SMILES].apply(_extract_molecules)
+    db_df[COL_MOL_SMILES] = db_df[COL_UNMAPPED_SMILES].apply(_extract_molecules)
 
     # Drop rows where no molecules could be extracted
-    db_df = db_df[db_df[_COL_MOL_SMILES].apply(len) > 0]
+    db_df = db_df[db_df[COL_MOL_SMILES].apply(len) > 0]
 
     # Explode so each molecule gets its own row
-    db_df = db_df.explode(_COL_MOL_SMILES, ignore_index=True)
+    db_df = db_df.explode(COL_MOL_SMILES, ignore_index=True)
 
     # Molecule index: 0-based position within the substrate/product list.
     # This is useful for tracking which molecule is which after the explosion.
-    db_df[_COL_MOL_INDEX] = db_df.groupby(["id", _COL_UNMAPPED_SMILES]).cumcount()
+    db_df[COL_MOL_INDEX] = db_df.groupby(["id", COL_UNMAPPED_SMILES]).cumcount()
 
     return db_df
 
@@ -183,14 +186,14 @@ def run(params: dict) -> dict:
         expanded_df[_ROW_ID] = range(len(expanded_df))
 
         # The SubstrateDist algorithm only needs the _ROW_ID and molecule SMILES columns.
-        sim_input = expanded_df[[_ROW_ID, _COL_MOL_SMILES]].copy()
+        sim_input = expanded_df[[_ROW_ID, COL_MOL_SMILES]].copy()
 
         # Run SubstrateDist — computes all three similarity metrics
         # in one pass.  The output includes the _ROW_ID for merging,
         # the query SMILES, the molecule SMILES, and the similarity scores.
         sd = SubstrateDist(
             id_column_name=_ROW_ID,
-            smiles_column_name=_COL_MOL_SMILES,
+            smiles_column_name=COL_MOL_SMILES,
             smiles_string=smiles,
         )
         # This may raise an exception if the input SMILES is invalid or
@@ -204,7 +207,7 @@ def run(params: dict) -> dict:
         merged = expanded_df.merge(sim_scores, on=_ROW_ID, how="inner")
 
         # Tag each row with its source database
-        merged["database"] = csv_path.stem.replace("_", " ").title()
+        merged[COL_DATABASE] = csv_path.stem.replace("_", " ").title()
         all_results.append(merged)
 
     if not all_results:
@@ -235,7 +238,7 @@ def run(params: dict) -> dict:
     # Generate SVG data URIs for the top-N molecules (not all — only results)
     uri_cache: dict[str, str] = {}
     uris = []
-    for mol_smi in sorted_top_n_results[_COL_MOL_SMILES]:
+    for mol_smi in sorted_top_n_results[COL_MOL_SMILES]:
         if mol_smi not in uri_cache:
             # the width and height of the image can be adjusted as needed,
             # but should be large enough to show details of the molecule without
@@ -243,7 +246,7 @@ def run(params: dict) -> dict:
             # and users can click to see the full image in a tooltip or modal.
             uri_cache[mol_smi] = smiles_to_svg_data_uri(mol_smi, width=500, height=300)
         uris.append(uri_cache[mol_smi])
-    sorted_top_n_results[_COL_MOL_SVG] = uris
+    sorted_top_n_results[COL_MOL_SVG] = uris
 
     # Drop internal join key — not useful in the output
     sorted_top_n_results = sorted_top_n_results.drop(columns=[_ROW_ID], errors="ignore")

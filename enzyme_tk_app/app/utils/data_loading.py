@@ -8,26 +8,31 @@ from pathlib import Path
 
 import pandas as pd
 
+from enzyme_tk_app.app.utils.columns import (
+    COL_EC_NUMBER,
+    COL_ENTRY,
+    COL_MOL_INDEX,
+    COL_MOL_SMILES,
+    COL_MOL_SVG,
+    COL_SEQUENCE,
+    COL_UNMAPPED_SMILES,
+    EXCLUDE_COLS,
+)
+
 # Base data directory (relative to this file).
 DATA_DIR = Path(__file__).parent.parent / "data"
 
-# Column in the CSV that contains the un-mapped reaction SMILES.
-_COL_UNMAPPED_SMILES = "unmapped"
-# Column name for the individual molecule SMILES extracted from a reaction.
-_COL_MOL_SMILES = "molecule_smiles"
-# Column name for the molecule's position index within the substrate/product list.
-_COL_MOL_INDEX = "molecule_index"
-# Column name for the rendered SVG of the molecule.
-_COL_MOL_SVG = "molecule_svg"
-# Columns to exclude from the final output (internal CSV index).
-_EXCLUDE_COLS = {"Unnamed: 0"}
-
-# Column in the sequence CSV that contains the EC classification.
-_COL_EC_NUMBER = "EC number"
-# Column in the sequence CSV that contains the protein sequence.
-_COL_SEQUENCE = "Sequence"
-# Column in the sequence CSV that contains the protein entry ID.
-_COL_ENTRY = "Entry"
+# Re-export column constants under their original private names so that
+# existing import sites (``from data_loading import _COL_…``) keep working
+# until they are migrated.  New code should import from ``columns.py``.
+_COL_UNMAPPED_SMILES = COL_UNMAPPED_SMILES
+_COL_MOL_SMILES = COL_MOL_SMILES
+_COL_MOL_INDEX = COL_MOL_INDEX
+_COL_MOL_SVG = COL_MOL_SVG
+_EXCLUDE_COLS = EXCLUDE_COLS
+_COL_EC_NUMBER = COL_EC_NUMBER
+_COL_SEQUENCE = COL_SEQUENCE
+_COL_ENTRY = COL_ENTRY
 
 
 def get_reaction_database_options():

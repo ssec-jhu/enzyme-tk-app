@@ -14,6 +14,7 @@ from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
 from enzyme_tk_app.app.components.results_helpers import build_ag_grid, shared_col_defs
+from enzyme_tk_app.app.utils.columns import COL_MOL_INDEX, COL_MOL_SMILES, COL_MOL_SVG
 
 
 def _get_column_defs() -> list[dict]:
@@ -25,7 +26,7 @@ def _get_column_defs() -> list[dict]:
     return [
         {
             # The "molecule_svg" column displays an inline SVG image of the molecule.
-            "field": "molecule_svg",
+            "field": COL_MOL_SVG,
             "cellRenderer": "SvgRenderer",
             "width": 200,
             # autoHeight tells AG Grid to automatically expand the row height
@@ -37,13 +38,13 @@ def _get_column_defs() -> list[dict]:
         },
         {
             # The "molecule_smiles" column shows the SMILES string for the molecule.
-            "field": "molecule_smiles",
+            "field": COL_MOL_SMILES,
             "wrapText": True,
             "width": 200,
         },
         {
             # The "molecule_index" column shows the index of the molecule in the dataset.
-            "field": "molecule_index",
+            "field": COL_MOL_INDEX,
             "width": 80,
         },
     ] + shared_col_defs()

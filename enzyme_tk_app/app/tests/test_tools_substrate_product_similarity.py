@@ -26,10 +26,10 @@ from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
     _expand_reactions,
     run,
 )
-from enzyme_tk_app.app.utils.data_loading import (
-    _COL_MOL_INDEX,
-    _COL_MOL_SMILES,
-    _COL_MOL_SVG,
+from enzyme_tk_app.app.utils.columns import (
+    COL_MOL_INDEX,
+    COL_MOL_SMILES,
+    COL_MOL_SVG,
 )
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -72,9 +72,9 @@ def test_expand_reactions_by_role(reaction, role, expected_smiles):
     result = _expand_reactions(df, role)
 
     assert len(result) == len(expected_smiles)
-    assert list(result[_COL_MOL_SMILES]) == expected_smiles
+    assert list(result[COL_MOL_SMILES]) == expected_smiles
     # molecule_index should be sequential (position within the molecule list)
-    assert list(result[_COL_MOL_INDEX]) == list(range(len(expected_smiles)))
+    assert list(result[COL_MOL_INDEX]) == list(range(len(expected_smiles)))
 
 
 def test_expand_reactions_preserves_metadata():
@@ -114,8 +114,8 @@ def test_expand_reactions_multiple_reactions():
     # molecule_index resets for each (id, unmapped) group
     first_rxn = result[result["id"] == 0]
     second_rxn = result[result["id"] == 1]
-    assert list(first_rxn[_COL_MOL_INDEX]) == [0, 1]
-    assert list(second_rxn[_COL_MOL_INDEX]) == [0, 1, 2]
+    assert list(first_rxn[COL_MOL_INDEX]) == [0, 1]
+    assert list(second_rxn[COL_MOL_INDEX]) == [0, 1, 2]
 
 
 # ── run() — return contract ──────────────────────────────────────────────────
@@ -220,11 +220,11 @@ def test_run_molecule_svg_column_present(_patch_data_dir):
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
 
-    assert _COL_MOL_SVG in output_columns, "molecule_svg column missing from output"
+    assert COL_MOL_SVG in output_columns, "molecule_svg column missing from output"
 
     # Check that SVG data URIs are base64-encoded SVGs
     for row in result["dataframe"]["data"]:
-        svg = row[_COL_MOL_SVG]
+        svg = row[COL_MOL_SVG]
         assert isinstance(svg, str), "SVG data URI should be a string"
         assert svg.startswith("data:image/svg+xml;base64,"), f"SVG data URI has unexpected prefix: {svg[:40]}..."
 
@@ -266,7 +266,7 @@ def test_run_molecule_smiles_column_present(_patch_data_dir):
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
 
-    assert _COL_MOL_SMILES in output_columns, "molecule_smiles column missing from output"
+    assert COL_MOL_SMILES in output_columns, "molecule_smiles column missing from output"
 
 
 # ── run() — stat card consistency ────────────────────────────────────────────
@@ -455,9 +455,9 @@ def test_run_known_scores(_patch_data_dir, csv_molecules_known_scores):
         )
 
         if case["expected_top_smiles"] is not None:
-            assert top_row[_COL_MOL_SMILES] == case["expected_top_smiles"], (
+            assert top_row[COL_MOL_SMILES] == case["expected_top_smiles"], (
                 f"Top result SMILES mismatch for query {case['query']!r}: "
-                f"expected {case['expected_top_smiles']!r}, got {top_row[_COL_MOL_SMILES]!r}"
+                f"expected {case['expected_top_smiles']!r}, got {top_row[COL_MOL_SMILES]!r}"
             )
 
 
