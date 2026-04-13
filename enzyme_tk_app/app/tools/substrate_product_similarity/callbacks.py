@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF
+from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
@@ -192,5 +192,5 @@ def submit_substrate_product_similarity_job(
     # Construct a user-friendly message that includes the job ID and a
     # summary of the search parameters.
     n_dbs = len(databases) if databases else 0
-    role_label = role.capitalize() if role else "Substrate"
+    role_label = role.capitalize() if role else MoleculeRole.SUBSTRATE.value.capitalize()
     return f"Job submitted — ID: {job_id} ({role_label} search across {n_dbs} database(s) for top {top_n} results)"

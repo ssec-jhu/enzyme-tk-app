@@ -14,10 +14,11 @@ of the parent reaction.
 """
 
 import time
+from pathlib import Path
 
 import pandas as pd
 
-from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity import MoleculeRole, SimilarityAlgorithm
 from enzyme_tk_app.app.utils.data_loading import (
     _COL_MOL_INDEX,
     _COL_MOL_SMILES,
@@ -33,7 +34,7 @@ from enzyme_tk_app.app.utils.formatting import round_column_values
 _ROW_ID = "_row_id"
 
 
-def _expand_reactions(db_df: pd.DataFrame, role: str) -> pd.DataFrame:
+def _expand_reactions(db_df: pd.DataFrame, role: MoleculeRole) -> pd.DataFrame:
     """Expand reaction rows into individual molecule rows.
 
     Splits the ``unmapped`` column on ``>>`` to separate substrates
@@ -43,17 +44,22 @@ def _expand_reactions(db_df: pd.DataFrame, role: str) -> pd.DataFrame:
     Args:
         db_df: DataFrame with an ``unmapped`` column containing
             reaction SMILES in ``substrates>>products`` format.
-        role: ``"substrate"`` (take the left side of ``>>``) or
-            ``"product"`` (take the right side).
+        role: Which side of the reaction to extract.
 
     Returns:
         DataFrame with added columns:
         - ``molecule_smiles``: individual molecule SMILES.
         - ``molecule_index``: 0-based position within the
           substrate/product list.
+
+    Raises:
+        ValueError: If *role* is not a ``MoleculeRole`` member.
     """
+    if not isinstance(role, MoleculeRole):
+        raise ValueError(f"role must be a MoleculeRole member, got {role!r}")
+
     # Determine which side of the reaction to extract based on the role.
-    side_index = 0 if role == "substrate" else 1
+    side_index = 0 if role is MoleculeRole.SUBSTRATE else 1
 
     def _extract_molecules(reaction_smiles: str) -> list[str]:
         """Split a reaction SMILES into individual molecules for the chosen side."""
@@ -125,15 +131,12 @@ def run(params: dict) -> dict:
     # Extract parameters with type hints for clarity.
     databases: list[str] = params["databases"]
     smiles: str = params["smiles"]
-    similarity_algorithms: list[str] = params["algorithms"]
+    similarity_algorithms = [SimilarityAlgorithm(a) for a in params["algorithms"]]
     top_n: int = int(params["top_n"])
-    role: str = params.get("role", "substrate")
+    role = MoleculeRole(params.get("role", MoleculeRole.SUBSTRATE.value))
 
     if not similarity_algorithms:
         raise ValueError("At least one similarity algorithm must be selected.")
-
-    # Map algorithm value keys to their corresponding column names in the SubstrateDist output.
-    similarity_algorithm_columns = {a["value"]: a["column"] for a in get_similarity_algorithms()}
 
     # Start a timer to measure total run time of the function.
     run_time_start = time.monotonic()
@@ -145,7 +148,13 @@ def run(params: dict) -> dict:
     databases_skipped: list[str] = []
 
     for db_filename in databases:
-        csv_path = DATA_DIR / "reactions" / db_filename
+        # Sanitise client-supplied filename: strip directory components
+        # to prevent path-traversal and enforce a .csv suffix.
+        safe_name = Path(db_filename).name
+        if not safe_name.endswith(".csv"):
+            databases_skipped.append(db_filename)
+            continue
+        csv_path = DATA_DIR / "reactions" / safe_name
         # A file can be missing if it was removed or renamed after
         # get_reaction_database_options() built the dropdown list.
         if not csv_path.exists():
@@ -190,7 +199,7 @@ def run(params: dict) -> dict:
 
         # Join similarity scores back to expanded metadata
         # SubstrateDist output has _ROW_ID, QuerySmiles, _MOL_SMILES_COL, and sim cols
-        sim_cols_to_join = [_ROW_ID] + list(similarity_algorithm_columns.values())
+        sim_cols_to_join = [_ROW_ID] + [algo.column for algo in SimilarityAlgorithm]
         sim_scores = result_df[sim_cols_to_join]
         merged = expanded_df.merge(sim_scores, on=_ROW_ID, how="inner")
 
@@ -220,7 +229,7 @@ def run(params: dict) -> dict:
     combined_results_across_all_db = pd.concat(all_results, ignore_index=True)
 
     # Resolve the primary algorithm's column name for sorting.
-    sort_col = similarity_algorithm_columns.get(similarity_algorithms[0], "TanimotoSimilarity")
+    sort_col = similarity_algorithms[0].column
     sorted_top_n_results = get_top_n_sorted_results(combined_results_across_all_db, sort_col, top_n)
 
     # Generate SVG data URIs for the top-N molecules (not all — only results)
@@ -240,9 +249,7 @@ def run(params: dict) -> dict:
     sorted_top_n_results = sorted_top_n_results.drop(columns=[_ROW_ID], errors="ignore")
 
     # Round similarity scores for display
-    selected_sim_cols = [
-        similarity_algorithm_columns[a] for a in similarity_algorithms if a in similarity_algorithm_columns
-    ]
+    selected_sim_cols = [algo.column for algo in similarity_algorithms]
     output_df = round_column_values(list_of_columns=selected_sim_cols, df=sorted_top_n_results)
 
     run_time = round(time.monotonic() - run_time_start, 3)

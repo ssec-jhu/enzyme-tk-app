@@ -43,7 +43,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_input_section_header,
     create_modal_submission_results,
 )
-from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole, get_similarity_algorithms
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 
 
@@ -57,22 +57,22 @@ def _get_example_smiles():
         {
             "label": "Substrate: Glucose",
             "value": "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
-            "role": "substrate",
+            "role": MoleculeRole.SUBSTRATE.value,
         },
         {
             "label": "Substrate: L-Alanine",
             "value": "C[C@@H](N)C(=O)O",
-            "role": "substrate",
+            "role": MoleculeRole.SUBSTRATE.value,
         },
         {
             "label": "Product: Pyruvate",
             "value": "CC(=O)C(=O)O",
-            "role": "product",
+            "role": MoleculeRole.PRODUCT.value,
         },
         {
             "label": "Product: Ethanol",
             "value": "CCO",
-            "role": "product",
+            "role": MoleculeRole.PRODUCT.value,
         },
     ]
 
@@ -162,10 +162,10 @@ def modal():
                                         dbc.RadioItems(
                                             id=f"id-radio-{TOOL_DEF['slug']}-role",
                                             options=[
-                                                {"label": "Substrate", "value": "substrate"},
-                                                {"label": "Product", "value": "product"},
+                                                {"label": "Substrate", "value": MoleculeRole.SUBSTRATE.value},
+                                                {"label": "Product", "value": MoleculeRole.PRODUCT.value},
                                             ],
-                                            value="substrate",
+                                            value=MoleculeRole.SUBSTRATE.value,
                                             inline=False,
                                             className="themed-control",
                                         ),

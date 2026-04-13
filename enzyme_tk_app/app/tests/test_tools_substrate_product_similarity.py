@@ -15,7 +15,11 @@ from unittest.mock import patch
 import pytest
 
 from enzyme_tk_app.app.tests.conftest import make_reaction_df
-from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity import (
+    MoleculeRole,
+    SimilarityAlgorithm,
+    get_similarity_algorithms,
+)
 from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
 from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
     _ROW_ID,
@@ -43,9 +47,9 @@ def _default_params(**overrides):
         "task_name": "test-run",
         "databases": ["test_reactions_20.csv"],
         "smiles": "O",
-        "algorithms": ["tanimoto"],
+        "algorithms": [SimilarityAlgorithm.TANIMOTO.value],
         "top_n": 10,
-        "role": "substrate",
+        "role": MoleculeRole.SUBSTRATE.value,
     }
     defaults.update(overrides)
     return defaults
@@ -57,8 +61,8 @@ def _default_params(**overrides):
 @pytest.mark.parametrize(
     ("reaction", "role", "expected_smiles"),
     [
-        ("A.B>>C", "substrate", ["A", "B"]),
-        ("A.B>>C.D", "product", ["C", "D"]),
+        ("A.B>>C", MoleculeRole.SUBSTRATE, ["A", "B"]),
+        ("A.B>>C.D", MoleculeRole.PRODUCT, ["C", "D"]),
     ],
     ids=["substrate-side", "product-side"],
 )
@@ -77,7 +81,7 @@ def test_expand_reactions_preserves_metadata():
     """Original columns are carried through to every expanded row."""
     df = make_reaction_df(["X.Y>>Z"])
     df["ec_num"] = "1.2.3.4"
-    result = _expand_reactions(df, "substrate")
+    result = _expand_reactions(df, MoleculeRole.SUBSTRATE)
 
     # Both expanded rows should carry the original ec_num value
     assert all(result["ec_num"] == "1.2.3.4")
@@ -86,8 +90,8 @@ def test_expand_reactions_preserves_metadata():
 @pytest.mark.parametrize(
     ("reaction", "role"),
     [
-        ("INVALID_NO_ARROW", "substrate"),
-        ("A.B>>", "product"),
+        ("INVALID_NO_ARROW", MoleculeRole.SUBSTRATE),
+        ("A.B>>", MoleculeRole.PRODUCT),
     ],
     ids=["malformed-no-arrow", "empty-product-side"],
 )
@@ -102,7 +106,7 @@ def test_expand_reactions_empty_result(reaction, role):
 def test_expand_reactions_multiple_reactions():
     """Multiple reactions expand independently, molecule_index resets per reaction."""
     df = make_reaction_df(["A.B>>C", "D.E.F>>G"])
-    result = _expand_reactions(df, "substrate")
+    result = _expand_reactions(df, MoleculeRole.SUBSTRATE)
 
     # 2 molecules from first reaction + 3 from second = 5 total
     assert len(result) == 5
@@ -171,7 +175,7 @@ def test_run_enzymetk_similarity_columns_present(_patch_data_dir):
     columns, this test fails immediately.
     """
     # Request all three algorithms so all columns appear in output
-    params = _default_params(algorithms=["tanimoto", "cosine", "russell"])
+    params = _default_params(algorithms=[a.value for a in SimilarityAlgorithm])
     result = run(params)
     output_columns = result["dataframe"]["columns"]
 
@@ -181,7 +185,7 @@ def test_run_enzymetk_similarity_columns_present(_patch_data_dir):
 
 def test_run_similarity_scores_are_floats_in_valid_range(_patch_data_dir):
     """All similarity scores must be floats in [0.0, 1.0]."""
-    params = _default_params(algorithms=["tanimoto", "cosine", "russell"])
+    params = _default_params(algorithms=[a.value for a in SimilarityAlgorithm])
     result = run(params)
 
     for row in result["dataframe"]["data"]:
@@ -193,11 +197,11 @@ def test_run_similarity_scores_are_floats_in_valid_range(_patch_data_dir):
 
 def test_run_single_algorithm_only_includes_selected_column(_patch_data_dir):
     """When only one algorithm is selected, the output still contains that column."""
-    params = _default_params(algorithms=["cosine"])
+    params = _default_params(algorithms=[SimilarityAlgorithm.COSINE.value])
     result = run(params)
     output_columns = result["dataframe"]["columns"]
 
-    assert "CosineSimilarity" in output_columns
+    assert SimilarityAlgorithm.COSINE.column in output_columns
 
 
 # ── run() — output quality ───────────────────────────────────────────────────
@@ -237,11 +241,11 @@ def test_run_database_column_derived_from_filename(_patch_data_dir):
 
 def test_run_similarity_scores_rounded_to_4_decimals(_patch_data_dir):
     """Selected similarity columns should be rounded to at most 4 decimal places."""
-    params = _default_params(algorithms=["tanimoto"])
+    params = _default_params(algorithms=[SimilarityAlgorithm.TANIMOTO.value])
     result = run(params)
 
     for row in result["dataframe"]["data"]:
-        score = row["TanimotoSimilarity"]
+        score = row[SimilarityAlgorithm.TANIMOTO.column]
         # Convert to string and check decimal places
         score_str = f"{score:.10f}".rstrip("0")
         if "." in score_str:
@@ -311,6 +315,27 @@ def test_run_product_role(_patch_data_dir):
     assert len(result["dataframe"]["data"]) > 0, "Expected results for product role search"
 
 
+def test_run_invalid_role_raises_value_error(_patch_data_dir):
+    """run() must reject an invalid role string with a ValueError."""
+    params = _default_params(role="invalid")
+    with pytest.raises(ValueError, match="not a valid MoleculeRole"):
+        run(params)
+
+
+def test_expand_reactions_invalid_role_raises_value_error():
+    """_expand_reactions() must reject a non-MoleculeRole value."""
+    df = make_reaction_df(["A.B>>C"])
+    with pytest.raises(ValueError, match="role must be a MoleculeRole member"):
+        _expand_reactions(df, "invalid")
+
+
+def test_run_invalid_algorithm_raises_value_error(_patch_data_dir):
+    """run() must reject an invalid algorithm string with a ValueError."""
+    params = _default_params(algorithms=["bogus"])
+    with pytest.raises(ValueError, match="not a valid SimilarityAlgorithm"):
+        run(params)
+
+
 # ── run() — edge cases ───────────────────────────────────────────────────────
 
 
@@ -345,8 +370,8 @@ def test_run_data_rows_have_consistent_columns(_patch_data_dir):
 @pytest.mark.parametrize(
     ("algorithm", "score_column"),
     [
-        ("tanimoto", "TanimotoSimilarity"),
-        ("cosine", "CosineSimilarity"),
+        (SimilarityAlgorithm.TANIMOTO.value, SimilarityAlgorithm.TANIMOTO.column),
+        (SimilarityAlgorithm.COSINE.value, SimilarityAlgorithm.COSINE.column),
     ],
     ids=["tanimoto", "cosine"],
 )
@@ -375,8 +400,8 @@ def test_run_exact_substrate_returns_score_1(_patch_data_dir, csv_molecules, alg
 @pytest.mark.parametrize(
     ("algorithm", "score_column"),
     [
-        ("tanimoto", "TanimotoSimilarity"),
-        ("cosine", "CosineSimilarity"),
+        (SimilarityAlgorithm.TANIMOTO.value, SimilarityAlgorithm.TANIMOTO.column),
+        (SimilarityAlgorithm.COSINE.value, SimilarityAlgorithm.COSINE.column),
     ],
     ids=["tanimoto", "cosine"],
 )
@@ -410,23 +435,23 @@ def test_run_known_scores(_patch_data_dir, csv_molecules_known_scores):
         params = _default_params(
             smiles=case["query"],
             role=case["role"],
-            algorithms=["tanimoto", "cosine", "russell"],
+            algorithms=[a.value for a in SimilarityAlgorithm],
             top_n=20,
         )
         result = run(params)
         top_row = result["dataframe"]["data"][0]
 
-        assert top_row["TanimotoSimilarity"] == case["expected_tanimoto"], (
+        assert top_row[SimilarityAlgorithm.TANIMOTO.column] == case["expected_tanimoto"], (
             f"Tanimoto mismatch for query {case['query']!r}: "
-            f"expected {case['expected_tanimoto']}, got {top_row['TanimotoSimilarity']}"
+            f"expected {case['expected_tanimoto']}, got {top_row[SimilarityAlgorithm.TANIMOTO.column]}"
         )
-        assert top_row["CosineSimilarity"] == case["expected_cosine"], (
+        assert top_row[SimilarityAlgorithm.COSINE.column] == case["expected_cosine"], (
             f"Cosine mismatch for query {case['query']!r}: "
-            f"expected {case['expected_cosine']}, got {top_row['CosineSimilarity']}"
+            f"expected {case['expected_cosine']}, got {top_row[SimilarityAlgorithm.COSINE.column]}"
         )
-        assert top_row["RusselSimilarity"] == case["expected_russell"], (
+        assert top_row[SimilarityAlgorithm.RUSSELL.column] == case["expected_russell"], (
             f"Russell mismatch for query {case['query']!r}: "
-            f"expected {case['expected_russell']}, got {top_row['RusselSimilarity']}"
+            f"expected {case['expected_russell']}, got {top_row[SimilarityAlgorithm.RUSSELL.column]}"
         )
 
         if case["expected_top_smiles"] is not None:
