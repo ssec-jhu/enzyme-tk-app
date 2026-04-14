@@ -33,6 +33,10 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 **Trigger:** When asked to "create a new tool", "add a new algorithm", or "generate a tool scaffold".
 **Action:** The agent MUST follow the architectural guidelines for tool discovery, single-source slug invariants, and module structure defined in [`.github/agents/create-tool.md`](.github/agents/create-tool.md). For any modal UI generation, it MUST delegate to the Modal Creation Agent.
 
+## Write-Callback Agent
+**Trigger:** When writing, creating, or modifying Dash `@callback` functions.
+**Action:** The agent MUST follow the decorator syntax, guard-clause, and naming patterns defined in [`.github/agents/write-callback.md`](.github/agents/write-callback.md).
+
 ## AG Grid Table Agent
 **Trigger:** When creating, modifying, or adding columns to an AG Grid results table (e.g., `results.py`).
 **Action:** The agent MUST follow the column definition rules, theme conventions, and `autoHeight` guidelines defined in [`.github/agents/create-ag-grid.md`](.github/agents/create-ag-grid.md).
