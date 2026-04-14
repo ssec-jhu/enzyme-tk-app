@@ -32,6 +32,7 @@ from enzyme_tk_app.app.utils.data_loading import (
     load_and_clean_data,
 )
 from enzyme_tk_app.app.utils.formatting import round_column_values
+from enzyme_tk_app.app.utils.smiles_rendering import generate_cached_svg_uris, smiles_to_svg_data_uri
 
 # Temporary column name used as the join key for SubstrateDist.
 _ROW_ID = "_row_id"
@@ -133,6 +134,7 @@ def run(params: dict) -> dict:
     databases: list[str] = params["databases"]
     smiles: str = params["smiles"]
     similarity_algorithms = [SimilarityAlgorithm(a) for a in params["algorithms"]]
+    top_n: int = int(params["top_n"])
     role = MoleculeRole(params.get("role", MoleculeRole.SUBSTRATE.value))
 
     if not similarity_algorithms:
