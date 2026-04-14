@@ -129,13 +129,10 @@ def run(params: dict) -> dict:
     # Lazy import — enzymetk + rdkit are heavy; only load in the worker.
     from enzymetk.similarity_substrate_step import SubstrateDist  # noqa: PLC0415
 
-    from enzyme_tk_app.app.utils.smiles_rendering import smiles_to_svg_data_uri  # noqa: PLC0415
-
     # Extract parameters with type hints for clarity.
     databases: list[str] = params["databases"]
     smiles: str = params["smiles"]
     similarity_algorithms = [SimilarityAlgorithm(a) for a in params["algorithms"]]
-    top_n: int = int(params["top_n"])
     role = MoleculeRole(params.get("role", MoleculeRole.SUBSTRATE.value))
 
     if not similarity_algorithms:
@@ -236,17 +233,9 @@ def run(params: dict) -> dict:
     sorted_top_n_results = get_top_n_sorted_results(combined_results_across_all_db, sort_col, top_n)
 
     # Generate SVG data URIs for the top-N molecules (not all — only results)
-    uri_cache: dict[str, str] = {}
-    uris = []
-    for mol_smi in sorted_top_n_results[COL_MOL_SMILES]:
-        if mol_smi not in uri_cache:
-            # the width and height of the image can be adjusted as needed,
-            # but should be large enough to show details of the molecule without
-            # being too large for the UI. The table will show a thumbnail,
-            # and users can click to see the full image in a tooltip or modal.
-            uri_cache[mol_smi] = smiles_to_svg_data_uri(mol_smi, width=500, height=300)
-        uris.append(uri_cache[mol_smi])
-    sorted_top_n_results[COL_MOL_SVG] = uris
+    sorted_top_n_results[COL_MOL_SVG] = generate_cached_svg_uris(
+        sorted_top_n_results[COL_MOL_SMILES], smiles_to_svg_data_uri, width=500, height=300
+    )
 
     # Drop internal join key — not useful in the output
     sorted_top_n_results = sorted_top_n_results.drop(columns=[_ROW_ID], errors="ignore")
