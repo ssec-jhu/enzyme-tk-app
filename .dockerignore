@@ -1,0 +1,41 @@
+# Version control
+.git/
+.gitignore
+
+# CI / tooling
+.github/
+.tox/
+githooks/
+
+# Documentation & coverage reports
+docs/
+coverage.html/
+coverage.xml
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Dev / test files
+tests/
+tox.ini
+Makefile
+codecov.yml
+CODEOWNERS
+CODE_OF_CONDUCT.md
+CONTRIBUTING.md
+AGENTS.md
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Docker (prevent recursive copy)
+Dockerfile
+docker-compose.yml
