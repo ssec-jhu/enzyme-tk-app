@@ -343,7 +343,7 @@ def test_compute_result_is_json_serializable():
 
 
 def test_compute_stat_cards_timer_label_matches_requested_seconds():
-    """The 'Timer Set to' stat card must reflect the requested_seconds scalar."""
+    """The 'Timer Set to' stat card must reflect the requested seconds param."""
     from enzyme_tk_app.app.tools.timer_tool_template.compute import run  # noqa: PLC0415
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.compute.time.sleep"):
@@ -351,7 +351,8 @@ def test_compute_stat_cards_timer_label_matches_requested_seconds():
 
     stat_card_timer = next(m for m in result["_stat_cards"] if m["label"] == "Timer Set to")
     assert stat_card_timer["value"] == "42s"
-    assert result["requested_seconds"] == 42
+    # requested_seconds is no longer echoed in result — it's auto-displayed from job.params
+    assert "requested_seconds" not in result
 
 
 def test_compute_stat_cards_rows_generated_matches_dataframe_length():
