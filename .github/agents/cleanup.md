@@ -282,8 +282,8 @@ Then:
    called or referenced in tests).
 3. **Delete** unused CSS class rules from the relevant `.css` file.
 4. **Delete** unreferenced asset files.
-5. Run `tox run -e format` to clean up any resulting unused imports.
-6. Run `tox run -e check-style` to verify no regressions.
+5. Run the **Verify Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
+   (`tox run -e format` then `tox`) to clean up unused imports and verify no regressions.
 
 ---
 
@@ -302,5 +302,5 @@ Then:
 - `server = app.server` in `app.py` is used by gunicorn — never flag it.
 - Test files (`test_*.py`) are consumers, not candidates for cleanup.
   Do not flag symbols that are only used in tests as "unused".
-- After cleanup, always run format + lint to keep the codebase green.
+- After cleanup, always run the Verify Agent to keep the codebase green.
 

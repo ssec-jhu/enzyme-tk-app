@@ -210,3 +210,16 @@ dashGridOptions={
 | SVG image | `True` | — | — | `"SvgRenderer"` | `False` |
 | Long text (truncate) | — | — | — | — | `True` (default) |
 | Long text (must wrap) | `True` | — | `"cell-wrap-dash-ag-grid"` | — | `True` (default) |
+
+---
+
+## MANDATORY AFTER-CREATION WORKFLOW
+
+After creating or modifying AG Grid table code, you **MUST** execute the
+**Verify Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
+(`tox run -e format` then `tox`). Fix any failures before concluding.
+
+*Do not rely on the user to run these commands.*
+*Do not just summarize what to do.*
+*You must execute them yourself, wait for the results, and fix any failures
+before concluding your task.*
