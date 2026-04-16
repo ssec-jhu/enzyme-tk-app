@@ -172,3 +172,16 @@ This empty div is populated by the submit callback with a job-ID confirmation or
 
 ## 10. Canonical Reference
 The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.py`. When in doubt, mirror its structure, docstring, and commenting style exactly.
+
+---
+
+## MANDATORY AFTER-CREATION WORKFLOW
+
+After creating or modifying modal files, you **MUST** execute the **Verify
+Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
+(`tox run -e format` then `tox`). Fix any failures before concluding.
+
+*Do not rely on the user to run these commands.*
+*Do not just summarize what to do.*
+*You must execute them yourself, wait for the results, and fix any failures
+before concluding your task.*

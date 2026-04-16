@@ -69,3 +69,16 @@ def submit_job(submit_clicks, launch_clicks, ...):
 
 - **`PreventUpdate` usage:** See `enzyme_tk_app/app/pages/my_tasks.py` — uses `raise PreventUpdate` consistently in all action callback guard clauses.
 - **Positional-arg decorator style:** See `enzyme_tk_app/app/tools/substrate_product_similarity/callbacks.py` — all `@callback` decorators use positional args, never list syntax.
+
+---
+
+## MANDATORY AFTER-CALLBACK WORKFLOW
+
+After creating or modifying callback code, you **MUST** execute the **Verify
+Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
+(`tox run -e format` then `tox`). Fix any failures before concluding.
+
+*Do not rely on the user to run these commands.*
+*Do not just summarize what to do.*
+*You must execute them yourself, wait for the results, and fix any failures
+before concluding your task.*
