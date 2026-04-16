@@ -1,14 +1,29 @@
 """Tests for the Dash app configuration, page layout, and UI components."""
 
+import dash
+import pytest
 from dash import dcc, html
 
 from enzyme_tk_app.app.app import app  # noqa: F401 — must import before pages to satisfy dash.register_page()
+from enzyme_tk_app.app.app import layout as app_layout
 from enzyme_tk_app.app.components.footer import PARTNERS
 from enzyme_tk_app.app.components.icons import ICON_SOCIAL_GITHUB
-from enzyme_tk_app.app.components.navbar import NAV_LINKS, make_nav_link
+from enzyme_tk_app.app.components.navbar import NAV_LINKS, make_nav_link, update_active_link
 from enzyme_tk_app.app.pages.home import layout as home_layout
 
 from .conftest import find_components, get_text
+
+# -- App layout --
+
+
+def test_app_layout_returns_div_with_navbar_page_container_and_footer():
+    """app.layout() must return an html.Div with navbar, page_container, and footer."""
+    result = app_layout()
+
+    assert isinstance(result, html.Div)
+    assert len(result.children) == 3
+    # The second child must be the Dash page container.
+    assert result.children[1] is dash.page_container
 
 
 def test_home_layout_returns_div_with_hero_and_tools():
@@ -47,6 +62,30 @@ def test_make_nav_link_active_with_hash():
 
     link_wrong_hash = make_nav_link({"label": "Tools", "href": "/#tools"}, pathname="/", url_hash="")
     assert "active" not in link_wrong_hash.className
+
+
+@pytest.mark.parametrize(
+    ("pathname", "url_hash", "expected_active_label"),
+    [
+        ("/", "", "Home"),
+        ("/", "#tools", "Tools"),
+        ("/my-tasks", "", "My Tasks"),
+        ("/nonexistent", "", None),
+    ],
+    ids=["home-active", "tools-hash-active", "my-tasks-active", "no-match"],
+)
+def test_update_active_link_marks_correct_link(pathname, url_hash, expected_active_label):
+    """update_active_link must return nav links with exactly one (or zero) marked active."""
+    links = update_active_link(pathname, url_hash)
+
+    assert len(links) == len(NAV_LINKS)
+    active_links = [link for link in links if "active" in link.className]
+
+    if expected_active_label is None:
+        assert len(active_links) == 0, "No link should be active for an unmatched pathname"
+    else:
+        assert len(active_links) == 1, f"Expected exactly one active link, got {len(active_links)}"
+        assert active_links[0].children == expected_active_label
 
 
 # -- Footer --
