@@ -10,17 +10,24 @@ production reactions database is used as the test fixture.
 """
 
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from dash import html
+from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import make_reaction_df
+from enzyme_tk_app.app.app import server
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df
 from enzyme_tk_app.app.tools.substrate_product_similarity import (
+    TOOL_DEF,
     MoleculeRole,
     SimilarityAlgorithm,
     get_similarity_algorithms,
 )
-from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import validate_substrate_product_form
+from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import (
+    submit_substrate_product_similarity_job,
+    validate_substrate_product_form,
+)
 from enzyme_tk_app.app.tools.substrate_product_similarity.compute import (
     _ROW_ID,
     _expand_reactions,
@@ -360,6 +367,37 @@ def test_run_data_rows_have_consistent_columns(_patch_data_dir):
         assert set(row.keys()) == columns, f"Row {i} keys {set(row.keys())} differ from columns {columns}"
 
 
+def test_run_empty_algorithms_raises_value_error(_patch_data_dir):
+    """run() must reject an empty algorithms list with a ValueError."""
+    params = _default_params(algorithms=[])
+    with pytest.raises(ValueError, match="At least one similarity algorithm must be selected"):
+        run(params)
+
+
+def test_run_non_csv_database_is_skipped(_patch_data_dir):
+    """A database filename without a .csv suffix must be skipped, not crash."""
+    params = _default_params(databases=["not_a_csv.txt"])
+    result = run(params)
+
+    assert result["dataframe"]["data"] == []
+    assert result["dataframe"]["columns"] == []
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["Databases Searched"] == "0/1"
+    assert stat_cards["Databases Skipped"] == "not_a_csv.txt"
+
+
+def test_run_skipped_databases_stat_card_in_success_path(_patch_data_dir):
+    """When some databases are skipped but others produce results, the stat card appears."""
+    params = _default_params(databases=["test_reactions_20.csv", "bad.txt"])
+    result = run(params)
+
+    # Valid database should still produce results
+    assert len(result["dataframe"]["data"]) > 0
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["Databases Searched"] == "1/2"
+    assert stat_cards["Databases Skipped"] == "bad.txt"
+
+
 # ── run() — exact molecule match (score = 1.0) ──────────────────────────────
 # Uses the ``csv_molecules`` fixture to iterate over real molecules
 # extracted from the test CSV.  When a molecule is used as the query
@@ -567,3 +605,178 @@ def test_subprod_validate_form_disabled_when_whitespace_only():
     """Submit must be disabled when fields contain only whitespace."""
 
     assert validate_substrate_product_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
+
+
+# ── Results layout ───────────────────────────────────────────────────────────
+
+
+def test_subprod_get_column_defs_fields_are_unique():
+    """_get_column_defs must return unique field names with required keys."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.results import _get_column_defs
+
+    col_defs = _get_column_defs()
+
+    assert isinstance(col_defs, list)
+    assert len(col_defs) > 0, "Expected at least one column definition"
+
+    for cd in col_defs:
+        assert "field" in cd, f"Column def missing 'field': {cd}"
+
+    fields = [cd["field"] for cd in col_defs]
+    assert len(fields) == len(set(fields)), f"Duplicate fields: {[f for f in fields if fields.count(f) > 1]}"
+
+
+def test_subprod_results_layout_renders_ag_grid_with_data():
+    """results_layout must produce an html.Div containing an AgGrid when data is present."""
+    import dash_ag_grid as dag
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.results import results_layout
+
+    job = make_job(
+        result={
+            "dataframe": {
+                "columns": [COL_MOL_SVG, COL_MOL_SMILES, COL_MOL_INDEX],
+                "data": [
+                    {COL_MOL_SVG: "<svg/>", COL_MOL_SMILES: "CCO", COL_MOL_INDEX: 1},
+                    {COL_MOL_SVG: "<svg/>", COL_MOL_SMILES: "O", COL_MOL_INDEX: 2},
+                ],
+            },
+        },
+    )
+    layout = results_layout(job)
+
+    assert isinstance(layout, html.Div)
+
+    grids = find_components(layout, dag.AgGrid)
+    assert len(grids) == 1, "Expected exactly one AgGrid in results_layout"
+    assert len(grids[0].rowData) == 2, "AgGrid should contain the two data rows"
+
+
+@pytest.mark.parametrize(
+    "result_dict",
+    [
+        None,
+        {},
+        {"dataframe": {}},
+        {"dataframe": {"columns": ["a"]}},
+        {"dataframe": {"data": []}},
+        {"dataframe": {"columns": ["a"], "data": []}},
+    ],
+    ids=[
+        "none-result",
+        "empty-result",
+        "empty-dataframe",
+        "missing-data-key",
+        "missing-columns-key",
+        "empty-data-list",
+    ],
+)
+def test_subprod_results_layout_shows_fallback_for_missing_or_empty_data(result_dict):
+    """results_layout must show 'No similar molecules found.' when dataframe is missing, malformed, or empty."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.results import results_layout
+
+    job = make_job(result=result_dict)
+    layout = results_layout(job)
+
+    assert isinstance(layout, html.Div)
+    paragraphs = find_components(layout, html.P)
+    assert any("No similar molecules found." in str(p.children) for p in paragraphs), (
+        "Expected fallback message 'No similar molecules found.'"
+    )
+
+
+# ── Modal layout ─────────────────────────────────────────────────────────────
+
+
+def test_subprod_get_example_smiles_returns_non_empty_list():
+    """_get_example_smiles must return a non-empty list of label/value/role dicts."""
+    from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
+
+    examples = _get_example_smiles()
+    assert isinstance(examples, list)
+    assert len(examples) >= 1
+    for ex in examples:
+        assert "label" in ex and "value" in ex and "role" in ex
+        assert len(ex["value"]) > 0, "Example SMILES must not be empty"
+
+
+def test_subprod_modal_returns_dbc_modal():
+    """modal() must return a dbc.Modal with the correct ID."""
+    import dash_bootstrap_components as dbc
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.modal import modal
+
+    component = modal()
+    assert isinstance(component, dbc.Modal)
+    assert component.id == f"id-modal-{TOOL_DEF['slug']}"
+
+
+# ── Submit callback ──────────────────────────────────────────────────────────
+
+
+def test_subprod_submit_clears_results_on_launch():
+    """Re-opening the modal must clear stale results without calling the scheduler."""
+    with (
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler") as mock_sched,
+    ):
+        mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
+        result = submit_substrate_product_similarity_job(0, 1, "t", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate")
+
+    assert result == ""
+    mock_sched.assert_not_called()
+
+
+def test_subprod_submit_raises_prevent_update_when_fields_empty():
+    """Missing required fields must raise PreventUpdate."""
+    with (
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+        pytest.raises(PreventUpdate),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        submit_substrate_product_similarity_job(1, 0, "", None, "", None, 10, None)
+
+
+def test_subprod_submit_returns_error_when_top_n_invalid():
+    """An invalid Top N value must return the validation error without scheduling a job."""
+    mock_scheduler = MagicMock()
+
+    with (
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
+            return_value=mock_scheduler,
+        ),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_substrate_product_similarity_job(
+            1, 0, "My Task", ["db.csv"], "CCO", ["tanimoto"], None, "substrate"
+        )
+
+    assert "Invalid" in result
+    mock_scheduler.submit_job.assert_not_called()
+
+
+def test_subprod_submit_returns_job_id():
+    """A valid submission must return a message containing the job ID."""
+    mock_scheduler = MagicMock()
+    mock_scheduler.submit_job.return_value = "job-sub-789"
+
+    with server.test_request_context():
+        from flask import g
+
+        g.session_id = "sess-1"
+        with (
+            patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
+                return_value=mock_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_substrate_product_similarity_job(
+                1, 0, "Glucose search", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate"
+            )
+
+    assert "job-sub-789" in result
+    assert "Substrate" in result
