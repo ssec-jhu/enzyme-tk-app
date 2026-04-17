@@ -38,6 +38,14 @@ import time
 
 import pandas as pd
 
+from enzyme_tk_app.app.utils.columns import (
+    COL_ACTIVITY_SCORE,
+    COL_SAMPLE_ID,
+    COL_STABILITY_SCORE,
+    COL_TEMPERATURE_C,
+    COL_YIELD_PCT,
+)
+
 
 def _generate_random_dataframe(n_rows: int = 20) -> pd.DataFrame:
     """Create a random DataFrame of simulated assay results.
@@ -55,11 +63,11 @@ def _generate_random_dataframe(n_rows: int = 20) -> pd.DataFrame:
     # Row-ID prefixes used to populate the demo DataFrame.
     ids = ["ENZ", "MUT", "WT", "VAR"]
     data = {
-        "sample_id": [f"{random.choice(ids)}-{i:03d}" for i in range(1, n_rows + 1)],
-        "activity_score": [round(random.uniform(0.5, 150.0), 2) for _ in range(n_rows)],
-        "stability_score": [round(random.uniform(35.0, 85.0), 1) for _ in range(n_rows)],
-        "temperature_c": [random.randint(20, 80) for _ in range(n_rows)],
-        "yield_pct": [round(random.uniform(5.0, 98.0), 1) for _ in range(n_rows)],
+        COL_SAMPLE_ID: [f"{random.choice(ids)}-{i:03d}" for i in range(1, n_rows + 1)],
+        COL_ACTIVITY_SCORE: [round(random.uniform(0.5, 150.0), 2) for _ in range(n_rows)],
+        COL_STABILITY_SCORE: [round(random.uniform(35.0, 85.0), 1) for _ in range(n_rows)],
+        COL_TEMPERATURE_C: [random.randint(20, 80) for _ in range(n_rows)],
+        COL_YIELD_PCT: [round(random.uniform(5.0, 98.0), 1) for _ in range(n_rows)],
     }
     return pd.DataFrame(data)
 
@@ -129,10 +137,6 @@ def run(params: dict) -> dict:
         # In this demo we hide ``simulate_failure`` — it is only useful
         # for developers, not end-users reviewing results.
         "_params_exclude": ["simulate_failure"],
-        # ── Tool-specific scalar values ─────────────────────────────
-        # These are available in ``results.py`` via ``job.result``.
-        "requested_seconds": seconds,
-        "actual_elapsed": round(elapsed, 3),
         # ── Tabular data ────────────────────────────────────────────
         # Serialised as {"columns": [...], "data": [records]} so it
         # can be fed directly into ``dash_table.DataTable``.
