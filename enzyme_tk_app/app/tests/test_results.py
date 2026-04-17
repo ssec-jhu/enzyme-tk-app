@@ -1,3 +1,4 @@
+import pytest
 from dash import html
 
 from enzyme_tk_app.app.components.results_helpers import (
@@ -13,25 +14,20 @@ from .conftest import find_components, get_text, make_job
 # ---------------------------------------------------------------------------
 
 
-def test_build_result_stat_cards_returns_none_when_no_stat_cards():
-    """Jobs without a ``_stat_cards`` key in the result should produce ``None``."""
-    assert build_result_stat_cards(make_job(result={"data": [1, 2]})) is None
-
-
-def test_build_result_stat_cards_returns_none_when_result_is_none():
-    """A job with ``result=None`` should not crash and should return ``None``."""
-    assert build_result_stat_cards(make_job(result=None)) is None
-
-
-def test_build_result_stat_cards_returns_none_for_non_list_stat_cards():
-    """``_stat_cards`` must be a list; a string or dict should be treated as absent."""
-    assert build_result_stat_cards(make_job(result={"_stat_cards": "not-a-list"})) is None
-    assert build_result_stat_cards(make_job(result={"_stat_cards": {"label": "x", "value": "y"}})) is None
-
-
-def test_build_result_stat_cards_returns_none_for_empty_stat_cards_list():
-    """An empty ``_stat_cards`` list produces no cards, so the helper returns ``None``."""
-    assert build_result_stat_cards(make_job(result={"_stat_cards": []})) is None
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"data": [1, 2]},
+        None,
+        {"_stat_cards": "not-a-list"},
+        {"_stat_cards": {"label": "x", "value": "y"}},
+        {"_stat_cards": []},
+    ],
+    ids=["no-key", "none-result", "string-stat-cards", "dict-stat-cards", "empty-list"],
+)
+def test_build_result_stat_cards_returns_none_for_absent_or_invalid(result):
+    """``build_result_stat_cards`` returns ``None`` when ``_stat_cards`` is missing, non-list, or empty."""
+    assert build_result_stat_cards(make_job(result=result)) is None
 
 
 def test_build_result_stat_cards_renders_stat_cards():
@@ -172,21 +168,16 @@ def test_build_input_params_non_string_values_are_stringified():
 # ---------------------------------------------------------------------------
 
 
-def test_pretty_label_snake_case():
-    """``protein_sequence`` → ``Protein Sequence``."""
-    assert _pretty_label("protein_sequence") == "Protein Sequence"
-
-
-def test_pretty_label_kebab_case():
-    """``max-duration`` → ``Max Duration``."""
-    assert _pretty_label("max-duration") == "Max Duration"
-
-
-def test_pretty_label_single_word():
-    """A single-word key should just be title-cased."""
-    assert _pretty_label("temperature") == "Temperature"
-
-
-def test_pretty_label_already_titlecase():
-    """Already well-formatted keys should pass through unchanged."""
-    assert _pretty_label("Name") == "Name"
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("protein_sequence", "Protein Sequence"),
+        ("max-duration", "Max Duration"),
+        ("temperature", "Temperature"),
+        ("Name", "Name"),
+    ],
+    ids=["snake-case", "kebab-case", "single-word", "already-titlecase"],
+)
+def test_pretty_label(raw, expected):
+    """``_pretty_label`` converts raw keys to human-friendly title-case labels."""
+    assert _pretty_label(raw) == expected
