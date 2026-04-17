@@ -3,7 +3,7 @@
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.tools import TOOLS
+from enzyme_tk_app.app.tools import TOOLS, ToolDef
 
 from .conftest import find_components, get_text
 
@@ -15,7 +15,7 @@ def test_tools_list_not_empty():
 
 
 def test_every_tool_has_required_keys():
-    required = {"title", "desc", "icon"}
+    required = ToolDef.__required_keys__
     for tool in TOOLS:
         missing = required - tool.keys()
         assert not missing, f"Tool '{tool.get('title', '?')}' missing keys: {missing}"
@@ -45,7 +45,8 @@ def test_tool_card_displays_title_and_description(sample_tool_card):
 
 def test_tool_card_has_launch_action(sample_tool_card):
     buttons = find_components(sample_tool_card, dbc.Button)
-    launch_buttons = [b for b in buttons if getattr(b, "children", None) == "Launch →"]
+    # Match on structural ID pattern rather than button label text.
+    launch_buttons = [b for b in buttons if (getattr(b, "id", "") or "").startswith("id-btn-launch-")]
     assert len(launch_buttons) == 1
 
 
