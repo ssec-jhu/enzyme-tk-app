@@ -64,6 +64,9 @@ def run(params: dict) -> dict:
     similarity_algorithms = [SimilarityAlgorithm(a) for a in params["algorithms"]]
     top_n: int = int(params["top_n"])
 
+    if not similarity_algorithms:
+        raise ValueError("At least one similarity algorithm must be selected.")
+
     run_time_start = time.monotonic()
 
     all_results: list[pd.DataFrame] = []

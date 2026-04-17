@@ -72,11 +72,12 @@
 
 ## Formatting & Linting
 - This project uses **ruff** for formatting and linting, configured in `pyproject.toml`.
-- After making code changes, always run: `tox run -e format` to auto-format, then `tox run -e check-style` to verify.
+- After making code changes, run the **Verify Agent** (defined in [agents/verify.md](agents/verify.md)) which executes `tox run -e format` then `tox`. All code-generating agents invoke Verify automatically as their final step.
 - `tox run -e format` auto-formats code, sorts imports, **and removes unused imports** (F401).
-- All code must pass `tox run -e check-style` before being considered done.
+- All code must pass `tox run -e check-style` before being considered done (included in the `tox` default envlist).
 - No need for permission to run tox commands — they are part of the development workflow.
 - If an import is needed for its **side effect** (e.g., `from enzyme_tk_app.app.app import app` to satisfy `dash.register_page()`), add a `# noqa: F401` comment with a reason to prevent auto-removal.
 
 ## Writing Tests
 - **All new tests MUST follow the architectural guidelines and pytest patterns defined in the [Write-Tests Agent](agents/write-tests.md).**
+- After writing tests, the Write-Tests agent automatically runs the Verify Agent and then the Review-Tests agent.
