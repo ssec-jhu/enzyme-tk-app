@@ -96,6 +96,10 @@ def load_sequence_data(csv_path):
 def get_ec_numbers(csv_path):
     """Extract sorted unique EC numbers from a sequence database CSV.
 
+    Cells may contain multiple EC numbers separated by semicolons
+    (e.g. ``"3.2.2.-; 3.2.2.6"``).  Each individual EC number is
+    extracted and returned as a separate entry.
+
     Args:
         csv_path: Path to the CSV file.
 
@@ -103,8 +107,14 @@ def get_ec_numbers(csv_path):
         Sorted list of unique EC number strings found in the file.
     """
     db_df = pd.read_csv(csv_path, usecols=[_COL_EC_NUMBER])
-    ec_values = db_df[_COL_EC_NUMBER].dropna().unique()
-    return sorted(str(ec) for ec in ec_values if str(ec).strip())
+    ec_series = db_df[_COL_EC_NUMBER].dropna()
+    unique_ecs = set()
+    for cell in ec_series:
+        for part in str(cell).split(";"):
+            part = part.strip()
+            if part:
+                unique_ecs.add(part)
+    return sorted(unique_ecs)
 
 
 def load_and_clean_data(csv_path):

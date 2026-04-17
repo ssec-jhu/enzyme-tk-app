@@ -199,10 +199,10 @@ def run(params: dict) -> dict:
         # if enzymetk encounters an error.
         result_df = sd.execute(sim_input)
 
-        # Join similarity scores back to expanded metadata
-        # SubstrateDist output has _ROW_ID, QuerySmiles, _MOL_SMILES_COL, and sim cols
-        sim_cols_to_join = [_ROW_ID] + [algo.column for algo in SimilarityAlgorithm]
-        sim_scores = result_df[sim_cols_to_join]
+        # Join EnzymeTK output back to expanded metadata.
+        # Drop COL_MOL_SMILES from the result to avoid a duplicate column
+        # (expanded_df already carries the authoritative copy).
+        sim_scores = result_df.drop(columns=[COL_MOL_SMILES], errors="ignore")
         merged = expanded_df.merge(sim_scores, on=_ROW_ID, how="inner")
 
         # Tag each row with its source database

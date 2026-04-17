@@ -55,3 +55,16 @@ To add a tool, create a folder with:
 
 ## 5. Reference Material
 Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, follow the [Write-Callback Agent](write-callback.md) and examine existing tools like `substrate_product_similarity`.
+
+---
+
+## MANDATORY AFTER-CREATION WORKFLOW
+
+After creating or modifying tool files, you **MUST** execute the **Verify
+Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
+(`tox run -e format` then `tox`). Fix any failures before concluding.
+
+*Do not rely on the user to run these commands.*
+*Do not just summarize what to do.*
+*You must execute them yourself, wait for the results, and fix any failures
+before concluding your task.*

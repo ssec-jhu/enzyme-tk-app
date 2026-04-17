@@ -106,7 +106,10 @@ def reaction_to_svg_data_uri(reaction_smiles: str, height: int = 200) -> str:
         return ""
 
     # Parse the reaction SMILES into an RDKit Reaction object.
-    rxn = rdChemReactions.ReactionFromSmarts(reaction_smiles.strip(), useSmiles=True)
+    try:
+        rxn = rdChemReactions.ReactionFromSmarts(reaction_smiles.strip(), useSmiles=True)
+    except ValueError:
+        return ""
     if rxn is None:
         return ""
 

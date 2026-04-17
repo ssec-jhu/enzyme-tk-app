@@ -15,6 +15,8 @@ from enzyme_tk_app.app.utils.formatting import (
     expires_in,
     format_duration,
     format_timestamp,
+    round_column_values,
+    validate_top_n,
 )
 
 # ── format_timestamp ─────────────────────────────────────────────────────
@@ -126,19 +128,88 @@ def test_expires_in_returns_dash(iso_str):
     assert expires_in(iso_str) == "—"
 
 
-def test_expires_in_recently_submitted():
-    """A job submitted at 'now' has a full 24 h TTL remaining."""
-    assert expires_in(_NOW.isoformat(), now=_NOW, ttl=_TTL) == "24h 0m"
+@pytest.mark.parametrize(
+    ("iso_str", "expected"),
+    [
+        (_NOW.isoformat(), "24h 0m"),
+        (_NOW - timedelta(days=2), "Expired"),
+        (_NOW - timedelta(hours=1), "23h 0m"),
+    ],
+    ids=["recently-submitted", "expired", "naive-timestamp"],
+)
+def test_expires_in_valid(iso_str, expected):
+    """Valid timestamps produce the expected remaining-time string."""
+    # Accept both datetime and str; normalise to a naive ISO string
+    # so the "naive-timestamp" case drops tzinfo like the original test.
+    if isinstance(iso_str, datetime):
+        iso_str = iso_str.strftime("%Y-%m-%dT%H:%M:%S")
+    assert expires_in(iso_str, now=_NOW, ttl=_TTL) == expected
 
 
-def test_expires_in_expired():
-    """A job submitted more than TTL seconds ago shows 'Expired'."""
-    long_ago = _NOW - timedelta(days=2)
-    assert expires_in(long_ago.isoformat(), now=_NOW, ttl=_TTL) == "Expired"
+# ── validate_top_n ───────────────────────────────────────────────────────
 
 
-def test_expires_in_naive_timestamp():
-    """Naive timestamps (no tzinfo) are treated as UTC."""
-    one_hour_ago = _NOW - timedelta(hours=1)
-    naive_iso = one_hour_ago.strftime("%Y-%m-%dT%H:%M:%S")
-    assert expires_in(naive_iso, now=_NOW, ttl=_TTL) == "23h 0m"
+@pytest.mark.parametrize(
+    ("value", "is_valid"),
+    [
+        (10, True),
+        (1, True),
+        (500, True),
+        ("50", True),
+        (10.0, True),
+        (0, False),
+        (501, False),
+        (-1, False),
+        (3.5, False),
+        ("3.5", False),
+        (None, False),
+        ("abc", False),
+        ("", False),
+    ],
+    ids=[
+        "mid-range",
+        "min-boundary",
+        "max-boundary",
+        "string-int",
+        "whole-float",
+        "below-min",
+        "above-max",
+        "negative",
+        "fractional-float",
+        "fractional-string",
+        "none",
+        "non-numeric",
+        "empty-string",
+    ],
+)
+def test_validate_top_n(value, is_valid):
+    """Returns None for valid inputs and an error string for invalid ones."""
+    result = validate_top_n(value)
+    if is_valid:
+        assert result is None, f"Expected None for valid input {value!r}, got {result!r}"
+    else:
+        assert isinstance(result, str) and len(result) > 0, f"Expected error message for {value!r}, got {result!r}"
+
+
+# ── round_column_values ──────────────────────────────────────────────────
+
+
+def test_round_column_values_rounds_specified_columns():
+    """Values in listed columns are rounded to 4 decimal places."""
+    import pandas as pd
+
+    df = pd.DataFrame({"score": [1.123456789], "name": ["enzyme"]})
+    result = round_column_values(["score"], df)
+    assert result["score"].iloc[0] == pytest.approx(1.1235)
+    # Non-listed column stays untouched
+    assert result["name"].iloc[0] == "enzyme"
+
+
+def test_round_column_values_ignores_missing_columns():
+    """Columns not present in the DataFrame are silently skipped."""
+    import pandas as pd
+
+    df = pd.DataFrame({"a": [3.14159]})
+    result = round_column_values(["a", "nonexistent"], df)
+    assert result["a"].iloc[0] == pytest.approx(3.1416)
+    assert list(result.columns) == ["a"]

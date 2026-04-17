@@ -3,44 +3,47 @@
 This module defines callbacks that:
 - Open/close the modal when the launch button is clicked
 - Populate the SMILES input from example selection
-- Handle the form submission (TODO)
+- Validate the form and enable/disable the submit button
+- Submit a reaction similarity job to the backend scheduler
 """
 
-from dash import Input, Output, callback, ctx
+from dash import Input, Output, State, callback, ctx
+from dash.exceptions import PreventUpdate
+from flask import g
+
+from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF
+from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
 @callback(
-    Output("id-modal-reaction-similarity", "is_open"),
-    [
-        Input("id-btn-launch-reaction-similarity", "n_clicks"),
-        Input("id-btn-reaction-cancel", "n_clicks"),
-        Input("id-btn-reaction-submit", "n_clicks"),
-    ],
+    Output(f"id-modal-{TOOL_DEF['slug']}", "is_open"),
+    Input(f"id-btn-launch-{TOOL_DEF['slug']}", "n_clicks"),
+    Input(f"id-btn-{TOOL_DEF['slug']}-cancel", "n_clicks"),
     prevent_initial_call=True,
 )
-def toggle_reaction_similarity_modal(launch_clicks, cancel_clicks, submit_clicks):
-    """Open or close the Reaction Similarity modal based on the triggering button.
+def toggle_reaction_similarity_modal(launch_clicks, cancel_clicks):
+    """Open or close the Reaction Similarity modal.
 
-    Opens the modal when the launch button is clicked, and closes it
-    when the cancel or submit button is clicked.
+    The modal opens when the launch button is clicked and closes only via
+    the Cancel button (or the header X).  The Submit button no longer
+    auto-closes the modal so the user can see the returned job ID.
 
     Args:
         launch_clicks: Number of clicks on the launch button.
         cancel_clicks: Number of clicks on the cancel button.
-        submit_clicks: Number of clicks on the submit button.
 
     Returns:
-        True to open the modal (launch), False to close it (cancel/submit).
+        True to open the modal (launch), False to close it (cancel).
     """
-    # Determine which button was clicked and act accordingly
-    if ctx.triggered_id == "id-btn-launch-reaction-similarity":
+    if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
         return True
     return False
 
 
 @callback(
-    Output("id-textarea-reaction-smiles", "value"),
-    Input("id-select-reaction-example", "value"),
+    Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
+    Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_reaction(example_value):
@@ -54,60 +57,95 @@ def populate_example_reaction(example_value):
     """
     if example_value:
         return example_value
-    return ""
+    raise PreventUpdate
 
 
 @callback(
-    Output("id-btn-reaction-submit", "disabled"),
-    [
-        Input("id-input-reaction-query-name", "value"),
-        Input("id-textarea-reaction-smiles", "value"),
-    ],
+    Output(f"id-btn-{TOOL_DEF['slug']}-submit", "disabled"),
+    Input(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
+    Input(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
+    Input(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
+    Input(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
 )
-def validate_reaction_form(query_name, smiles):
+def validate_reaction_form(task_name, smiles, selected_databases, selected_algorithms):
     """Enable/disable the submit button based on form validation.
 
+    Requires a non-empty task name, SMILES string, at least one
+    selected database, and at least one selected algorithm.
+
     Args:
-        query_name: The query name input value.
+        task_name: The task name input value.
         smiles: The reaction SMILES input value.
+        selected_databases: List of selected database values.
+        selected_algorithms: List of selected algorithm values.
 
     Returns:
         Boolean indicating whether submit should be disabled.
     """
-    # Require both query name and SMILES to be non-empty
-    if query_name and smiles and query_name.strip() and smiles.strip():
+    has_name = task_name and task_name.strip()
+    has_smiles = smiles and smiles.strip()
+    has_databases = selected_databases and len(selected_databases) > 0
+    has_algorithms = selected_algorithms and len(selected_algorithms) > 0
+    if has_name and has_smiles and has_databases and has_algorithms:
         return False
     return True
 
 
-# TODO: Implement the actual search callback
-# @callback(
-#     Output("id-div-reaction-results", "children"),
-#     Input("id-btn-reaction-submit", "n_clicks"),
-#     [
-#         State("id-input-reaction-query-name", "value"),
-#         State("id-select-reaction-database", "value"),
-#         State("id-textarea-reaction-smiles", "value"),
-#     ],
-#     prevent_initial_call=True,
-# )
-# def run_reaction_similarity_search(n_clicks, query_name, database, smiles):
-#     """Execute the reaction similarity search.
-#
-#     TODO: Implement the actual search logic:
-#     1. Load the selected database
-#     2. Parse the query SMILES
-#     3. Compute reaction fingerprints
-#     4. Calculate Tanimoto/Russell/Cosine similarity
-#     5. Return sorted results
-#
-#     Args:
-#         n_clicks: Number of clicks on the submit button.
-#         query_name: The query name for identification.
-#         database: The selected database filename.
-#         smiles: The reaction SMILES to search.
-#
-#     Returns:
-#         Dash components displaying the search results.
-#     """
-#     pass
+@callback(
+    Output(f"id-div-{TOOL_DEF['slug']}-results", "children"),
+    Input(f"id-btn-{TOOL_DEF['slug']}-submit", "n_clicks"),
+    Input(f"id-btn-launch-{TOOL_DEF['slug']}", "n_clicks"),
+    State(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
+    State(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
+    State(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
+    State(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
+    State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
+    prevent_initial_call=True,
+)
+def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, databases, smiles, algorithms, top_n):
+    """Submit a reaction similarity job or clear stale results on modal reopen.
+
+    When triggered by the launch button, clears the results placeholder
+    so stale job IDs from a previous submission are not shown.
+
+    When triggered by the submit button, validates the inputs and
+    submits the job to the backend scheduler.
+
+    Args:
+        submit_clicks: Number of clicks on the submit button.
+        launch_clicks: Number of clicks on the launch button.
+        task_name: The task name for identification.
+        databases: List of selected database filenames.
+        smiles: The reaction SMILES to search.
+        algorithms: List of selected algorithm values.
+        top_n: Number of top results to return.
+
+    Returns:
+        A status message with the submitted job ID, or an empty string
+        when clearing stale state.
+    """
+    # Clear stale results when the modal is freshly opened
+    if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
+        return ""
+
+    # Validate top_n
+    error = validate_top_n(top_n)
+    if error:
+        return error
+    top_n = int(top_n)
+
+    scheduler = get_task_scheduler()
+    job_id = scheduler.submit_job(
+        tool_slug=TOOL_DEF["slug"],
+        params={
+            "task_name": task_name.strip(),
+            "databases": databases,
+            "smiles": smiles.strip(),
+            "algorithms": algorithms,
+            "top_n": top_n,
+        },
+        session_id=g.session_id,
+    )
+
+    n_dbs = len(databases) if databases else 0
+    return f"Job submitted — ID: {job_id} (searching {n_dbs} database(s) for top {top_n} results)"

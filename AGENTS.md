@@ -6,8 +6,8 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 ---
 
 ## Verify Agent
-**Trigger:** Ask the agent to "verify", "run verification", or "run the verify agent".
-**Action:** The agent must execute the complete test and security verification workflow defined securely inside [`.github/agents/verify.md`](.github/agents/verify.md).
+**Trigger:** Ask the agent to "verify", "run verification", or "run the verify agent". Also invoked automatically at the end of every code-generating agent.
+**Action:** The agent must execute the format-and-test workflow defined in [`.github/agents/verify.md`](.github/agents/verify.md). Core steps (`tox run -e format` + `tox`) always run. An optional Docker Compose smoke test runs when the user says "verify with docker" or "full verify".
 
 ## Modal Creation Agent
 **Trigger:** When asked to generate, design, restyle, or fundamentally modify frontend UI modals.
@@ -28,6 +28,10 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 ## Write-Tests Agent
 **Trigger:** When asked to "write tests", "create a test", or "add test coverage" for a module or feature.
 **Action:** The agent must follow the strictly defined pytest patterns and architectural guidelines defined in [`.github/agents/write-tests.md`](.github/agents/write-tests.md).
+
+## Review-Tests Agent
+**Trigger:** When asked to "review tests", "audit tests", "clean up tests", or "improve test quality" for a given scope.
+**Action:** The agent must audit existing tests for duplicates, parametrize candidates, brittle string assertions, uncovered guard clauses, isolation issues, and weak assertions following the workflow in [`.github/agents/review-tests.md`](.github/agents/review-tests.md). It complements the Write-Tests agent by improving existing test quality rather than creating new tests.
 
 ## Create Tool Agent
 **Trigger:** When asked to "create a new tool", "add a new algorithm", or "generate a tool scaffold".
