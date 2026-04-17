@@ -19,6 +19,11 @@ Usage::
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
+import pandas as pd
+
 
 def _svg_to_data_uri(svg: str) -> str:
     """Encode an SVG string as a base64 data URI.
@@ -119,3 +124,36 @@ def reaction_to_svg_data_uri(reaction_smiles: str, height: int = 200) -> str:
     drawer.FinishDrawing()
     svg = drawer.GetDrawingText()
     return _svg_to_data_uri(svg) if isinstance(svg, str) else ""
+
+
+def generate_cached_svg_uris(
+    smiles_series: pd.Series,
+    render_fn: Callable[..., str],
+    **render_kwargs: Any,
+) -> list[str]:
+    """Render SMILES strings to SVG data URIs with deduplication caching.
+
+    Iterates over *smiles_series*, calling *render_fn* once per unique
+    SMILES value and caching the result so duplicate SMILES (e.g. the
+    same reaction appearing in multiple databases) are only rendered
+    once.
+
+    Args:
+        smiles_series: A pandas Series of SMILES strings.
+        render_fn: A callable that accepts a SMILES string as its first
+            positional argument (plus any *render_kwargs*) and returns a
+            data-URI string.
+        **render_kwargs: Additional keyword arguments forwarded to
+            *render_fn* (e.g. ``width=500``, ``height=300``).
+
+    Returns:
+        A list of data-URI strings, one per element in *smiles_series*,
+        in the same order.
+    """
+    cache: dict[str, str] = {}
+    uris: list[str] = []
+    for smi in smiles_series:
+        if smi not in cache:
+            cache[smi] = render_fn(smi, **render_kwargs)
+        uris.append(cache[smi])
+    return uris

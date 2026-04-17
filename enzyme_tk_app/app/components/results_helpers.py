@@ -51,6 +51,8 @@ import dash_ag_grid as dag
 from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
+from enzyme_tk_app.app.tools.substrate_product_similarity import SimilarityAlgorithm
+from enzyme_tk_app.app.utils import columns as col
 
 # ---------------------------------------------------------------------------
 # Shared DataTable style constants
@@ -313,19 +315,19 @@ def shared_col_defs() -> list[dict]:
     """
     return [
         # ── Similarity scores ────────────────────────────────────────
-        {"field": "TanimotoSimilarity", "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": "CosineSimilarity", "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": "RusselSimilarity", "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": SimilarityAlgorithm.TANIMOTO.column, "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": SimilarityAlgorithm.COSINE.column, "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": SimilarityAlgorithm.RUSSELL.column, "width": 100, "filter": "agNumberColumnFilter"},
         # ── Reaction metadata ────────────────────────────────────────
-        {"field": "database", "wrapText": True, "width": 120},
-        {"field": "id", "width": 120},
-        {"field": "rxn_idx", "width": 100},
+        {"field": col.COL_DATABASE, "wrapText": True, "width": 120},
+        {"field": col.COL_ID, "width": 120},
+        {"field": col.COL_RXN_IDX, "width": 100},
         {
-            "field": "mapped",
+            "field": col.COL_MAPPED,
             # "cellClass": "cell-wrap-dash-ag-grid",
         },
         {
-            "field": "unmapped",
+            "field": col.COL_UNMAPPED_SMILES,
             "width": 350,
             "cellClass": "cell-wrap-dash-ag-grid",
             # autoHeight tells AG Grid to automatically expand the row height
@@ -333,33 +335,33 @@ def shared_col_defs() -> list[dict]:
             # a single row gets clipped.
             "autoHeight": True,
         },
-        {"field": "orig_rxn_text", "wrapText": True, "width": 120},
+        {"field": col.COL_ORIG_RXN_TEXT, "wrapText": True, "width": 120},
         # ── Rule / source metadata ───────────────────────────────────
-        {"field": "rule", "width": 120},
-        {"field": "rule_id"},
-        {"field": "source"},
-        {"field": "steps"},
-        {"field": "quality"},
-        {"field": "natural"},
+        {"field": col.COL_RULE, "width": 120},
+        {"field": col.COL_RULE_ID},
+        {"field": col.COL_SOURCE},
+        {"field": col.COL_STEPS},
+        {"field": col.COL_QUALITY},
+        {"field": col.COL_NATURAL},
         # ── Bio metadata ─────────────────────────────────────────────
-        {"field": "organism"},
-        {"field": "protein_refs"},
-        {"field": "protein_db"},
-        {"field": "ec_num"},
+        {"field": col.COL_ORGANISM},
+        {"field": col.COL_PROTEIN_REFS},
+        {"field": col.COL_PROTEIN_DB},
+        {"field": col.COL_EC_NUM},
         # ── Substrates / products text ───────────────────────────────
-        {"field": "substrates", "width": 120},
-        {"field": "products", "width": 120},
+        {"field": col.COL_SUBSTRATES, "width": 120},
+        {"field": col.COL_PRODUCTS, "width": 120},
         # ── Molecular descriptors ────────────────────────────────────
-        {"field": "substrates_MolWt", "filter": "agNumberColumnFilter"},
-        {"field": "substrates_TPSA", "filter": "agNumberColumnFilter"},
-        {"field": "substrates_MolLogP", "filter": "agNumberColumnFilter"},
-        {"field": "substrates_MaxPartialCharge", "filter": "agNumberColumnFilter"},
-        {"field": "substrates_MinPartialCharge", "filter": "agNumberColumnFilter"},
-        {"field": "products_MolWt", "filter": "agNumberColumnFilter"},
-        {"field": "products_TPSA", "filter": "agNumberColumnFilter"},
-        {"field": "products_MolLogP", "filter": "agNumberColumnFilter"},
-        {"field": "products_MaxPartialCharge", "filter": "agNumberColumnFilter"},
-        {"field": "products_MinPartialCharge", "filter": "agNumberColumnFilter"},
+        {"field": col.COL_SUBSTRATES_MOLWT, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_SUBSTRATES_TPSA, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_SUBSTRATES_MOLLOGP, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_SUBSTRATES_MAX_PARTIAL_CHARGE, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_SUBSTRATES_MIN_PARTIAL_CHARGE, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_PRODUCTS_MOLWT, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_PRODUCTS_TPSA, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_PRODUCTS_MOLLOGP, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_PRODUCTS_MAX_PARTIAL_CHARGE, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_PRODUCTS_MIN_PARTIAL_CHARGE, "filter": "agNumberColumnFilter"},
     ]
 
 

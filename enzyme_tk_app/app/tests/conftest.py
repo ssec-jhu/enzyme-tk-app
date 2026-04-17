@@ -6,7 +6,10 @@ incompatibilities when ``redis-py`` or the server protocol is upgraded,
 without requiring a running Redis instance for unit tests.
 """
 
+from pathlib import Path
+
 import fakeredis
+import pandas as pd
 import pytest
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
@@ -15,6 +18,154 @@ from enzyme_tk_app.app.components.hero import hero as create_hero
 from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
+
+# Directory containing test data files (CSV fixtures, etc.).
+TEST_DATA_DIR = Path(__file__).parent / "data"
+
+# Small 20-row reaction CSV extracted from the production database.
+# Used by substrate/product similarity tests to run real enzymetk
+# computations without needing the full (large) data files.
+TEST_REACTIONS_CSV = TEST_DATA_DIR / "test_reactions_20.csv"
+
+# Small 22-row sequence CSV extracted from the production database
+# (20 valid rows from protein.csv + 2 invalid rows appended for testing).
+TEST_SEQUENCES_CSV = TEST_DATA_DIR / "test_sequences_20.csv"
+
+
+# ── Reaction data helpers ────────────────────────────────────────────────────
+
+
+def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
+    """Build a minimal DataFrame with ``id`` and ``unmapped`` columns."""
+    return pd.DataFrame(
+        {
+            "id": list(range(len(reactions))),
+            "unmapped": reactions,
+        }
+    )
+
+
+@pytest.fixture()
+def _patch_data_dir(reactions_dir, monkeypatch):
+    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
+    monkeypatch.setattr("enzyme_tk_app.app.tools.substrate_product_similarity.compute.DATA_DIR", reactions_dir)
+
+
+@pytest.fixture()
+def reactions_dir(tmp_path):
+    """Copy the 20-row test CSV into a tmp_path/reactions/ directory.
+
+    Returns the ``tmp_path`` so it can be used to patch ``DATA_DIR``
+    when calling a tool's ``run()`` function.
+    """
+    import shutil  # noqa: PLC0415
+
+    dest = tmp_path / "reactions"
+    dest.mkdir()
+    shutil.copy(TEST_REACTIONS_CSV, dest / "test_reactions_20.csv")
+    return tmp_path
+
+
+@pytest.fixture()
+def csv_molecules():
+    """Extract unique substrate and product SMILES from the 20-row test CSV.
+
+    Parses the ``unmapped`` column of ``test_reactions_20.csv``, splits
+    each reaction on ``>>``, then splits each side on ``.`` to collect
+    individual molecule SMILES.  Trivial molecules (water, H+, Cl) and
+    very long cofactors (CoA, NADPH) are excluded.
+
+    Returns:
+        Dict with ``"substrates"`` and ``"products"`` keys, each mapping
+        to a sorted list of unique SMILES strings.
+    """
+    df = pd.read_csv(TEST_REACTIONS_CSV)
+    substrates: set[str] = set()
+    products: set[str] = set()
+
+    # Trivial molecules excluded from exact-match testing — too simple for
+    # meaningful fingerprint comparison or not real "target" molecules.
+    _TRIVIAL_SMILES = {"O", "[H+]", "Cl"}
+
+    # Maximum SMILES length for exact-match testing — excludes huge cofactors
+    # (CoA, NADPH) that would slow tests without adding coverage value.
+    _MAX_SMILES_LEN = 100
+
+    for unmapped in df["unmapped"].dropna():
+        if ">>" not in unmapped:
+            continue
+        left, right = unmapped.split(">>", 1)
+        for smi in left.split("."):
+            smi = smi.strip()
+            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
+                substrates.add(smi)
+        for smi in right.split("."):
+            smi = smi.strip()
+            if smi and smi not in _TRIVIAL_SMILES and len(smi) <= _MAX_SMILES_LEN:
+                products.add(smi)
+
+    return {"substrates": sorted(substrates), "products": sorted(products)}
+
+
+@pytest.fixture()
+def csv_molecules_known_scores():
+    """Molecules with hardcoded expected similarity scores for regression testing.
+
+    Each entry specifies a query SMILES, the role to search, and the
+    expected top-result scores for all three algorithms.  If
+    ``expected_top_smiles`` is set, the SMILES of the top-ranked result
+    is also verified.
+
+    These values were obtained from a known-good run of the tool and
+    pinned here to catch any change in the underlying enzymetk or RDKit
+    fingerprint calculation.
+    """
+    return [
+        {
+            "query": "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
+            "role": "product",
+            "expected_top_smiles": None,
+            "expected_tanimoto": 1.0,
+            "expected_cosine": 1.0,
+            "expected_russell": 0.0083,
+        },
+        {
+            "query": "[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
+            "role": "substrate",
+            "expected_top_smiles": "O[C@@H]1[C@@H](O)[C@H](O)OC[C@H]1O",
+            "expected_tanimoto": 0.2917,
+            "expected_cosine": 0.4518,
+            "expected_russell": 0.0034,
+        },
+    ]
+
+
+@pytest.fixture()
+def sequences_dir(tmp_path):
+    """Copy the 20-row test sequence CSV into a tmp_path/sequences/ directory.
+
+    Returns the ``tmp_path`` so it can be used to patch ``DATA_DIR``.
+    """
+    import shutil  # noqa: PLC0415
+
+    dest = tmp_path / "sequences"
+    dest.mkdir()
+    shutil.copy(TEST_SEQUENCES_CSV, dest / "test_sequences_20.csv")
+    return tmp_path
+
+
+@pytest.fixture()
+def sequence_csv(tmp_path):
+    """Copy the 20-row test sequence CSV for testing data loader filters.
+
+    Contains valid sequences, NaN sequences, and whitespace sequences.
+    """
+    import shutil  # noqa: PLC0415
+
+    csv_file = tmp_path / "test_sequences_20.csv"
+    shutil.copy(TEST_SEQUENCES_CSV, csv_file)
+    return csv_file
+
 
 # ── UI component fixtures ────────────────────────────────────────────────────
 
