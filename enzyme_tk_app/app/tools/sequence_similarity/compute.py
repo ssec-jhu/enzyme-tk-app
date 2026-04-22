@@ -13,6 +13,7 @@ to find the most similar sequences.
 """
 
 import time
+from pathlib import Path
 
 import pandas as pd
 
@@ -78,9 +79,14 @@ def run(params: dict) -> dict:
     # ------------------------------------------------------------------
     # Load and pre-filter the database
     # ------------------------------------------------------------------
-    csv_path = DATA_DIR / "sequences" / database_filename
+    # Sanitise client-supplied filename: strip directory components
+    # to prevent path-traversal and enforce a .csv suffix.
+    safe_name = Path(database_filename).name
+    if not safe_name.endswith(".csv"):
+        raise ValueError(f"Invalid database filename (must be .csv): {database_filename}")
+    csv_path = DATA_DIR / "sequences" / safe_name
     if not csv_path.exists():
-        raise ValueError(f"Database file not found: {database_filename}")
+        raise ValueError(f"Database file not found: {safe_name}")
 
     db_df = load_sequence_data(csv_path)
     total_db_size = len(db_df)

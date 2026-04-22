@@ -7,6 +7,8 @@ This module defines callbacks that:
 - Submit a sequence similarity job to the backend scheduler
 """
 
+from pathlib import Path
+
 from dash import Input, Output, State, callback, ctx
 from dash.exceptions import PreventUpdate
 from flask import g
@@ -81,7 +83,13 @@ def populate_ec_options(database_value):
     if not database_value:
         raise PreventUpdate
 
-    csv_path = DATA_DIR / "sequences" / database_value
+    # Sanitise client-supplied filename: strip directory components
+    # to prevent path-traversal and enforce a .csv suffix.
+    safe_name = Path(database_value).name
+    if not safe_name.endswith(".csv"):
+        return []
+
+    csv_path = DATA_DIR / "sequences" / safe_name
     if not csv_path.exists():
         return []
 
@@ -174,6 +182,12 @@ def submit_sequence_similarity_job(
     if not task_name or not task_name.strip() or not sequence or not sequence.strip() or not database:
         raise PreventUpdate
 
+    # Sanitise client-supplied filename: strip directory components
+    # to prevent path-traversal and enforce a .csv suffix.
+    safe_db = Path(database).name
+    if not safe_db.endswith(".csv"):
+        return "Invalid database filename."
+
     # Validate top_n.
     error = validate_top_n(top_n)
     if error:
@@ -185,7 +199,7 @@ def submit_sequence_similarity_job(
         tool_slug=TOOL_DEF["slug"],
         params={
             "task_name": task_name.strip(),
-            "database": database,
+            "database": safe_db,
             "sequence": sequence.strip(),
             "ec_filter": ec_filter if ec_filter else [],
             "cofactor_filter": cofactor_filter if cofactor_filter else [],
