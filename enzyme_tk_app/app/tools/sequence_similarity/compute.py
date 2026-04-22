@@ -71,7 +71,7 @@ def run(params: dict) -> dict:
     query_sequence: str = params["sequence"]
     ec_filter: list[str] = params.get("ec_filter", [])
     cofactor_filter: list[str] = params.get("cofactor_filter", [])
-    top_n: int = int(params["top_n"])
+    top_n: int = max(1, min(500, int(params["top_n"])))
     predict_catalytic: bool = params.get("predict_catalytic", False)
 
     run_time_start = time.monotonic()
@@ -127,7 +127,7 @@ def run(params: dict) -> dict:
         )
         return {
             "_stat_cards": [
-                {"label": "Database", "value": database_filename},
+                {"label": "Database", "value": safe_name},
                 {"label": "Total Sequences", "value": f"{total_db_size:,}"},
                 {"label": "After Filtering", "value": "0"},
                 {"label": "Results Returned", "value": "0"},
@@ -165,7 +165,7 @@ def run(params: dict) -> dict:
         run_time = round(time.monotonic() - run_time_start, 3)
         return {
             "_stat_cards": [
-                {"label": "Database", "value": database_filename},
+                {"label": "Database", "value": safe_name},
                 {"label": "Total Sequences", "value": f"{total_db_size:,}"},
                 {"label": "After Filtering", "value": f"{filtered_size:,}"},
                 {"label": "Results Returned", "value": "0"},
@@ -214,7 +214,7 @@ def run(params: dict) -> dict:
 
     return {
         "_stat_cards": [
-            {"label": "Database", "value": database_filename},
+            {"label": "Database", "value": safe_name},
             {"label": "Total Sequences", "value": f"{total_db_size:,}"},
             {"label": "After Filtering", "value": f"{filtered_size:,}"},
             {"label": "Results Returned", "value": str(len(result_df))},
