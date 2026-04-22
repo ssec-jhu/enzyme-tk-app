@@ -18,6 +18,7 @@ import json
 import shutil
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pytest
 from dash import dcc, html
 from dash.exceptions import PreventUpdate
@@ -164,6 +165,323 @@ def test_run_empty_results_is_json_serializable(empty_ec_result):
 def test_run_empty_results_catalytic_prediction_is_none(empty_ec_result):
     """When filtering produces zero rows, catalytic_prediction must be None."""
     assert empty_ec_result["catalytic_prediction"] is None
+
+
+# ── Input validation ─────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "filename",
+    ["data.txt", "file.json", "archive.tar.gz"],
+    ids=["txt", "json", "tar-gz"],
+)
+def test_run_rejects_non_csv_extension(filename):
+    """run() must raise ValueError for database filenames that do not end with .csv."""
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    with pytest.raises(ValueError, match="must be .csv"):
+        run(_default_params(database=filename))
+
+
+def test_run_path_traversal_sanitized(_patch_seq_data_dir):
+    """Directory components are stripped to prevent path-traversal attacks.
+
+    ``../../etc/secrets.csv`` becomes ``secrets.csv`` (via ``Path.name``),
+    which will not exist in the data directory.
+    """
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    with pytest.raises(ValueError, match="Database file not found: secrets.csv"):
+        run(_default_params(database="../../etc/secrets.csv"))
+
+
+# ── CI-safe mocked BLAST tests (no diamond binary required) ──────────────────
+# These tests mock enzymetk's BLAST class so the full run() code path
+# (execution → sorting → merging → column stripping → stat cards)
+# can be exercised in CI without the diamond binary.
+
+
+@pytest.fixture()
+def mock_blast():
+    """Mock ``enzymetk.sequence_search_blast.BLAST`` so run() works without diamond.
+
+    Yields the mock BLAST *instance* — set ``mock_blast.execute.return_value``
+    (or ``.side_effect``) in each test to control what "BLAST" returns.
+    """
+    with patch("enzymetk.sequence_search_blast.BLAST") as MockBLAST:
+        yield MockBLAST.return_value
+
+
+def _make_blast_result_df(targets, bitscores=None, identities=None):
+    """Build a DataFrame mimicking the columns enzymetk BLAST.execute() returns.
+
+    Args:
+        targets: Target Entry IDs (e.g. ``["A0A009IHW8", "A0A024SC78"]``).
+        bitscores: Bitscore per hit.  Defaults to descending integers from 200.
+        identities: Sequence identity per hit.  Defaults to descending from 99.
+    """
+    n = len(targets)
+    if bitscores is None:
+        bitscores = [200 - i for i in range(n)]
+    if identities is None:
+        identities = [round(99.0 - i * 2.0, 1) for i in range(n)]
+
+    return pd.DataFrame(
+        {
+            COL_QUERY: ["query"] * n,
+            COL_TARGET: targets,
+            COL_BITSCORE: bitscores,
+            COL_SEQ_IDENTITY: identities,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("raw_top_n", "expected_max"),
+    [(0, 1), (-5, 1), (999, 500), (10, 10), (1, 1), (500, 500)],
+    ids=["zero-clamps-to-1", "negative-clamps-to-1", "999-clamps-to-500", "10-unchanged", "min-edge", "max-edge"],
+)
+def test_run_top_n_clamping(raw_top_n, expected_max, _patch_seq_data_dir, mock_blast):
+    """top_n is clamped to [1, 500]; result row count must not exceed the clamped value."""
+    # Return enough mock rows to exceed any clamped top_n.
+    entries = [f"P{i:04d}" for i in range(600)]
+    mock_blast.execute.return_value = _make_blast_result_df(entries)
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params(top_n=raw_top_n))
+
+    assert len(result["dataframe"]["data"]) <= expected_max
+
+
+def test_run_mocked_blast_returns_expected_keys(_patch_seq_data_dir, mock_blast):
+    """Mocked BLAST: run() must return _stat_cards, catalytic_prediction, and dataframe."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+
+    assert "_stat_cards" in result
+    assert "catalytic_prediction" in result
+    assert "dataframe" in result
+    assert isinstance(result["dataframe"]["columns"], list)
+    assert isinstance(result["dataframe"]["data"], list)
+
+
+def test_run_mocked_blast_sorts_by_bitscore_descending(_patch_seq_data_dir, mock_blast):
+    """Results must be sorted by bitscore descending even when BLAST returns them unsorted."""
+    mock_blast.execute.return_value = _make_blast_result_df(
+        targets=["A0A009IHW8", "A0A024SC78", "A0A023I7E1"],
+        bitscores=[50.0, 200.0, 100.0],
+    )
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params(top_n=10))
+    bitscores = [row[COL_BITSCORE] for row in result["dataframe"]["data"]]
+
+    assert bitscores == sorted(bitscores, reverse=True), "Results not sorted by bitscore descending"
+
+
+def test_run_mocked_blast_truncates_to_top_n(_patch_seq_data_dir, mock_blast):
+    """When BLAST returns more hits than top_n, only the top-scoring ones are kept."""
+    mock_blast.execute.return_value = _make_blast_result_df(
+        targets=["A0A009IHW8", "A0A024SC78", "A0A023I7E1", "A0A024RXP8", "A0A067XR63"],
+        bitscores=[500.0, 400.0, 300.0, 200.0, 100.0],
+    )
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params(top_n=2))
+    data = result["dataframe"]["data"]
+
+    assert len(data) == 2
+    # The two highest bitscores should be kept.
+    bitscores = [row[COL_BITSCORE] for row in data]
+    assert bitscores == [500.0, 400.0]
+
+
+def test_run_mocked_blast_strips_internal_columns(_patch_seq_data_dir, mock_blast):
+    """Internal columns (query, Entry, Residue_0index) must not appear in consumer output."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+    output_columns = result["dataframe"]["columns"]
+
+    for col in [COL_QUERY, COL_ENTRY, COL_RESIDUE_0INDEX]:
+        assert col not in output_columns, f"Internal column '{col}' leaked into output"
+
+
+def test_run_mocked_blast_merges_db_metadata(_patch_seq_data_dir, mock_blast):
+    """Database metadata (EC number, Sequence) must be merged onto BLAST results via target ID."""
+    # A0A009IHW8 exists in the test CSV with EC "3.2.2.-; 3.2.2.6".
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+    data = result["dataframe"]["data"]
+
+    assert len(data) == 1
+    row = data[0]
+
+    # EC number from the database must be present after the merge.
+    assert COL_EC_NUMBER in row, "EC number from database not merged"
+    assert "3.2.2" in str(row[COL_EC_NUMBER])
+
+    # Protein sequence from the database must also be merged.
+    assert COL_SEQUENCE in row, "Sequence from database not merged"
+    assert len(row[COL_SEQUENCE]) > 0
+
+
+def test_run_mocked_blast_empty_data_error(_patch_seq_data_dir, mock_blast):
+    """When BLAST raises EmptyDataError (no alignments), run() returns an empty result with a message."""
+    mock_blast.execute.side_effect = pd.errors.EmptyDataError("No data")
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+
+    assert result["dataframe"]["data"] == []
+    assert result["dataframe"]["columns"] == []
+    assert result["catalytic_prediction"] is None
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["Results Returned"] == "0"
+    # The no_results_message must explain that no alignments were found.
+    assert "no_results_message" in result
+    assert "no alignments" in result["no_results_message"].lower()
+
+
+def test_run_mocked_blast_no_no_results_message_on_success(_patch_seq_data_dir, mock_blast):
+    """When BLAST returns results, no_results_message must not be in the return dict."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+
+    assert "no_results_message" not in result
+
+
+@pytest.mark.parametrize(
+    ("predict", "expected_none"),
+    [(False, True), (True, False)],
+    ids=["prediction-off", "prediction-on"],
+)
+def test_run_mocked_catalytic_prediction(predict, expected_none, _patch_seq_data_dir, mock_blast):
+    """catalytic_prediction must be None when disabled, non-None when enabled."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params(predict_catalytic=predict))
+
+    if expected_none:
+        assert result["catalytic_prediction"] is None
+    else:
+        assert result["catalytic_prediction"] is not None
+
+
+def test_run_mocked_stat_cards_labels_and_count(_patch_seq_data_dir, mock_blast):
+    """Stat cards must include the five expected labels."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8", "A0A024SC78"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+    stat_labels = {c["label"] for c in result["_stat_cards"]}
+    expected = {"Database", "Total Sequences", "After Filtering", "Results Returned", "Run Time"}
+
+    assert expected.issubset(stat_labels), f"Missing labels: {expected - stat_labels}"
+
+
+def test_run_mocked_stat_card_results_matches_data(_patch_seq_data_dir, mock_blast):
+    """The 'Results Returned' stat card must equal the actual row count."""
+    mock_blast.execute.return_value = _make_blast_result_df(
+        ["A0A009IHW8", "A0A024SC78", "A0A023I7E1"],
+    )
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params(top_n=10))
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    actual_rows = len(result["dataframe"]["data"])
+
+    assert stat_cards["Results Returned"] == str(actual_rows)
+
+
+def test_run_mocked_result_is_json_serializable(_patch_seq_data_dir, mock_blast):
+    """The return dict with mocked BLAST results must be JSON-serializable."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8", "A0A024SC78"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+    serialized = json.dumps(result)
+
+    assert isinstance(serialized, str)
+
+
+def test_run_ec_filter_reduces_blast_input(_patch_seq_data_dir, mock_blast):
+    """EC filter must reduce the reference rows passed to BLAST.execute()."""
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A067XR63"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    # EC 2.4.1.207 has 3 entries in the 20-row test CSV.
+    result = run(_default_params(sequence=_SEQ_A0A067XR63, ec_filter=["2.4.1.207"]))
+
+    # BLAST.execute() should receive 3 reference rows + 1 query row = 4 total.
+    combined_df = mock_blast.execute.call_args[0][0]
+    assert len(combined_df) == 4, f"Expected 4 rows (3 filtered + 1 query), got {len(combined_df)}"
+
+    # Stat card should reflect the reduction.
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["After Filtering"] == "3"
+
+
+def test_run_cofactor_filter_applied_when_column_present(mock_blast, tmp_path):
+    """When the database has a cofactor column, cofactor_filter must reduce rows before BLAST."""
+    # Create a small database CSV with a cofactor column.
+    csv_content = (
+        "Entry,Sequence,EC number,cofactor\n"
+        "P001,MKTAYIAKQR,1.1.1.1,NAD\n"
+        "P002,MKTAYIAKQRLL,1.1.1.1,FAD\n"
+        "P003,MKTAYIAKQRLLS,2.2.2.2,NAD\n"
+        "P004,MKTAYIAKQRLLST,2.2.2.2,PLP\n"
+    )
+    seq_dir = tmp_path / "sequences"
+    seq_dir.mkdir()
+    (seq_dir / "cofactor_db.csv").write_text(csv_content)
+
+    mock_blast.execute.return_value = _make_blast_result_df(["P001"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    with patch("enzyme_tk_app.app.tools.sequence_similarity.compute.DATA_DIR", tmp_path):
+        result = run(
+            {
+                "task_name": "cofactor-test",
+                "database": "cofactor_db.csv",
+                "sequence": "MKTAYIAKQR",
+                "ec_filter": [],
+                "cofactor_filter": ["NAD"],
+                "top_n": 10,
+                "predict_catalytic": False,
+            }
+        )
+
+    # NAD matches P001 and P003 → 2 rows after filtering.
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["Total Sequences"] == "4"
+    assert stat_cards["After Filtering"] == "2"
+
+    # BLAST should receive 2 reference rows + 1 query row = 3 total.
+    combined_df = mock_blast.execute.call_args[0][0]
+    assert len(combined_df) == 3
 
 
 # ── Return contract (requires diamond) ────────────────────────────────────────
@@ -926,14 +1244,6 @@ def test_populate_ec_options_strips_path_traversal_and_rejects_non_csv():
 
 
 # ── compute.run() — path-traversal & cofactor guards ────────────────────────
-
-
-def test_run_non_csv_database_raises(_patch_seq_data_dir):
-    """run() must raise ValueError when the database filename has no .csv suffix."""
-    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
-
-    with pytest.raises(ValueError, match="must be .csv"):
-        run(_default_params(database="malicious.txt"))
 
 
 def test_run_cofactor_filter_applied_when_column_exists(_patch_seq_data_dir):
