@@ -64,6 +64,15 @@ jobs:
       run: pip install .
     - name: Test with tox (pytest)
       run: tox -e test
+    - name: Build and run diamond-dependent tests
+      if: runner.os == 'Linux'
+      run: |
+        # Build the worker image which includes the diamond binary
+        docker compose build worker
+        # Run pytest directly inside the container (bypasses tox ignore_outcome
+        # so failures actually fail CI)
+        docker compose run --rm --no-deps worker \
+          sh -c "pip install --root-user-action=ignore --quiet -r requirements/test.txt && python -m pytest enzyme_tk_app/app/tests/test_tools_sequence_similarity.py -v"
     - name: Archive coverage report
       uses: actions/upload-artifact@v4.4.3
       with:
