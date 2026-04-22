@@ -19,7 +19,7 @@ import shutil
 from unittest.mock import MagicMock, patch
 
 import pytest
-from dash import html
+from dash import dcc, html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
@@ -832,6 +832,34 @@ def test_submit_message_without_filters_has_no_filtered_by():
     assert "filtered by" not in result
 
 
+def test_submit_raises_prevent_update_when_fields_empty():
+    """Server-side guard must raise PreventUpdate when required fields are missing."""
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.ctx") as mock_ctx,
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        with pytest.raises(PreventUpdate):
+            submit_sequence_similarity_job(1, 0, "", "protein.csv", "MKTAY", None, None, 10, False)
+
+
+def test_submit_returns_error_for_non_csv_database():
+    """A non-.csv database filename must return an error message without scheduling a job."""
+    mock_scheduler = MagicMock()
+
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.sequence_similarity.callbacks.get_task_scheduler",
+            return_value=mock_scheduler,
+        ),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_sequence_similarity_job(1, 0, "Task", "malicious.txt", "MKTAY", None, None, 10, False)
+
+    assert "Invalid" in result
+    mock_scheduler.submit_job.assert_not_called()
+
+
 # ── populate_ec_options ──────────────────────────────────────────────────────
 
 
@@ -883,3 +911,124 @@ def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
 
     labels = [o["label"] for o in options]
     assert labels == ["1.1.1.1", "2.7.1.1", "3.2.2.-"]
+
+
+def test_populate_ec_options_returns_empty_for_non_csv_extension():
+    """A filename without a .csv suffix must return an empty list (path-traversal guard)."""
+    assert populate_ec_options("malicious.txt") == []
+
+
+def test_populate_ec_options_strips_path_traversal_and_rejects_non_csv():
+    """Path-traversal attempts with a non-.csv suffix must return an empty list."""
+    assert populate_ec_options("../../etc/passwd") == []
+
+
+# ── compute.run() — path-traversal & cofactor guards ────────────────────────
+
+
+def test_run_non_csv_database_raises(_patch_seq_data_dir):
+    """run() must raise ValueError when the database filename has no .csv suffix."""
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    with pytest.raises(ValueError, match="must be .csv"):
+        run(_default_params(database="malicious.txt"))
+
+
+def test_run_cofactor_filter_applied_when_column_exists(_patch_seq_data_dir):
+    """When the cofactor column exists, run() must filter rows by cofactor values."""
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    original_load = None
+
+    def _load_with_cofactor(csv_path):
+        """Wrap load_sequence_data to inject a cofactor column."""
+        df = original_load(csv_path)
+        # Give roughly half the rows cofactor "CoA" and the rest "NAD".
+        df["cofactor"] = ["CoA" if i % 2 == 0 else "NAD" for i in range(len(df))]
+        return df
+
+    import enzyme_tk_app.app.tools.sequence_similarity.compute as compute_mod
+
+    original_load = compute_mod.load_sequence_data
+
+    with patch.object(compute_mod, "load_sequence_data", side_effect=_load_with_cofactor):
+        result = run(_default_params(cofactor_filter=["CoA"], ec_filter=["99.99.99.99"]))
+
+    # EC filter eliminates all rows, so cofactor filter alone won't produce results.
+    # But we verify cofactor_filter is mentioned in no_results_message.
+    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
+    assert stat_cards["After Filtering"] == "0"
+
+
+def test_run_cofactor_in_no_results_message(_patch_seq_data_dir):
+    """When cofactor_filter produces zero rows, the no_results_message must mention the cofactor."""
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    original_load = None
+
+    def _load_with_cofactor(csv_path):
+        """Wrap load_sequence_data to inject a cofactor column with no matching values."""
+        df = original_load(csv_path)
+        df["cofactor"] = "NAD"
+        return df
+
+    import enzyme_tk_app.app.tools.sequence_similarity.compute as compute_mod
+
+    original_load = compute_mod.load_sequence_data
+
+    with patch.object(compute_mod, "load_sequence_data", side_effect=_load_with_cofactor):
+        result = run(_default_params(cofactor_filter=["NONEXISTENT_COFACTOR"]))
+
+    assert "no_results_message" in result
+    assert "Cofactor" in result["no_results_message"]
+    assert "NONEXISTENT_COFACTOR" in result["no_results_message"]
+
+
+# ── modal() — default EC options prepopulation ───────────────────────────────
+
+
+def test_modal_prepopulates_ec_options_from_default_database(tmp_path):
+    """modal() must prepopulate EC dropdown options from the default sequence database."""
+    from enzyme_tk_app.app.tools.sequence_similarity.modal import modal as build_modal
+
+    # Create a sequences directory with a single CSV.
+    seq_dir = tmp_path / "sequences"
+    seq_dir.mkdir()
+    csv_file = seq_dir / "test_db.csv"
+    csv_file.write_text("Entry,Sequence,EC number\nA001,MKTAY,1.2.3.4\nA002,MRVLL,5.6.7.8\n")
+
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_similarity.modal.DATA_DIR", tmp_path),
+        patch(
+            "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
+            return_value=[{"label": "Test Db", "value": "test_db.csv"}],
+        ),
+    ):
+        component = build_modal()
+
+    # Find the EC filter dropdown by walking the component tree.
+    ec_dropdowns = find_components(component, dcc.Dropdown)
+    ec_filter_dd = [d for d in ec_dropdowns if d.id and "ec-filter" in d.id]
+    assert len(ec_filter_dd) == 1
+    options = ec_filter_dd[0].options
+    labels = sorted(o["label"] for o in options)
+    assert labels == ["1.2.3.4", "5.6.7.8"]
+
+
+def test_modal_no_default_ec_options_when_no_databases(tmp_path):
+    """When no databases exist, EC dropdown options must be empty."""
+    from enzyme_tk_app.app.tools.sequence_similarity.modal import modal as build_modal
+
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_similarity.modal.DATA_DIR", tmp_path),
+        patch(
+            "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
+            return_value=[],
+        ),
+    ):
+        component = build_modal()
+
+    ec_dropdowns = find_components(component, dcc.Dropdown)
+    ec_filter_dd = [d for d in ec_dropdowns if d.id and "ec-filter" in d.id]
+    assert len(ec_filter_dd) == 1
+    assert ec_filter_dd[0].options == []
