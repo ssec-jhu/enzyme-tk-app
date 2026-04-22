@@ -65,20 +65,23 @@ def populate_example_sequence(example_value):
 
 @callback(
     Output(f"id-dropdown-{TOOL_DEF['slug']}-ec-filter", "options"),
+    Output(f"id-dropdown-{TOOL_DEF['slug']}-ec-filter", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-database", "value"),
-    prevent_initial_call=True,
 )
 def populate_ec_options(database_value):
     """Populate the EC number filter dropdown when the database changes.
 
-    Reads the selected CSV database, extracts sorted unique EC numbers,
-    and returns them as dropdown options.
+    Fires on initial load (when the default database is set) and
+    whenever the user selects a different database.  Reads the CSV,
+    extracts sorted unique EC numbers, and returns them as dropdown
+    options.  Also clears any previously selected values so stale
+    EC filters are never carried over.
 
     Args:
         database_value: The selected database filename (e.g. ``protein.csv``).
 
     Returns:
-        List of dropdown option dicts with ``label`` and ``value`` keys.
+        Tuple of (options list, empty selection list).
     """
     if not database_value:
         raise PreventUpdate
@@ -87,14 +90,14 @@ def populate_ec_options(database_value):
     # to prevent path-traversal and enforce a .csv suffix.
     safe_name = Path(database_value).name
     if not safe_name.endswith(".csv"):
-        return []
+        return [], []
 
     csv_path = DATA_DIR / "sequences" / safe_name
     if not csv_path.exists():
-        return []
+        return [], []
 
     ec_numbers = get_ec_numbers(csv_path)
-    return [{"label": ec, "value": ec} for ec in ec_numbers]
+    return [{"label": ec, "value": ec} for ec in ec_numbers], []
 
 
 @callback(

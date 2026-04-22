@@ -871,12 +871,13 @@ def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
     csv_file.write_text("EC number\n3.2.2.-\n1.1.1.1\n3.2.2.-\n")
 
     with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.DATA_DIR", tmp_path):
-        options = populate_ec_options("test_db.csv")
+        options, cleared = populate_ec_options("test_db.csv")
 
     # Should have two unique EC numbers, sorted.
     assert len(options) == 2
     labels = [o["label"] for o in options]
     assert labels == ["1.1.1.1", "3.2.2.-"]
+    assert cleared == []
 
 
 def test_populate_ec_options_value_matches_label(tmp_path):
@@ -886,7 +887,7 @@ def test_populate_ec_options_value_matches_label(tmp_path):
     csv_file.write_text("EC number\n1.2.3.4\n5.6.7.8\n")
 
     with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.DATA_DIR", tmp_path):
-        options = populate_ec_options("db.csv")
+        options, _ = populate_ec_options("db.csv")
 
     for opt in options:
         assert opt["label"] == opt["value"]
@@ -895,9 +896,10 @@ def test_populate_ec_options_value_matches_label(tmp_path):
 def test_populate_ec_options_returns_empty_for_missing_file(tmp_path):
     """A non-existent database file must return an empty list (no crash)."""
     with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.DATA_DIR", tmp_path):
-        options = populate_ec_options("no_such_file.csv")
+        options, cleared = populate_ec_options("no_such_file.csv")
 
     assert options == []
+    assert cleared == []
 
 
 def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
@@ -907,7 +909,7 @@ def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
     csv_file.write_text("EC number\n3.2.2.-; 1.1.1.1\n2.7.1.1\n")
 
     with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.DATA_DIR", tmp_path):
-        options = populate_ec_options("multi_ec.csv")
+        options, _ = populate_ec_options("multi_ec.csv")
 
     labels = [o["label"] for o in options]
     assert labels == ["1.1.1.1", "2.7.1.1", "3.2.2.-"]
@@ -915,12 +917,12 @@ def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
 
 def test_populate_ec_options_returns_empty_for_non_csv_extension():
     """A filename without a .csv suffix must return an empty list (path-traversal guard)."""
-    assert populate_ec_options("malicious.txt") == []
+    assert populate_ec_options("malicious.txt") == ([], [])
 
 
 def test_populate_ec_options_strips_path_traversal_and_rejects_non_csv():
     """Path-traversal attempts with a non-.csv suffix must return an empty list."""
-    assert populate_ec_options("../../etc/passwd") == []
+    assert populate_ec_options("../../etc/passwd") == ([], [])
 
 
 # ── compute.run() — path-traversal & cofactor guards ────────────────────────
@@ -984,47 +986,36 @@ def test_run_cofactor_in_no_results_message(_patch_seq_data_dir):
     assert "NONEXISTENT_COFACTOR" in result["no_results_message"]
 
 
-# ── modal() — default EC options prepopulation ───────────────────────────────
+# ── modal() — EC options are NOT prepopulated (callback handles it) ──────────
 
 
-def test_modal_prepopulates_ec_options_from_default_database(tmp_path):
-    """modal() must prepopulate EC dropdown options from the default sequence database."""
+def test_modal_ec_dropdown_starts_empty():
+    """modal() must render the EC dropdown with empty options.
+
+    EC options are populated lazily by the ``populate_ec_options`` callback
+    (which fires on initial load) — not synchronously in ``modal()``.
+    """
     from enzyme_tk_app.app.tools.sequence_similarity.modal import modal as build_modal
 
-    # Create a sequences directory with a single CSV.
-    seq_dir = tmp_path / "sequences"
-    seq_dir.mkdir()
-    csv_file = seq_dir / "test_db.csv"
-    csv_file.write_text("Entry,Sequence,EC number\nA001,MKTAY,1.2.3.4\nA002,MRVLL,5.6.7.8\n")
-
-    with (
-        patch("enzyme_tk_app.app.tools.sequence_similarity.modal.DATA_DIR", tmp_path),
-        patch(
-            "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
-            return_value=[{"label": "Test Db", "value": "test_db.csv"}],
-        ),
+    with patch(
+        "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
+        return_value=[{"label": "Test Db", "value": "test_db.csv"}],
     ):
         component = build_modal()
 
-    # Find the EC filter dropdown by walking the component tree.
     ec_dropdowns = find_components(component, dcc.Dropdown)
     ec_filter_dd = [d for d in ec_dropdowns if d.id and "ec-filter" in d.id]
     assert len(ec_filter_dd) == 1
-    options = ec_filter_dd[0].options
-    labels = sorted(o["label"] for o in options)
-    assert labels == ["1.2.3.4", "5.6.7.8"]
+    assert ec_filter_dd[0].options == []
 
 
-def test_modal_no_default_ec_options_when_no_databases(tmp_path):
-    """When no databases exist, EC dropdown options must be empty."""
+def test_modal_ec_dropdown_empty_when_no_databases():
+    """When no databases exist, EC dropdown options must still be empty."""
     from enzyme_tk_app.app.tools.sequence_similarity.modal import modal as build_modal
 
-    with (
-        patch("enzyme_tk_app.app.tools.sequence_similarity.modal.DATA_DIR", tmp_path),
-        patch(
-            "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
-            return_value=[],
-        ),
+    with patch(
+        "enzyme_tk_app.app.tools.sequence_similarity.modal.get_sequence_database_options",
+        return_value=[],
     ):
         component = build_modal()
 

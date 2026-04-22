@@ -38,7 +38,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_submission_results,
 )
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
-from enzyme_tk_app.app.utils.data_loading import DATA_DIR, get_ec_numbers, get_sequence_database_options
+from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options
 
 
 def _get_example_sequences():
@@ -114,14 +114,6 @@ def modal():
 
     # Default to the first database if available.
     default_db = db_options[0]["value"] if db_options else None
-
-    # Prepopulate EC numbers from the default database so the dropdown
-    # is not empty on first render (the callback only fires on change).
-    default_ec_options = []
-    if default_db:
-        csv_path = DATA_DIR / "sequences" / default_db
-        if csv_path.exists():
-            default_ec_options = [{"label": ec, "value": ec} for ec in get_ec_numbers(csv_path)]
 
     return dbc.Modal(
         # Modal ID follows the convention: id-modal-<slug>
@@ -260,7 +252,7 @@ def modal():
                                     dbc.Col(
                                         dcc.Dropdown(
                                             id=f"id-dropdown-{TOOL_DEF['slug']}-ec-filter",
-                                            options=default_ec_options,
+                                            options=[],
                                             value=[],
                                             multi=True,
                                             placeholder="Filter by EC number (optional)...",
