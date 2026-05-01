@@ -106,6 +106,7 @@ def run(params: dict) -> dict:
     # Pre-filter by cofactor if the column exists and filters are given.
     # The "cofactor" column does not exist in the current CSV but will
     # be added in a future data update.
+    # TODO: Update this logic if the cofactor column contains multiple
     if cofactor_filter and COL_COFACTOR in db_df.columns:
         db_df = db_df[db_df[COL_COFACTOR].isin(cofactor_filter)]
 
@@ -122,8 +123,6 @@ def run(params: dict) -> dict:
         no_results_message = (
             f"No sequences in the database matched the selected filter(s) "
             f"({'; '.join(active_filters)}). Try broadening or removing the filter."
-            if active_filters
-            else "No sequences remained after filtering."
         )
         return {
             "_stat_cards": [

@@ -124,9 +124,8 @@ def validate_sequence_form(task_name, sequence, database):
     has_name = task_name and task_name.strip()
     has_sequence = sequence and sequence.strip()
     has_database = bool(database)
-    if has_name and has_sequence and has_database:
-        return False
-    return True
+    # Disable the submit button if any required field is missing or empty.
+    return not (has_name and has_sequence and has_database)
 
 
 @callback(
@@ -212,12 +211,11 @@ def submit_sequence_similarity_job(
         session_id=g.session_id,
     )
 
-    filters = []
-    if ec_filter:
-        filters.append(f"{len(ec_filter)} EC number(s)")
+    # Format the message to include the job ID and any applied filters.
     msg = f"Job submitted — ID: {job_id} (searching for top {top_n} results"
-    if filters:
-        msg += f", filtered by {', '.join(filters)}"
+    # Only mention filters if they are applied, to avoid cluttering the message.
+    if ec_filter:
+        msg += f", filtered by {len(ec_filter)} EC number(s)"
     msg += ")"
 
     return msg
