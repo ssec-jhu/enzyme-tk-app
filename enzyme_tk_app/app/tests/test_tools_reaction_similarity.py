@@ -47,8 +47,11 @@ _RXN_SMILES_5 = "CCCCCCCCCC(=O)CC(=O)N[C@H]1CCOC1=O.O>>CCCCCCCCCC(=O)CC(=O)N[C@@
 
 @pytest.fixture()
 def _patch_rxn_data_dir(reactions_dir, monkeypatch):
-    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
-    monkeypatch.setattr("enzyme_tk_app.app.tools.reaction_similarity.compute.DATA_DIR", reactions_dir)
+    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture."""
+    monkeypatch.setattr(
+        "enzyme_tk_app.app.tools.reaction_similarity.compute.REACTIONS_DIR",
+        reactions_dir / "reactions",
+    )
 
 
 def _default_params(**overrides):
