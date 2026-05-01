@@ -128,7 +128,7 @@ def test_expand_reactions_multiple_reactions():
 # ── run() — return contract ──────────────────────────────────────────────────
 
 
-def test_run_returns_expected_top_level_keys(_patch_data_dir):
+def test_run_returns_expected_top_level_keys(_patch_reactions_dir):
     """run() must return _stat_cards and dataframe at the top level."""
     result = run(_default_params())
 
@@ -136,7 +136,7 @@ def test_run_returns_expected_top_level_keys(_patch_data_dir):
     assert "dataframe" in result, "Result must contain 'dataframe'"
 
 
-def test_run_stat_cards_shape(_patch_data_dir):
+def test_run_stat_cards_shape(_patch_reactions_dir):
     """_stat_cards must be a list of dicts, each with 'label' and 'value'."""
     result = run(_default_params())
     stat_cards = result["_stat_cards"]
@@ -148,7 +148,7 @@ def test_run_stat_cards_shape(_patch_data_dir):
         assert "value" in card, f"Stat card missing 'value': {card}"
 
 
-def test_run_dataframe_has_columns_and_data(_patch_data_dir):
+def test_run_dataframe_has_columns_and_data(_patch_reactions_dir):
     """The dataframe payload must have 'columns' and 'data' keys."""
     result = run(_default_params())
     df_payload = result["dataframe"]
@@ -159,7 +159,7 @@ def test_run_dataframe_has_columns_and_data(_patch_data_dir):
     assert isinstance(df_payload["data"], list)
 
 
-def test_run_result_is_json_serializable(_patch_data_dir):
+def test_run_result_is_json_serializable(_patch_reactions_dir):
     """The entire return dict must be JSON-serializable — backend requirement.
 
     Large results are offloaded to disk as JSON; non-serializable objects
@@ -175,7 +175,7 @@ def test_run_result_is_json_serializable(_patch_data_dir):
 # ── run() — enzymetk column regression ───────────────────────────────────────
 
 
-def test_run_enzymetk_similarity_columns_present(_patch_data_dir):
+def test_run_enzymetk_similarity_columns_present(_patch_reactions_dir):
     """enzymetk must produce TanimotoSimilarity, CosineSimilarity, RusselSimilarity.
 
     This is the core regression signal — if enzymetk renames any of these
@@ -190,7 +190,7 @@ def test_run_enzymetk_similarity_columns_present(_patch_data_dir):
         assert col in output_columns, f"enzymetk column '{col}' missing from output — possible API change"
 
 
-def test_run_similarity_scores_are_floats_in_valid_range(_patch_data_dir):
+def test_run_similarity_scores_are_floats_in_valid_range(_patch_reactions_dir):
     """All similarity scores must be floats in [0.0, 1.0]."""
     params = _default_params(algorithms=[a.value for a in SimilarityAlgorithm])
     result = run(params)
@@ -202,7 +202,7 @@ def test_run_similarity_scores_are_floats_in_valid_range(_patch_data_dir):
             assert 0.0 <= score <= 1.0, f"Score {score} in '{col}' out of [0, 1] range"
 
 
-def test_run_single_algorithm_only_includes_selected_column(_patch_data_dir):
+def test_run_single_algorithm_only_includes_selected_column(_patch_reactions_dir):
     """When only one algorithm is selected, the output still contains that column."""
     params = _default_params(algorithms=[SimilarityAlgorithm.COSINE.value])
     result = run(params)
@@ -214,7 +214,7 @@ def test_run_single_algorithm_only_includes_selected_column(_patch_data_dir):
 # ── run() — output quality ───────────────────────────────────────────────────
 
 
-def test_run_internal_row_id_not_in_output(_patch_data_dir):
+def test_run_internal_row_id_not_in_output(_patch_reactions_dir):
     """The internal _row_id join key must be dropped from the final output."""
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
@@ -222,7 +222,7 @@ def test_run_internal_row_id_not_in_output(_patch_data_dir):
     assert _ROW_ID not in output_columns, f"Internal column '{_ROW_ID}' leaked into output"
 
 
-def test_run_molecule_svg_column_present(_patch_data_dir):
+def test_run_molecule_svg_column_present(_patch_reactions_dir):
     """Each result row must have a molecule_svg column with a valid data URI."""
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
@@ -236,7 +236,7 @@ def test_run_molecule_svg_column_present(_patch_data_dir):
         assert svg.startswith("data:image/svg+xml;base64,"), f"SVG data URI has unexpected prefix: {svg[:40]}..."
 
 
-def test_run_database_column_derived_from_filename(_patch_data_dir):
+def test_run_database_column_derived_from_filename(_patch_reactions_dir):
     """Each result row must carry a 'database' column derived from the CSV filename."""
     result = run(_default_params())
 
@@ -246,7 +246,7 @@ def test_run_database_column_derived_from_filename(_patch_data_dir):
         assert row["database"] == "Test Reactions 20"
 
 
-def test_run_similarity_scores_rounded_to_4_decimals(_patch_data_dir):
+def test_run_similarity_scores_rounded_to_4_decimals(_patch_reactions_dir):
     """Selected similarity columns should be rounded to at most 4 decimal places."""
     params = _default_params(algorithms=[SimilarityAlgorithm.TANIMOTO.value])
     result = run(params)
@@ -260,7 +260,7 @@ def test_run_similarity_scores_rounded_to_4_decimals(_patch_data_dir):
             assert len(decimal_part) <= 4, f"Score {score} has {len(decimal_part)} decimal places, expected <= 4"
 
 
-def test_run_respects_top_n(_patch_data_dir):
+def test_run_respects_top_n(_patch_reactions_dir):
     """The number of result rows must not exceed the requested top_n."""
     params = _default_params(top_n=3)
     result = run(params)
@@ -268,7 +268,7 @@ def test_run_respects_top_n(_patch_data_dir):
     assert len(result["dataframe"]["data"]) <= 3
 
 
-def test_run_molecule_smiles_column_present(_patch_data_dir):
+def test_run_molecule_smiles_column_present(_patch_reactions_dir):
     """Each result row must include the individual molecule SMILES."""
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
@@ -279,7 +279,7 @@ def test_run_molecule_smiles_column_present(_patch_data_dir):
 # ── run() — stat card consistency ────────────────────────────────────────────
 
 
-def test_run_stat_card_databases_searched_matches_input(_patch_data_dir):
+def test_run_stat_card_databases_searched_matches_input(_patch_reactions_dir):
     """The 'Databases Searched' stat card must match len(databases)."""
     result = run(_default_params())
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
@@ -287,7 +287,7 @@ def test_run_stat_card_databases_searched_matches_input(_patch_data_dir):
     assert stat_cards["Databases Searched"] == "1/1"
 
 
-def test_run_stat_card_results_returned_matches_data(_patch_data_dir):
+def test_run_stat_card_results_returned_matches_data(_patch_reactions_dir):
     """The 'Results Returned' stat card must match the actual row count."""
     result = run(_default_params())
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
@@ -296,7 +296,7 @@ def test_run_stat_card_results_returned_matches_data(_patch_data_dir):
     assert stat_cards["Results Returned"] == str(actual_rows)
 
 
-def test_run_stat_card_run_time_is_numeric(_patch_data_dir):
+def test_run_stat_card_run_time_is_numeric(_patch_reactions_dir):
     """The 'Run Time' stat card must be a numeric value followed by 's'."""
     result = run(_default_params())
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
@@ -310,7 +310,7 @@ def test_run_stat_card_run_time_is_numeric(_patch_data_dir):
 # ── run() — product role ─────────────────────────────────────────────────────
 
 
-def test_run_product_role(_patch_data_dir):
+def test_run_product_role(_patch_reactions_dir):
     """run() with role='product' should search against product side molecules."""
     params = _default_params(role="product")
     result = run(params)
@@ -322,7 +322,7 @@ def test_run_product_role(_patch_data_dir):
     assert len(result["dataframe"]["data"]) > 0, "Expected results for product role search"
 
 
-def test_run_invalid_role_raises_value_error(_patch_data_dir):
+def test_run_invalid_role_raises_value_error(_patch_reactions_dir):
     """run() must reject an invalid role string with a ValueError."""
     params = _default_params(role="invalid")
     with pytest.raises(ValueError, match="not a valid MoleculeRole"):
@@ -336,7 +336,7 @@ def test_expand_reactions_invalid_role_raises_value_error():
         _expand_reactions(df, "invalid")
 
 
-def test_run_invalid_algorithm_raises_value_error(_patch_data_dir):
+def test_run_invalid_algorithm_raises_value_error(_patch_reactions_dir):
     """run() must reject an invalid algorithm string with a ValueError."""
     params = _default_params(algorithms=["bogus"])
     with pytest.raises(ValueError, match="not a valid SimilarityAlgorithm"):
@@ -346,7 +346,7 @@ def test_run_invalid_algorithm_raises_value_error(_patch_data_dir):
 # ── run() — edge cases ───────────────────────────────────────────────────────
 
 
-def test_run_nonexistent_database_returns_empty(_patch_data_dir):
+def test_run_nonexistent_database_returns_empty(_patch_reactions_dir):
     """When the CSV file does not exist, run() returns empty results gracefully."""
     params = _default_params(databases=["nonexistent_database.csv"])
     result = run(params)
@@ -358,7 +358,7 @@ def test_run_nonexistent_database_returns_empty(_patch_data_dir):
     assert stat_cards["Results Returned"] == "0"
 
 
-def test_run_data_rows_have_consistent_columns(_patch_data_dir):
+def test_run_data_rows_have_consistent_columns(_patch_reactions_dir):
     """Every data row must have exactly the same keys as the 'columns' list."""
     result = run(_default_params())
     columns = set(result["dataframe"]["columns"])
@@ -367,14 +367,14 @@ def test_run_data_rows_have_consistent_columns(_patch_data_dir):
         assert set(row.keys()) == columns, f"Row {i} keys {set(row.keys())} differ from columns {columns}"
 
 
-def test_run_empty_algorithms_raises_value_error(_patch_data_dir):
+def test_run_empty_algorithms_raises_value_error(_patch_reactions_dir):
     """run() must reject an empty algorithms list with a ValueError."""
     params = _default_params(algorithms=[])
     with pytest.raises(ValueError, match="At least one similarity algorithm must be selected"):
         run(params)
 
 
-def test_run_non_csv_database_is_skipped(_patch_data_dir):
+def test_run_non_csv_database_is_skipped(_patch_reactions_dir):
     """A database filename without a .csv suffix must be skipped, not crash."""
     params = _default_params(databases=["not_a_csv.txt"])
     result = run(params)
@@ -386,7 +386,7 @@ def test_run_non_csv_database_is_skipped(_patch_data_dir):
     assert stat_cards["Databases Skipped"] == "not_a_csv.txt"
 
 
-def test_run_skipped_databases_stat_card_in_success_path(_patch_data_dir):
+def test_run_skipped_databases_stat_card_in_success_path(_patch_reactions_dir):
     """When some databases are skipped but others produce results, the stat card appears."""
     params = _default_params(databases=["test_reactions_20.csv", "bad.txt"])
     result = run(params)
@@ -413,7 +413,7 @@ def test_run_skipped_databases_stat_card_in_success_path(_patch_data_dir):
     ],
     ids=["tanimoto", "cosine"],
 )
-def test_run_exact_substrate_returns_score_1(_patch_data_dir, csv_molecules, algorithm, score_column):
+def test_run_exact_substrate_returns_score_1(_patch_reactions_dir, csv_molecules, algorithm, score_column):
     """Every substrate from the CSV must have a top-result score of 1.0.
 
     Iterates over the non-trivial substrates extracted by the
@@ -443,7 +443,7 @@ def test_run_exact_substrate_returns_score_1(_patch_data_dir, csv_molecules, alg
     ],
     ids=["tanimoto", "cosine"],
 )
-def test_run_exact_product_returns_score_1(_patch_data_dir, csv_molecules, algorithm, score_column):
+def test_run_exact_product_returns_score_1(_patch_reactions_dir, csv_molecules, algorithm, score_column):
     """Every product from the CSV must have a top-result score of 1.0.
 
     See the substrate counterpart for why the SMILES string is not checked.
@@ -461,7 +461,7 @@ def test_run_exact_product_returns_score_1(_patch_data_dir, csv_molecules, algor
 # ── run() — pinned score regression ──────────────────────────────────────────
 
 
-def test_run_known_scores(_patch_data_dir, csv_molecules_known_scores):
+def test_run_known_scores(_patch_reactions_dir, csv_molecules_known_scores):
     """Similarity scores for known query molecules must match pinned values.
 
     Guards against silent changes in enzymetk's fingerprint calculation

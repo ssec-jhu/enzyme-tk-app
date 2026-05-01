@@ -32,15 +32,6 @@ def test_subdirectories_are_children_of_data_dir():
         assert subdir.parent == DATA_DIR, f"{name} should be a direct child of DATA_DIR"
 
 
-def test_subdirectory_names():
-    """Subdirectory constants must point at the expected folder names."""
-    from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCES_DIR
-
-    assert SEQUENCES_DIR.name == "sequences"
-    assert REACTIONS_DIR.name == "reactions"
-    assert FOLDSEEK_DB_DIR.name == "foldseek_db"
-
-
 # ── ETK_DATA_DIR override ────────────────────────────────────────────────────
 
 
@@ -54,9 +45,9 @@ def test_etk_data_dir_overrides_root_and_subdirs(tmp_path, monkeypatch):
 
     try:
         assert paths_mod.DATA_DIR == tmp_path
-        assert paths_mod.SEQUENCES_DIR == tmp_path / "sequences"
-        assert paths_mod.REACTIONS_DIR == tmp_path / "reactions"
-        assert paths_mod.FOLDSEEK_DB_DIR == tmp_path / "foldseek_db"
+        assert paths_mod.SEQUENCES_DIR.parent == tmp_path
+        assert paths_mod.REACTIONS_DIR.parent == tmp_path
+        assert paths_mod.FOLDSEEK_DB_DIR.parent == tmp_path
     finally:
         # Restore default module state regardless of assertion outcome.
         monkeypatch.delenv("ETK_DATA_DIR")

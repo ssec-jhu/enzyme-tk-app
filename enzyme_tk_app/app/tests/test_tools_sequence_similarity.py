@@ -60,9 +60,11 @@ _skip_no_diamond = pytest.mark.skipif(
 @pytest.fixture()
 def _patch_seq_data_dir(sequences_dir, monkeypatch):
     """Patch ``SEQUENCES_DIR`` so ``run()`` reads the 20-row test sequence fixture."""
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR  # noqa: PLC0415
+
     monkeypatch.setattr(
         "enzyme_tk_app.app.tools.sequence_similarity.compute.SEQUENCES_DIR",
-        sequences_dir / "sequences",
+        sequences_dir / SEQUENCES_DIR.name,
     )
 
 
@@ -457,7 +459,9 @@ def test_run_cofactor_filter_applied_when_column_present(mock_blast, tmp_path):
         "P003,MKTAYIAKQRLLS,2.2.2.2,NAD\n"
         "P004,MKTAYIAKQRLLST,2.2.2.2,PLP\n"
     )
-    seq_dir = tmp_path / "sequences"
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
+
+    seq_dir = tmp_path / _SEQ_DIR.name
     seq_dir.mkdir()
     (seq_dir / "cofactor_db.csv").write_text(csv_content)
 
@@ -1187,12 +1191,14 @@ def test_submit_returns_error_for_non_csv_database():
 
 def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
     """A valid database CSV must produce dropdown options for each unique EC number."""
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
+
     # Create a minimal CSV with an ec_number column.
-    csv_file = tmp_path / "sequences" / "test_db.csv"
+    csv_file = tmp_path / _SEQ_DIR.name / "test_db.csv"
     csv_file.parent.mkdir(parents=True)
     csv_file.write_text("EC number\n3.2.2.-\n1.1.1.1\n3.2.2.-\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / "sequences"):
+    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
         options, cleared = populate_ec_options("test_db.csv")
 
     # Should have two unique EC numbers, sorted.
@@ -1204,11 +1210,13 @@ def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
 
 def test_populate_ec_options_value_matches_label(tmp_path):
     """Each option's value must equal its label (used as the filter key)."""
-    csv_file = tmp_path / "sequences" / "db.csv"
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
+
+    csv_file = tmp_path / _SEQ_DIR.name / "db.csv"
     csv_file.parent.mkdir(parents=True)
     csv_file.write_text("EC number\n1.2.3.4\n5.6.7.8\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / "sequences"):
+    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
         options, _ = populate_ec_options("db.csv")
 
     for opt in options:
@@ -1217,7 +1225,9 @@ def test_populate_ec_options_value_matches_label(tmp_path):
 
 def test_populate_ec_options_returns_empty_for_missing_file(tmp_path):
     """A non-existent database file must return an empty list (no crash)."""
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / "sequences"):
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
+
+    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
         options, cleared = populate_ec_options("no_such_file.csv")
 
     assert options == []
@@ -1226,11 +1236,13 @@ def test_populate_ec_options_returns_empty_for_missing_file(tmp_path):
 
 def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
     """EC numbers separated by semicolons in a single cell must be split into separate options."""
-    csv_file = tmp_path / "sequences" / "multi_ec.csv"
+    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
+
+    csv_file = tmp_path / _SEQ_DIR.name / "multi_ec.csv"
     csv_file.parent.mkdir(parents=True)
     csv_file.write_text("EC number\n3.2.2.-; 1.1.1.1\n2.7.1.1\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / "sequences"):
+    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
         options, _ = populate_ec_options("multi_ec.csv")
 
     labels = [o["label"] for o in options]
