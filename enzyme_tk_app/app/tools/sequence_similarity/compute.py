@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_BITSCORE,
     COL_COFACTOR,
@@ -28,7 +29,6 @@ from enzyme_tk_app.app.utils.columns import (
     COL_TARGET,
 )
 from enzyme_tk_app.app.utils.data_loading import (
-    DATA_DIR,
     load_sequence_data,
 )
 
@@ -84,7 +84,7 @@ def run(params: dict) -> dict:
     safe_name = Path(database_filename).name
     if not safe_name.endswith(".csv"):
         raise ValueError(f"Invalid database filename (must be .csv): {database_filename}")
-    csv_path = DATA_DIR / "sequences" / safe_name
+    csv_path = SEQUENCES_DIR / safe_name
     if not csv_path.exists():
         raise ValueError(f"Database file not found: {safe_name}")
 
