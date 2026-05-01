@@ -6,7 +6,7 @@ suitable for Dash dropdown components.
 
 import pandas as pd
 
-from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_EC_NUMBER,
     COL_ENTRY,
