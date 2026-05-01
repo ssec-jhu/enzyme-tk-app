@@ -14,8 +14,9 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
-from enzyme_tk_app.app.utils.data_loading import DATA_DIR, get_ec_numbers
+from enzyme_tk_app.app.utils.data_loading import get_ec_numbers
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
@@ -92,7 +93,7 @@ def populate_ec_options(database_value):
     if not safe_name.endswith(".csv"):
         return [], []
 
-    csv_path = DATA_DIR / "sequences" / safe_name
+    csv_path = SEQUENCES_DIR / safe_name
     if not csv_path.exists():
         return [], []
 
