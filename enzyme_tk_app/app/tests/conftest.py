@@ -47,8 +47,11 @@ def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
 
 @pytest.fixture()
 def _patch_data_dir(reactions_dir, monkeypatch):
-    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
-    monkeypatch.setattr("enzyme_tk_app.app.tools.substrate_product_similarity.compute.DATA_DIR", reactions_dir)
+    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture."""
+    monkeypatch.setattr(
+        "enzyme_tk_app.app.tools.substrate_product_similarity.compute.REACTIONS_DIR",
+        reactions_dir / "reactions",
+    )
 
 
 @pytest.fixture()
