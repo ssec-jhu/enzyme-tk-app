@@ -138,6 +138,32 @@ def test_build_job_row_shows_truncated_job_id():
     assert id_spans[0].children == "...456789"
 
 
+def test_build_job_row_completed_shows_computed_duration():
+    """A completed job row must display the computed duration, not 'TBD'."""
+    job = make_job(
+        status=JobStatus.SUCCESS,
+        started_at="2025-01-01T00:00:00+00:00",
+        completed_at="2025-01-01T00:02:30+00:00",
+    )
+    row = _build_job_row(job)
+
+    cells = row.children
+    duration_cell = cells[5]  # Duration is the 6th column (index 5)
+    assert "TBD" not in str(duration_cell.children)
+    assert "2m 30s" in str(duration_cell.children)
+
+
+@pytest.mark.parametrize("status", [JobStatus.PENDING, JobStatus.STARTED], ids=["pending", "started"])
+def test_build_job_row_active_shows_tbd_duration(status):
+    """Active (PENDING/STARTED) job rows must show 'TBD' in the Duration column."""
+    job = make_job(status=status)
+    row = _build_job_row(job)
+
+    cells = row.children
+    duration_cell = cells[5]  # Duration is the 6th column (index 5)
+    assert duration_cell.children == "TBD"
+
+
 # ── _build_jobs_table ────────────────────────────────────────────────────────
 
 
@@ -162,6 +188,16 @@ def test_build_jobs_table_with_jobs_renders_html_table():
     rows = find_components(table, html.Tr)
     # 1 header row + 2 data rows = 3
     assert len(rows) == 3
+
+
+def test_build_jobs_table_header_includes_duration_column():
+    """The table header must include a 'Duration' column."""
+    jobs = [make_job(job_id="j1", status=JobStatus.SUCCESS)]
+    table = _build_jobs_table(jobs)
+
+    header_row = find_components(table, html.Thead)[0].children
+    header_texts = [get_text(th) for th in find_components(header_row, html.Th)]
+    assert "Duration" in header_texts
 
 
 def test_build_jobs_table_active_jobs_sorted_first():

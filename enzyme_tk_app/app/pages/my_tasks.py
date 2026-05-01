@@ -204,7 +204,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
             html.Td(tool_title),
             html.Td(_build_status_badge(job.status)),
             html.Td(format_timestamp(job.submitted_at)),
-            html.Td(compute_duration(job.started_at, job.completed_at)),
+            html.Td("TBD" if job.status in _ACTIVE else compute_duration(job.started_at, job.completed_at)),
             html.Td(format_duration(max_dur)),
             html.Td(expires_in(job.submitted_at)),
             html.Td(
