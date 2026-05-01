@@ -18,6 +18,7 @@ import json
 import shutil
 from unittest.mock import MagicMock, patch
 
+import numpy as np
 import pandas as pd
 import pytest
 from dash import dcc, html
@@ -724,7 +725,7 @@ def test_run_self_search_has_full_identity(_patch_seq_data_dir):
     top_hit = result["dataframe"]["data"][0]
 
     identity = top_hit[COL_SEQ_IDENTITY]
-    assert identity == 100.0, f"Expected 100% identity for self-match, got {identity}"
+    assert np.isclose(identity, 100.0, atol=1e-6), f"Expected 100% identity for self-match, got {identity}"
 
 
 # ── EC number filtering ──────────────────────────────────────────────────────
