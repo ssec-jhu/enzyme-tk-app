@@ -15,7 +15,9 @@ import pytest
 @pytest.fixture(autouse=True)
 def _clear_data_dir_env(monkeypatch):
     """Ensure ETK_DATA_DIR is unset so tests start from the default state."""
-    monkeypatch.delenv("ETK_DATA_DIR")
+    # delenv raises KeyError when the variable isn't set.
+    # Adding raising=False makes it a no-op in that case.
+    monkeypatch.delenv("ETK_DATA_DIR", raising=False)
 
 
 # ── Default paths ─────────────────────────────────────────────────────────────
