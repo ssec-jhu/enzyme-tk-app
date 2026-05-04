@@ -25,6 +25,7 @@ from dash import dcc, html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
+from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tests.conftest import find_components, make_job
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.callbacks import (
@@ -56,20 +57,28 @@ _skip_no_diamond = pytest.mark.skipif(
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
-
-@pytest.fixture()
+# The 20-row test CSV fixture is automatically used in all tests via the
+# _patch_seq_data_dir fixture, which monkeypatches the SEQUENCES_DIR in both
+@pytest.fixture(autouse=True)
 def _patch_seq_data_dir(sequences_dir, monkeypatch):
-    """Patch ``SEQUENCES_DIR`` so ``run()`` reads the 20-row test sequence fixture."""
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR  # noqa: PLC0415
+    """Patch ``SEQUENCES_DIR`` in both compute and callbacks modules.
 
+    Autouse ensures every test in this module reads from the 20-row test
+    sequence fixture rather than production data.
+    """
+    patched_dir = sequences_dir / SEQUENCES_DIR.name
     monkeypatch.setattr(
         "enzyme_tk_app.app.tools.sequence_similarity.compute.SEQUENCES_DIR",
-        sequences_dir / SEQUENCES_DIR.name,
+        patched_dir,
+    )
+    monkeypatch.setattr(
+        "enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR",
+        patched_dir,
     )
 
 
 @pytest.fixture()
-def empty_ec_result(_patch_seq_data_dir):
+def empty_ec_result():
     """Run once with an EC filter that matches nothing — shared by all empty-results tests."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -119,7 +128,7 @@ def _default_params(**overrides):
 # ── Early-return paths (no diamond needed) ────────────────────────────────────
 
 
-def test_run_nonexistent_database_raises(_patch_seq_data_dir):
+def test_run_nonexistent_database_raises():
     """run() must raise ValueError when the database file does not exist."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -189,7 +198,7 @@ def test_run_rejects_non_csv_extension(filename):
         run(_default_params(database=filename))
 
 
-def test_run_path_traversal_sanitized(_patch_seq_data_dir):
+def test_run_path_traversal_sanitized():
     """Directory components are stripped to prevent path-traversal attacks.
 
     ``../../etc/secrets.csv`` becomes ``secrets.csv`` (via ``Path.name``),
@@ -247,7 +256,7 @@ def _make_blast_result_df(targets, bitscores=None, identities=None):
     [(0, 1), (-5, 1), (999, 500), (10, 10), (1, 1), (500, 500)],
     ids=["zero-clamps-to-1", "negative-clamps-to-1", "999-clamps-to-500", "10-unchanged", "min-edge", "max-edge"],
 )
-def test_run_top_n_clamping(raw_top_n, expected_max, _patch_seq_data_dir, mock_blast):
+def test_run_top_n_clamping(raw_top_n, expected_max, mock_blast):
     """top_n is clamped to [1, 500]; result row count must not exceed the clamped value."""
     # Return enough mock rows to exceed any clamped top_n.
     entries = [f"P{i:04d}" for i in range(600)]
@@ -260,7 +269,7 @@ def test_run_top_n_clamping(raw_top_n, expected_max, _patch_seq_data_dir, mock_b
     assert len(result["dataframe"]["data"]) <= expected_max
 
 
-def test_run_mocked_blast_returns_expected_keys(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_returns_expected_keys(mock_blast):
     """Mocked BLAST: run() must return _stat_cards, catalytic_prediction, and dataframe."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
 
@@ -275,7 +284,7 @@ def test_run_mocked_blast_returns_expected_keys(_patch_seq_data_dir, mock_blast)
     assert isinstance(result["dataframe"]["data"], list)
 
 
-def test_run_mocked_blast_sorts_by_bitscore_descending(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_sorts_by_bitscore_descending(mock_blast):
     """Results must be sorted by bitscore descending even when BLAST returns them unsorted."""
     mock_blast.execute.return_value = _make_blast_result_df(
         targets=["A0A009IHW8", "A0A024SC78", "A0A023I7E1"],
@@ -290,7 +299,7 @@ def test_run_mocked_blast_sorts_by_bitscore_descending(_patch_seq_data_dir, mock
     assert bitscores == sorted(bitscores, reverse=True), "Results not sorted by bitscore descending"
 
 
-def test_run_mocked_blast_truncates_to_top_n(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_truncates_to_top_n(mock_blast):
     """When BLAST returns more hits than top_n, only the top-scoring ones are kept."""
     mock_blast.execute.return_value = _make_blast_result_df(
         targets=["A0A009IHW8", "A0A024SC78", "A0A023I7E1", "A0A024RXP8", "A0A067XR63"],
@@ -308,7 +317,7 @@ def test_run_mocked_blast_truncates_to_top_n(_patch_seq_data_dir, mock_blast):
     assert bitscores == [500.0, 400.0]
 
 
-def test_run_mocked_blast_strips_internal_columns(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_strips_internal_columns(mock_blast):
     """Internal columns (query, Entry, Residue_0index) must not appear in consumer output."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
 
@@ -321,7 +330,7 @@ def test_run_mocked_blast_strips_internal_columns(_patch_seq_data_dir, mock_blas
         assert col not in output_columns, f"Internal column '{col}' leaked into output"
 
 
-def test_run_mocked_blast_merges_db_metadata(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_merges_db_metadata(mock_blast):
     """Database metadata (EC number, Sequence) must be merged onto BLAST results via target ID."""
     # A0A009IHW8 exists in the test CSV with EC "3.2.2.-; 3.2.2.6".
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
@@ -343,7 +352,7 @@ def test_run_mocked_blast_merges_db_metadata(_patch_seq_data_dir, mock_blast):
     assert len(row[COL_SEQUENCE]) > 0
 
 
-def test_run_mocked_blast_empty_data_error(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_empty_data_error(mock_blast):
     """When BLAST raises EmptyDataError (no alignments), run() returns an empty result with a message."""
     mock_blast.execute.side_effect = pd.errors.EmptyDataError("No data")
 
@@ -361,7 +370,7 @@ def test_run_mocked_blast_empty_data_error(_patch_seq_data_dir, mock_blast):
     assert "no alignments" in result["no_results_message"].lower()
 
 
-def test_run_mocked_blast_no_no_results_message_on_success(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_blast_no_no_results_message_on_success(mock_blast):
     """When BLAST returns results, no_results_message must not be in the return dict."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
 
@@ -377,7 +386,7 @@ def test_run_mocked_blast_no_no_results_message_on_success(_patch_seq_data_dir, 
     [(False, True), (True, False)],
     ids=["prediction-off", "prediction-on"],
 )
-def test_run_mocked_catalytic_prediction(predict, expected_none, _patch_seq_data_dir, mock_blast):
+def test_run_mocked_catalytic_prediction(predict, expected_none, mock_blast):
     """catalytic_prediction must be None when disabled, non-None when enabled."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
 
@@ -391,7 +400,7 @@ def test_run_mocked_catalytic_prediction(predict, expected_none, _patch_seq_data
         assert result["catalytic_prediction"] is not None
 
 
-def test_run_mocked_stat_cards_labels_and_count(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_stat_cards_labels_and_count(mock_blast):
     """Stat cards must include the five expected labels."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8", "A0A024SC78"])
 
@@ -404,7 +413,7 @@ def test_run_mocked_stat_cards_labels_and_count(_patch_seq_data_dir, mock_blast)
     assert expected.issubset(stat_labels), f"Missing labels: {expected - stat_labels}"
 
 
-def test_run_mocked_stat_card_results_matches_data(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_stat_card_results_matches_data(mock_blast):
     """The 'Results Returned' stat card must equal the actual row count."""
     mock_blast.execute.return_value = _make_blast_result_df(
         ["A0A009IHW8", "A0A024SC78", "A0A023I7E1"],
@@ -419,7 +428,7 @@ def test_run_mocked_stat_card_results_matches_data(_patch_seq_data_dir, mock_bla
     assert stat_cards["Results Returned"] == str(actual_rows)
 
 
-def test_run_mocked_result_is_json_serializable(_patch_seq_data_dir, mock_blast):
+def test_run_mocked_result_is_json_serializable(mock_blast):
     """The return dict with mocked BLAST results must be JSON-serializable."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8", "A0A024SC78"])
 
@@ -431,7 +440,7 @@ def test_run_mocked_result_is_json_serializable(_patch_seq_data_dir, mock_blast)
     assert isinstance(serialized, str)
 
 
-def test_run_ec_filter_reduces_blast_input(_patch_seq_data_dir, mock_blast):
+def test_run_ec_filter_reduces_blast_input(mock_blast):
     """EC filter must reduce the reference rows passed to BLAST.execute()."""
     mock_blast.execute.return_value = _make_blast_result_df(["A0A067XR63"])
 
@@ -459,28 +468,23 @@ def test_run_cofactor_filter_applied_when_column_present(mock_blast, tmp_path):
         "P003,MKTAYIAKQRLLS,2.2.2.2,NAD\n"
         "P004,MKTAYIAKQRLLST,2.2.2.2,PLP\n"
     )
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
-
-    seq_dir = tmp_path / _SEQ_DIR.name
-    seq_dir.mkdir()
-    (seq_dir / "cofactor_db.csv").write_text(csv_content)
+    (tmp_path / SEQUENCES_DIR.name / "cofactor_db.csv").write_text(csv_content)
 
     mock_blast.execute.return_value = _make_blast_result_df(["P001"])
 
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.compute.SEQUENCES_DIR", seq_dir):
-        result = run(
-            {
-                "task_name": "cofactor-test",
-                "database": "cofactor_db.csv",
-                "sequence": "MKTAYIAKQR",
-                "ec_filter": [],
-                "cofactor_filter": ["NAD"],
-                "top_n": 10,
-                "predict_catalytic": False,
-            }
-        )
+    result = run(
+        {
+            "task_name": "cofactor-test",
+            "database": "cofactor_db.csv",
+            "sequence": "MKTAYIAKQR",
+            "ec_filter": [],
+            "cofactor_filter": ["NAD"],
+            "top_n": 10,
+            "predict_catalytic": False,
+        }
+    )
 
     # NAD matches P001 and P003 → 2 rows after filtering.
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
@@ -496,7 +500,7 @@ def test_run_cofactor_filter_applied_when_column_present(mock_blast, tmp_path):
 
 
 @_skip_no_diamond
-def test_run_returns_expected_top_level_keys(_patch_seq_data_dir):
+def test_run_returns_expected_top_level_keys():
     """run() must return _stat_cards, catalytic_prediction, and dataframe."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -508,7 +512,7 @@ def test_run_returns_expected_top_level_keys(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_stat_cards_shape(_patch_seq_data_dir):
+def test_run_stat_cards_shape():
     """_stat_cards must be a list of dicts with 'label' and 'value'."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -523,7 +527,7 @@ def test_run_stat_cards_shape(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_dataframe_has_columns_and_data(_patch_seq_data_dir):
+def test_run_dataframe_has_columns_and_data():
     """The dataframe payload must have 'columns' and 'data' keys."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -538,7 +542,7 @@ def test_run_dataframe_has_columns_and_data(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_result_is_json_serializable(_patch_seq_data_dir):
+def test_run_result_is_json_serializable():
     """The entire return dict must be JSON-serializable — backend requirement."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -548,7 +552,7 @@ def test_run_result_is_json_serializable(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_data_rows_have_consistent_columns(_patch_seq_data_dir):
+def test_run_data_rows_have_consistent_columns():
     """Every data row must have exactly the same keys as 'columns'."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -568,7 +572,7 @@ def test_run_data_rows_have_consistent_columns(_patch_seq_data_dir):
     [COL_TARGET, COL_BITSCORE, COL_SEQ_IDENTITY, COL_EC_NUMBER, COL_SEQUENCE],
     ids=["target", "bitscore", "sequence-identity", "ec-number", "sequence"],
 )
-def test_run_expected_column_present(column, _patch_seq_data_dir):
+def test_run_expected_column_present(column):
     """BLAST output must contain expected columns (hit IDs, scores, merged metadata)."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -582,7 +586,7 @@ def test_run_expected_column_present(column, _patch_seq_data_dir):
     [COL_QUERY, COL_ENTRY, COL_RESIDUE_0INDEX],
     ids=["query", "entry", "residue-0index"],
 )
-def test_run_internal_column_stripped(column, _patch_seq_data_dir):
+def test_run_internal_column_stripped(column):
     """Internal columns must not leak into the consumer-facing output."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -596,7 +600,7 @@ def test_run_internal_column_stripped(column, _patch_seq_data_dir):
     [COL_BITSCORE, COL_SEQ_IDENTITY],
     ids=["bitscore", "sequence-identity"],
 )
-def test_run_score_values_are_numeric(column, _patch_seq_data_dir):
+def test_run_score_values_are_numeric(column):
     """All score values must be numeric (int or float)."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -611,7 +615,7 @@ def test_run_score_values_are_numeric(column, _patch_seq_data_dir):
 
 @_skip_no_diamond
 @pytest.mark.parametrize("top_n", [1, 3, 5, 20], ids=["top-1", "top-3", "top-5", "top-20"])
-def test_run_respects_top_n(top_n, _patch_seq_data_dir):
+def test_run_respects_top_n(top_n):
     """The number of result rows must not exceed the requested top_n."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -620,7 +624,7 @@ def test_run_respects_top_n(top_n, _patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_results_sorted_by_bitscore_descending(_patch_seq_data_dir):
+def test_run_results_sorted_by_bitscore_descending():
     """BLAST results must be sorted by bitscore descending (best hits first)."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -636,7 +640,7 @@ def test_run_results_sorted_by_bitscore_descending(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_stat_card_results_returned_matches_data(_patch_seq_data_dir):
+def test_run_stat_card_results_returned_matches_data():
     """The 'Results Returned' stat card must match the actual row count."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -648,7 +652,7 @@ def test_run_stat_card_results_returned_matches_data(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_stat_card_run_time_is_numeric(_patch_seq_data_dir):
+def test_run_stat_card_run_time_is_numeric():
     """The 'Run Time' stat card must be a numeric value followed by 's'."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -661,7 +665,7 @@ def test_run_stat_card_run_time_is_numeric(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_stat_card_database_matches_input(_patch_seq_data_dir):
+def test_run_stat_card_database_matches_input():
     """The 'Database' stat card must match the requested filename."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -672,7 +676,7 @@ def test_run_stat_card_database_matches_input(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_stat_card_after_filtering_matches_full_db_without_filter(_patch_seq_data_dir):
+def test_run_stat_card_after_filtering_matches_full_db_without_filter():
     """Without EC filter, 'After Filtering' must equal 'Total Sequences'."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -686,7 +690,7 @@ def test_run_stat_card_after_filtering_matches_full_db_without_filter(_patch_seq
 
 
 @_skip_no_diamond
-def test_run_with_different_sequence(_patch_seq_data_dir):
+def test_run_with_different_sequence():
     """run() must work with a different query sequence (A0A024SC78)."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -696,7 +700,7 @@ def test_run_with_different_sequence(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_different_sequences_return_different_rankings(_patch_seq_data_dir):
+def test_run_different_sequences_return_different_rankings():
     """Different query sequences should produce different top-hit targets."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -710,7 +714,7 @@ def test_run_different_sequences_return_different_rankings(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_self_search_returns_exact_match(_patch_seq_data_dir):
+def test_run_self_search_returns_exact_match():
     """Querying a sequence that exists in the DB should return itself as top hit."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -724,7 +728,7 @@ def test_run_self_search_returns_exact_match(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_self_search_has_full_identity(_patch_seq_data_dir):
+def test_run_self_search_has_full_identity():
     """A self-search should yield 100% sequence identity for the top hit."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -739,7 +743,7 @@ def test_run_self_search_has_full_identity(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_with_single_ec_filter(_patch_seq_data_dir):
+def test_run_with_single_ec_filter():
     """Filtering by a single EC number should reduce the database size."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -758,7 +762,7 @@ def test_run_with_single_ec_filter(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_with_semicolon_ec_filter(_patch_seq_data_dir):
+def test_run_with_semicolon_ec_filter():
     """EC filter must match entries with semicolon-separated EC numbers.
 
     A0A009IHW8 has EC "3.2.2.-; 3.2.2.6" — filtering by "3.2.2.6" alone
@@ -774,7 +778,7 @@ def test_run_with_semicolon_ec_filter(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_with_multiple_ec_filters(_patch_seq_data_dir):
+def test_run_with_multiple_ec_filters():
     """Filtering by multiple EC numbers should match the union of all."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -788,7 +792,7 @@ def test_run_with_multiple_ec_filters(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_ec_filter_reduces_result_count(_patch_seq_data_dir):
+def test_run_ec_filter_reduces_result_count():
     """Filtering by EC should produce fewer 'After Filtering' rows than unfiltered."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -805,7 +809,7 @@ def test_run_ec_filter_reduces_result_count(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_mismatched_query_and_ec_filter_returns_empty(_patch_seq_data_dir):
+def test_run_mismatched_query_and_ec_filter_returns_empty():
     """When the query is unrelated to the EC-filtered DB, BLAST returns 0 hits gracefully."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -825,7 +829,7 @@ def test_run_mismatched_query_and_ec_filter_returns_empty(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_without_catalytic_prediction(_patch_seq_data_dir):
+def test_run_without_catalytic_prediction():
     """When predict_catalytic is False, catalytic_prediction must be None."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -834,7 +838,7 @@ def test_run_without_catalytic_prediction(_patch_seq_data_dir):
 
 
 @_skip_no_diamond
-def test_run_with_catalytic_prediction(_patch_seq_data_dir):
+def test_run_with_catalytic_prediction():
     """When predict_catalytic is True, catalytic_prediction must be non-None."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -1191,15 +1195,11 @@ def test_submit_returns_error_for_non_csv_database():
 
 def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
     """A valid database CSV must produce dropdown options for each unique EC number."""
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
-
     # Create a minimal CSV with an ec_number column.
-    csv_file = tmp_path / _SEQ_DIR.name / "test_db.csv"
-    csv_file.parent.mkdir(parents=True)
+    csv_file = tmp_path / SEQUENCES_DIR.name / "test_db.csv"
     csv_file.write_text("EC number\n3.2.2.-\n1.1.1.1\n3.2.2.-\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
-        options, cleared = populate_ec_options("test_db.csv")
+    options, cleared = populate_ec_options("test_db.csv")
 
     # Should have two unique EC numbers, sorted.
     assert len(options) == 2
@@ -1210,25 +1210,18 @@ def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
 
 def test_populate_ec_options_value_matches_label(tmp_path):
     """Each option's value must equal its label (used as the filter key)."""
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
-
-    csv_file = tmp_path / _SEQ_DIR.name / "db.csv"
-    csv_file.parent.mkdir(parents=True)
+    csv_file = tmp_path / SEQUENCES_DIR.name / "db.csv"
     csv_file.write_text("EC number\n1.2.3.4\n5.6.7.8\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
-        options, _ = populate_ec_options("db.csv")
+    options, _ = populate_ec_options("db.csv")
 
     for opt in options:
         assert opt["label"] == opt["value"]
 
 
-def test_populate_ec_options_returns_empty_for_missing_file(tmp_path):
+def test_populate_ec_options_returns_empty_for_missing_file():
     """A non-existent database file must return an empty list (no crash)."""
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
-
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
-        options, cleared = populate_ec_options("no_such_file.csv")
+    options, cleared = populate_ec_options("no_such_file.csv")
 
     assert options == []
     assert cleared == []
@@ -1236,14 +1229,10 @@ def test_populate_ec_options_returns_empty_for_missing_file(tmp_path):
 
 def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
     """EC numbers separated by semicolons in a single cell must be split into separate options."""
-    from enzyme_tk_app.app.paths import SEQUENCES_DIR as _SEQ_DIR  # noqa: PLC0415
-
-    csv_file = tmp_path / _SEQ_DIR.name / "multi_ec.csv"
-    csv_file.parent.mkdir(parents=True)
+    csv_file = tmp_path / SEQUENCES_DIR.name / "multi_ec.csv"
     csv_file.write_text("EC number\n3.2.2.-; 1.1.1.1\n2.7.1.1\n")
 
-    with patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR", tmp_path / _SEQ_DIR.name):
-        options, _ = populate_ec_options("multi_ec.csv")
+    options, _ = populate_ec_options("multi_ec.csv")
 
     labels = [o["label"] for o in options]
     assert labels == ["1.1.1.1", "2.7.1.1", "3.2.2.-"]
@@ -1262,7 +1251,7 @@ def test_populate_ec_options_strips_path_traversal_and_rejects_non_csv():
 # ── compute.run() — path-traversal & cofactor guards ────────────────────────
 
 
-def test_run_cofactor_filter_applied_when_column_exists(_patch_seq_data_dir):
+def test_run_cofactor_filter_applied_when_column_exists():
     """When the cofactor column exists, run() must filter rows by cofactor values."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
@@ -1288,7 +1277,7 @@ def test_run_cofactor_filter_applied_when_column_exists(_patch_seq_data_dir):
     assert stat_cards["After Filtering"] == "0"
 
 
-def test_run_cofactor_in_no_results_message(_patch_seq_data_dir):
+def test_run_cofactor_in_no_results_message():
     """When cofactor_filter produces zero rows, the no_results_message must mention the cofactor."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
