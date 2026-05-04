@@ -10,10 +10,10 @@ from pathlib import Path
 
 import pandas as pd
 
+from enzyme_tk_app.app.paths import REACTIONS_DIR
 from enzyme_tk_app.app.tools.reaction_similarity import SimilarityAlgorithm
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_RXN_SVG, COL_UNMAPPED_SMILES
 from enzyme_tk_app.app.utils.data_loading import (
-    DATA_DIR,
     get_top_n_sorted_results,
     load_and_clean_data,
 )
@@ -81,7 +81,7 @@ def run(params: dict) -> dict:
         if not safe_name.endswith(".csv"):
             databases_skipped.append(db_filename)
             continue
-        csv_path = DATA_DIR / "reactions" / safe_name
+        csv_path = REACTIONS_DIR / safe_name
         if not csv_path.exists():
             databases_skipped.append(db_filename)
             continue

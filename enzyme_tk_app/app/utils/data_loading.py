@@ -4,10 +4,9 @@ These helpers scan the ``data/`` directories and return option lists
 suitable for Dash dropdown components.
 """
 
-from pathlib import Path
-
 import pandas as pd
 
+from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_EC_NUMBER,
     COL_ENTRY,
@@ -18,9 +17,6 @@ from enzyme_tk_app.app.utils.columns import (
     COL_UNMAPPED_SMILES,
     EXCLUDE_COLS,
 )
-
-# Base data directory (relative to this file).
-DATA_DIR = Path(__file__).parent.parent / "data"
 
 # Re-export column constants under their original private names so that
 # existing import sites (``from data_loading import _COL_…``) keep working
@@ -42,7 +38,7 @@ def get_reaction_database_options():
         List of dicts with label/value for each CSV file found.
         Each dict has 'label' (human-readable) and 'value' (filename).
     """
-    reactions_dir = DATA_DIR / "reactions"
+    reactions_dir = REACTIONS_DIR
     options = []
     if reactions_dir.exists():
         for f in sorted(reactions_dir.glob("*.csv")):
@@ -61,7 +57,7 @@ def get_sequence_database_options():
         List of dicts with label/value for each CSV file found.
         Each dict has 'label' (human-readable) and 'value' (filename).
     """
-    sequences_dir = DATA_DIR / "sequences"
+    sequences_dir = SEQUENCES_DIR
     options = []
     if sequences_dir.exists():
         for f in sorted(sequences_dir.glob("*.csv")):

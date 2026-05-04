@@ -18,6 +18,7 @@ from enzyme_tk_app.app.components.hero import hero as create_hero
 from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
+from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
 
 # Directory containing test data files (CSV fixtures, etc.).
 TEST_DATA_DIR = Path(__file__).parent / "data"
@@ -46,21 +47,24 @@ def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
 
 
 @pytest.fixture()
-def _patch_data_dir(reactions_dir, monkeypatch):
-    """Patch ``DATA_DIR`` so ``run()`` reads the 20-row test fixture."""
-    monkeypatch.setattr("enzyme_tk_app.app.tools.substrate_product_similarity.compute.DATA_DIR", reactions_dir)
+def _patch_reactions_dir(reactions_dir, monkeypatch):
+    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture."""
+    monkeypatch.setattr(
+        "enzyme_tk_app.app.tools.substrate_product_similarity.compute.REACTIONS_DIR",
+        reactions_dir / REACTIONS_DIR.name,
+    )
 
 
 @pytest.fixture()
 def reactions_dir(tmp_path):
-    """Copy the 20-row test CSV into a tmp_path/reactions/ directory.
+    """Copy the 20-row test CSV into a ``tmp_path/<REACTIONS_DIR.name>/`` directory.
 
-    Returns the ``tmp_path`` so it can be used to patch ``DATA_DIR``
-    when calling a tool's ``run()`` function.
+    Returns ``tmp_path`` so ``_patch_*`` fixtures can derive the
+    reactions subdirectory from it.
     """
     import shutil  # noqa: PLC0415
 
-    dest = tmp_path / "reactions"
+    dest = tmp_path / REACTIONS_DIR.name
     dest.mkdir()
     shutil.copy(TEST_REACTIONS_CSV, dest / "test_reactions_20.csv")
     return tmp_path
@@ -142,13 +146,14 @@ def csv_molecules_known_scores():
 
 @pytest.fixture()
 def sequences_dir(tmp_path):
-    """Copy the 20-row test sequence CSV into a tmp_path/sequences/ directory.
+    """Copy the 20-row test sequence CSV into a ``tmp_path/<SEQUENCES_DIR.name>/`` directory.
 
-    Returns the ``tmp_path`` so it can be used to patch ``DATA_DIR``.
+    Returns ``tmp_path`` so ``_patch_*`` fixtures can derive the
+    sequences subdirectory from it.
     """
     import shutil  # noqa: PLC0415
 
-    dest = tmp_path / "sequences"
+    dest = tmp_path / SEQUENCES_DIR.name
     dest.mkdir()
     shutil.copy(TEST_SEQUENCES_CSV, dest / "test_sequences_20.csv")
     return tmp_path
