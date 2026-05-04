@@ -57,6 +57,7 @@ _skip_no_diamond = pytest.mark.skipif(
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
+
 # The 20-row test CSV fixture is automatically used in all tests via the
 # _patch_seq_data_dir fixture, which monkeypatches the SEQUENCES_DIR in both
 @pytest.fixture(autouse=True)
