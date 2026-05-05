@@ -167,3 +167,5 @@ cython_debug/
 
 # File system
 .DS_Store
+/enzyme_tk_app/app/data/foldseek_db/
+/enzyme_tk_app/app/data/foldseek_models/
