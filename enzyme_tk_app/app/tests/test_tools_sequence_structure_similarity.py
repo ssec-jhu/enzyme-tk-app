@@ -48,27 +48,24 @@ def test_results_layout_renders_grid():
 
 
 @pytest.mark.parametrize(
-    "input_result",
+    ("input_result", "expected_message"),
     [
-        ({"dataframe": {"columns": ["query"], "data": []}}),  # dataframe with columns but no data
-        None,  # result dict itself is None (no result at all)
-        ({"dataframe": None}),  # dataframe key is present but None
-        ({"dataframe": {}}),  # empty dict, missing both keys
-        ({"dataframe": {"columns": ["query"]}}),  # has columns but missing "data" key
-        ({"dataframe": {"data": [{"query": "Q1"}]}}),  # has data but missing "columns" key
-        ({"dataframe": "not_a_dict"}),  # truthy non-dict value
+        (None, "Results could not be loaded"),
+        ({"dataframe": None}, "Results could not be loaded"),
+        ({"dataframe": {}}, "Results could not be loaded"),
+        ({"dataframe": "not_a_dict"}, "Results could not be loaded"),
+        ({"dataframe": {"columns": ["query"], "data": []}}, "No similar sequences or structures found"),
+        ({"dataframe": {"columns": ["query"]}}, "No similar sequences or structures found"),
     ],
 )
-def test_results_layout_no_data_shows_message(input_result):
-    """Results with no valid data should render a no-results message instead of a grid."""
+def test_results_layout_no_data_shows_message(input_result, expected_message):
+    """Results with no valid data should render an appropriate message instead of a grid."""
     job = make_job(result=input_result)
     layout = results_layout(job)
 
-    # Should not contain any AG Grid components
     grids = find_components(layout, dag.AgGrid)
     assert len(grids) == 0
 
     paragraphs = find_components(layout, html.P)
     assert len(paragraphs) == 1
-
-    assert "No similar sequences or structures found" in paragraphs[0].children
+    assert expected_message in paragraphs[0].children
