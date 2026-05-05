@@ -16,6 +16,6 @@ TOOL_DEF: ToolDef = {
     ),
     "icon": ICON_TOOL_STRUCTURE,
     "order": 4,
-    "libraries": ["foldseek","prostt5"],
+    "libraries": ["foldseek", "prostt5"],
     "max_duration": 3600,
 }
