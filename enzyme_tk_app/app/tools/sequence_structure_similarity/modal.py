@@ -44,16 +44,16 @@ from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options
 def _get_example_entries():
     """Return example entries for the FoldSeek similarity search.
 
-    Each entry has an ``id`` (used as dropdown value), a display
+    Each entry has a ``value`` (used as dropdown value), a display
     ``label``, the protein ``sequence``, and an optional
     ``structure_file`` name (relative to ``data/structures/``).
 
     Returns:
-        List of dicts with keys: id, label, sequence, structure_file.
+        List of dicts with keys: value, label, sequence, structure_file.
     """
     return [
         {
-            "id": "A0A009IHW8-seq",
+            "value": "A0A009IHW8-seq",
             "label": "A0A009IHW8 — DNA glycosylase (sequence only)",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
@@ -64,7 +64,7 @@ def _get_example_entries():
             "structure_file": None,
         },
         {
-            "id": "A0A009IHW8-struct",
+            "value": "A0A009IHW8-struct",
             "label": "A0A009IHW8 — DNA glycosylase (sequence + structure)",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
@@ -75,7 +75,7 @@ def _get_example_entries():
             "structure_file": "A0A009IHW8-chai.cif",
         },
         {
-            "id": "A0A067CMC7-seq",
+            "value": "A0A067CMC7-seq",
             "label": "A0A067CMC7 — Nuclease (sequence only)",
             "sequence": (
                 "MLEVPVWIPILAFAVGLGLGLLIPHLQKPFQRFSTVNDIPKEFFEHERTLRGKVVS"
@@ -86,7 +86,7 @@ def _get_example_entries():
             "structure_file": None,
         },
         {
-            "id": "1AKI-struct",
+            "value": "1AKI-struct",
             "label": "1AKI — Lysozyme (sequence + structure)",
             "sequence": (
                 "KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINS"
@@ -191,7 +191,7 @@ def modal():
                                                     dcc.Dropdown(
                                                         id=f"id-dropdown-{TOOL_DEF['slug']}-example",
                                                         options=[
-                                                            {"label": ex["label"], "value": ex["id"]}
+                                                            {"label": ex["label"], "value": ex["value"]}
                                                             for ex in _get_example_entries()
                                                         ],
                                                         placeholder="Select an example sequence...",
