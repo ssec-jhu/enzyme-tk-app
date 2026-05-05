@@ -96,18 +96,16 @@ def results_layout(job: JobInfo) -> html.Div:
     # ------------------------------------------------------------------
     # Results table
     # ------------------------------------------------------------------
-    # If the dataframe payload is missing, not a dict, or lacks the required
-    # 'columns'/'data' keys, display a message instead of the grid.
-    if (
-        not df_payload
-        or not isinstance(df_payload, dict)
-        or "columns" not in df_payload
-        or "data" not in df_payload
-        or not df_payload["data"]
-    ):
-        message = result.get("no_results_message", "No similar sequences or structures found.")
+    # payload missing or corrupt (file-load failure, unexpected shape)
+    if not df_payload or not isinstance(df_payload, dict):
+        children.append(
+            html.P("Results could not be loaded.", style={"color": "var(--error)"}),
+        )
+        return html.Div(children=children)
 
-        # Append the message as a styled paragraph to the children list, then return the layout.
+    # search ran successfully but returned no hits
+    if not df_payload.get("data"):
+        message = result.get("no_results_message", "No similar sequences or structures found.")
         children.append(
             html.P(message, style={"color": "var(--text-secondary)"}),
         )
