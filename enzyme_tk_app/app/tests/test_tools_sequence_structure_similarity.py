@@ -15,8 +15,8 @@ from enzyme_tk_app.app.tools.sequence_structure_similarity.results import (
     results_layout,
 )
 
-
 # ── Column definitions ────────────────────────────────────────────────────────
+
 
 def test_get_column_defs_expected_fields():
     """The column defs should include the core FoldSeek output fields."""
@@ -51,8 +51,8 @@ def test_results_layout_renders_grid():
     "input_result",
     [
         ({"dataframe": {"columns": ["query"], "data": []}}),  # dataframe with columns but no data
-        None, # dataframe key is None, result is None
-        ({"dataframe": None}), # dataframe key is present but None 
+        None,  # dataframe key is None, result is None
+        ({"dataframe": None}),  # dataframe key is present but None
     ],
 )
 def test_results_layout_no_data_shows_message(input_result):
