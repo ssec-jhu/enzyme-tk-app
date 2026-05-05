@@ -109,7 +109,7 @@ def results_layout(job: JobInfo) -> html.Div:
         )
         return html.Div(children=children)
 
-    # If we have valid data, build the AG Grid with the appropriate column definitions and append it to the children list.
+    # If we have valid data, build the AG Grid with the appropriate column definitions.
     grid = build_ag_grid(_get_column_defs(), df_payload)
     children.append(grid)
 
