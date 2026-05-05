@@ -96,11 +96,15 @@ def results_layout(job: JobInfo) -> html.Div:
     # ------------------------------------------------------------------
     # Results table
     # ------------------------------------------------------------------
-    # If the dataframe payload is missing or contains no data, display a
-    # message instead of the grid. The message can be customized via the
-    # 'no_results_message' key in the result dict, or defaults to a generic
-    # "No similar sequences or structures found." notice.
-    if not df_payload or not df_payload.get("data"):
+    # If the dataframe payload is missing, not a dict, or lacks the required
+    # 'columns'/'data' keys, display a message instead of the grid.
+    if (
+        not df_payload
+        or not isinstance(df_payload, dict)
+        or "columns" not in df_payload
+        or "data" not in df_payload
+        or not df_payload["data"]
+    ):
         message = result.get("no_results_message", "No similar sequences or structures found.")
 
         # Append the message as a styled paragraph to the children list, then return the layout.

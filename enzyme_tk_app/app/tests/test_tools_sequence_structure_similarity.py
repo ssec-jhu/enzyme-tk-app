@@ -51,8 +51,12 @@ def test_results_layout_renders_grid():
     "input_result",
     [
         ({"dataframe": {"columns": ["query"], "data": []}}),  # dataframe with columns but no data
-        None,  # dataframe key is None, result is None
+        None,  # result dict itself is None (no result at all)
         ({"dataframe": None}),  # dataframe key is present but None
+        ({"dataframe": {}}),  # empty dict, missing both keys
+        ({"dataframe": {"columns": ["query"]}}),  # has columns but missing "data" key
+        ({"dataframe": {"data": [{"query": "Q1"}]}}),  # has data but missing "columns" key
+        ({"dataframe": "not_a_dict"}),  # truthy non-dict value
     ],
 )
 def test_results_layout_no_data_shows_message(input_result):
