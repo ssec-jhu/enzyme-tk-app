@@ -41,7 +41,7 @@ from enzyme_tk_app.app.tools.sequence_structure_similarity import TOOL_DEF
 from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options
 
 
-def get_example_entries():
+def _get_example_entries():
     """Return example entries for the FoldSeek similarity search.
 
     Each entry has an ``id`` (used as dropdown value), a display
@@ -192,7 +192,7 @@ def modal():
                                                         id=f"id-dropdown-{TOOL_DEF['slug']}-example",
                                                         options=[
                                                             {"label": ex["label"], "value": ex["id"]}
-                                                            for ex in get_example_entries()
+                                                            for ex in _get_example_entries()
                                                         ],
                                                         placeholder="Select an example sequence...",
                                                         className="mt-1 themed-control",
@@ -243,6 +243,7 @@ def modal():
                                                 },
                                                 className="themed-control",
                                                 multiple=False,
+                                                accept=".cif,.pdb,.mmcif",
                                             ),
                                             html.Div(
                                                 id=f"id-div-{TOOL_DEF['slug']}-upload-filename",
@@ -299,7 +300,7 @@ def modal():
                 ],
             ),
             # ── Footer ───────────────────────────────────────────────
-            # common footer with Cancel and Submit buttons, wired up to callbacks in modal_callbacks.py
+            # common footer with Cancel and Submit buttons, wired up to callbacks in callbacks.py
             create_modal_footer(TOOL_DEF["slug"]),
         ],
     )
