@@ -39,3 +39,7 @@ AGENTS.md
 # Docker (prevent recursive copy)
 Dockerfile
 docker-compose.yml
+
+# Large data directories not needed in image
+enzyme_tk_app/app/data/foldseek_db/
+enzyme_tk_app/app/data/foldseek_models/
