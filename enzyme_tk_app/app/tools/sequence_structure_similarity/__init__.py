@@ -9,8 +9,13 @@ from enzyme_tk_app.app.tools import ToolDef
 TOOL_DEF: ToolDef = {
     "slug": "sequence-structure-similarity",
     "title": "Sequence and Structure-Based Similarity",
-    "desc": "Experimental tool module. Features and capabilities are under active development.",
+    "desc": (
+        "FoldSeek-powered similarity search using protein sequences (ProstT5) "
+        "or structures (CIF/PDB). Searches across multiple databases including PDB "
+        "and AlphaFold/Swiss-Prot."
+    ),
     "icon": ICON_TOOL_STRUCTURE,
     "order": 4,
-    "libraries": ["foldseek"],
+    "libraries": ["foldseek","prostt5"],
+    "max_duration": 3600,
 }
