@@ -49,18 +49,18 @@ def get_foldseek_database_options():
         for entry in sorted(db_dir.iterdir()):
             if not entry.is_dir():
                 continue
-            
+
             # Use the folder name as the value
             name = entry.name
-            
+
             # Skip hidden directories and common temp files.
             if name.startswith(".") or name == "tmp":
                 continue
-            
+
             # Convert folder name to a more readable label (e.g. "alpha_fold" -> "Alpha Fold")
             # these are known foldseekdb names with underscores
             label = name.replace("_", " ").title()
-            
+
             # Append the option dict to the list.
             options.append({"label": label, "value": name})
     return options
