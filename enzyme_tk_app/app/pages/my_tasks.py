@@ -35,7 +35,7 @@ from enzyme_tk_app.app.components.icons import (
     ICON_STATUS_TIMEOUT,
 )
 from enzyme_tk_app.app.tools import TOOLS
-from enzyme_tk_app.app.utils.formatting import expires_in, format_duration, format_timestamp
+from enzyme_tk_app.app.utils.formatting import compute_duration, expires_in, format_duration, format_timestamp
 
 dash.register_page(__name__, path="/my-tasks")
 
@@ -204,6 +204,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
             html.Td(tool_title),
             html.Td(_build_status_badge(job.status)),
             html.Td(format_timestamp(job.submitted_at)),
+            html.Td("TBD" if job.status in _ACTIVE else compute_duration(job.started_at, job.completed_at)),
             html.Td(format_duration(max_dur)),
             html.Td(expires_in(job.submitted_at)),
             html.Td(
@@ -261,6 +262,7 @@ def _build_jobs_table(jobs: list[JobInfo]) -> Div | Table:
                         html.Th("Tool"),
                         html.Th("Status"),
                         html.Th("Submitted (UTC)"),
+                        html.Th("Duration"),
                         html.Th("Max Runtime"),
                         html.Th("Expires In"),
                         html.Th("Actions"),

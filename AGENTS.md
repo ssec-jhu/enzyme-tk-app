@@ -44,3 +44,7 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 ## AG Grid Table Agent
 **Trigger:** When creating, modifying, or adding columns to an AG Grid results table (e.g., `results.py`).
 **Action:** The agent MUST follow the column definition rules, theme conventions, and `autoHeight` guidelines defined in [`.github/agents/create-ag-grid.md`](.github/agents/create-ag-grid.md).
+
+## Edit Dockerfile Agent
+**Trigger:** When adding, removing, or modifying binary dependencies, system packages, or build steps in the `Dockerfile` (e.g., while integrating a new tool that requires an external binary).
+**Action:** The agent MUST follow the cross-platform, multi-architecture compatibility rules defined in [`.github/agents/edit-dockerfile.md`](.github/agents/edit-dockerfile.md). Every Dockerfile change must support `linux/amd64` and `linux/arm64`. If a binary cannot support both architectures, the agent must document the limitation and add a conditional guard.

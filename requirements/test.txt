@@ -1,5 +1,5 @@
 bandit==1.9.4
 fakeredis==2.35.1
-ruff==0.15.10
+ruff==0.15.12
 pytest==9.0.3
 pytest-cov==7.1.0

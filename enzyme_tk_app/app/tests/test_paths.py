@@ -9,6 +9,17 @@ Verifies that:
 import importlib
 from pathlib import Path
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def _clear_data_dir_env(monkeypatch):
+    """Ensure ETK_DATA_DIR is unset so tests start from the default state."""
+    # delenv raises KeyError when the variable isn't set.
+    # Adding raising=False makes it a no-op in that case.
+    monkeypatch.delenv("ETK_DATA_DIR", raising=False)
+
+
 # ── Default paths ─────────────────────────────────────────────────────────────
 
 
@@ -61,15 +72,11 @@ def test_etk_data_dir_overrides_root_and_subdirs(tmp_path, monkeypatch):
     # Reload the module to re-evaluate the constants with the new environment variable.
     importlib.reload(paths_mod)
 
-    # Verify that DATA_DIR and all subdirectories now point to locations under the temporary directory.
     try:
         assert paths_mod.DATA_DIR == tmp_path
         assert paths_mod.SEQUENCES_DIR.parent == tmp_path
         assert paths_mod.REACTIONS_DIR.parent == tmp_path
         assert paths_mod.FOLDSEEK_DB_DIR.parent == tmp_path
     finally:
-        # Restore default module state regardless of assertion outcome.
-        monkeypatch.delenv("ETK_DATA_DIR")
-
-        # Reload the module again to reset the paths to their default values.
+        # Restore default module state so other tests importing paths aren't affected.
         importlib.reload(paths_mod)
