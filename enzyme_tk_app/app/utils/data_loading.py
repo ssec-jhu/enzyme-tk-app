@@ -6,7 +6,7 @@ suitable for Dash dropdown components.
 
 import pandas as pd
 
-from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_EC_NUMBER,
     COL_ENTRY,
@@ -29,6 +29,41 @@ _EXCLUDE_COLS = EXCLUDE_COLS
 _COL_EC_NUMBER = COL_EC_NUMBER
 _COL_SEQUENCE = COL_SEQUENCE
 _COL_ENTRY = COL_ENTRY
+
+
+def get_foldseek_database_options():
+    """Scan the data/foldseek_db directory and return dropdown options.
+
+    Each subdirectory under ``foldseek_db/`` represents a pre-built
+    FoldSeek database.  Hidden directories, ``.DS_Store``, and ``tmp/``
+    are excluded.
+
+    Returns:
+        List of dicts with ``label`` (human-readable) and ``value``
+        (exact folder name, used for FoldSeekDatabase enum mapping).
+    """
+    db_dir = FOLDSEEK_DB_DIR
+    options = []
+    if db_dir.exists():
+        # Sort entries alphabetically for consistent dropdown order.
+        for entry in sorted(db_dir.iterdir()):
+            if not entry.is_dir():
+                continue
+            
+            # Use the folder name as the value
+            name = entry.name
+            
+            # Skip hidden directories and common temp files.
+            if name.startswith(".") or name == "tmp":
+                continue
+            
+            # Convert folder name to a more readable label (e.g. "alpha_fold" -> "Alpha Fold")
+            # these are known foldseekdb names with underscores
+            label = name.replace("_", " ").title()
+            
+            # Append the option dict to the list.
+            options.append({"label": label, "value": name})
+    return options
 
 
 def get_reaction_database_options():
