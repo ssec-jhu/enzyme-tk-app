@@ -112,7 +112,7 @@ def test_toggle_modal_closes_on_cancel():
     ],
 )
 def test_populate_example_raises_on_falsy_id(some_id):
-    """A falsy example_id must raise PreventUpdate."""
+    """A falsy or nonexistent example_id must raise PreventUpdate."""
     with pytest.raises(PreventUpdate):
         populate_example_sequence(some_id)
 
