@@ -15,6 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxext6 \
     libexpat1 \
+    wget \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -45,6 +47,33 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # We pull the multi-arch binary from the official image to ensure compatibility
 # across Apple Silicon (Mac), Windows, and Cloud (Azure/GCP/K8s) environments.
 COPY --from=diamond-bin /usr/local/bin/diamond /usr/local/bin/diamond
+
+# ── FoldSeek structural aligner ───────────────────────────────────
+# Required by the Sequence & Structure-Based Similarity tool
+# (enzymetk.similarity_sequence_and_structure_step).
+# FoldSeek performs fast protein structure and sequence similarity
+# searches using ProstT5 embeddings or CIF/PDB structure files.
+#
+# DO NOT USE the multi-stage COPY approach (COPY --from=foldseek-bin) —
+# the upstream image stores arch-specific binaries at different paths
+# (foldseek_arch for ARM64, foldseek_sse41/foldseek_avx2 for x86_64)
+# with a wrapper script to dispatch.  Copying a single binary (e.g.
+# foldseek_arch) produces an empty file on x86_64 hosts.
+# Instead, we download the static binary from the official source,
+# which handles both x86_64 and ARM64 (Apple Silicon) correctly.
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "x86_64" ]; then \
+        FOLDSEEK_URL="https://mmseqs.com/foldseek/foldseek-linux-avx2.tar.gz"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        FOLDSEEK_URL="https://mmseqs.com/foldseek/foldseek-linux-arm64.tar.gz"; \
+    else \
+        echo "Unsupported architecture: $ARCH" && exit 1; \
+    fi && \
+    wget -q "$FOLDSEEK_URL" -O /tmp/foldseek.tar.gz && \
+    tar -xzf /tmp/foldseek.tar.gz -C /tmp && \
+    cp /tmp/foldseek/bin/foldseek /usr/local/bin/foldseek && \
+    chmod +x /usr/local/bin/foldseek && \
+    rm -rf /tmp/foldseek*
 
 WORKDIR /app
 
