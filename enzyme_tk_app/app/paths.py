@@ -23,5 +23,8 @@ SEQUENCES_DIR: Path = DATA_DIR / "sequences"
 # Reaction CSV databases.
 REACTIONS_DIR: Path = DATA_DIR / "reactions"
 
+# Bundled protein structure files (.pdb / .cif).
+STRUCTURES_DIR: Path = DATA_DIR / "structures"
+
 # Pre-built FoldSeek databases (one sub-directory per database).
 FOLDSEEK_DB_DIR: Path = DATA_DIR / "foldseek_db"
