@@ -5,7 +5,7 @@ the results grid is rendered correctly for various job result payloads
 (valid data, empty data, missing dataframe, etc.).
 """
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import dash_ag_grid as dag
 import pytest
@@ -219,3 +219,48 @@ def test_submit_job_rejects_unsupported_structure_extension():
 
     assert "Unsupported file type" in result
     assert "protein.xyz" in result
+
+
+def test_submit_job_sequence_mode_calls_scheduler():
+    """A valid sequence-only submission calls the scheduler and returns a confirmation message."""
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+
+    # Create a mock scheduler to verify that the job submission logic is
+    # triggered correctly. The scheduler should be called with the expected parameters,
+    # and we mock it to return a known job ID.
+    mock_scheduler = MagicMock()
+    mock_scheduler.submit_job.return_value = "job-seq-99"
+
+    # Use the Flask test request context to allow the callback
+    # to access the session and other context variables.
+    with server.test_request_context():
+        # Set a session ID in the Flask global context,
+        # as the callback expects it to be present.
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-123"
+        with (
+            # mock the Dash callback context to simulate the button click that triggers the job submission
+            patch("enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.ctx") as mock_ctx,
+            # mock the get_task_scheduler function to return our mock scheduler
+            patch(
+                "enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.get_task_scheduler",
+                return_value=mock_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+
+            # valid inputs for a sequence-only job (no structure content or filename)
+            result = submit_structure_similarity_job(
+                submit_clicks=1,
+                launch_clicks=0,
+                task_name="Seq search",
+                sequence="MKTAYIAK",
+                databases=["pdb"],
+                structure_contents=None,
+                structure_filename=None,
+            )
+    # Verify that the scheduler's submit_job method was called once with the expected parameters.
+    mock_scheduler.submit_job.assert_called_once()
+    assert "job-seq-99" in result
+    assert "sequence" in result

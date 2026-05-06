@@ -22,6 +22,13 @@ from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_exa
 # Build lookup dict: example id -> entry.
 _EXAMPLES_BY_ID = {ex["value"]: ex for ex in _get_example_entries()}
 
+# Map structure file extensions to MIME types for data-URI encoding.
+_MIME_BY_EXT: dict[str, str] = {
+    ".cif": "chemical/x-cif",
+    ".mmcif": "chemical/x-mmcif",
+    ".pdb": "chemical/x-pdb",
+}
+
 
 @callback(
     Output(f"id-modal-{TOOL_DEF['slug']}", "is_open"),
@@ -87,8 +94,8 @@ def populate_example_sequence(example_id):
         file_path = STRUCTURES_DIR / structure_file
         raw_bytes = file_path.read_bytes()
         encoded = base64.b64encode(raw_bytes).decode("ascii")
-        contents = f"data:chemical/x-cif;base64,{encoded}"
-        # retype the structure filename to ensure it has a valid extension
+        mime_type = _MIME_BY_EXT.get(file_path.suffix.lower(), "application/octet-stream")
+        contents = f"data:{mime_type};base64,{encoded}"
         return sequence, contents, structure_file
 
     # return the sequence and leave the upload unchanged for sequence-only examples
