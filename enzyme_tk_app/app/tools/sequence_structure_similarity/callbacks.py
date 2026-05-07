@@ -9,6 +9,8 @@ This module defines callbacks that:
 """
 
 import base64
+import re
+from pathlib import Path
 
 from dash import Input, Output, State, callback, ctx, html, no_update
 from dash.exceptions import PreventUpdate
@@ -211,9 +213,11 @@ def submit_structure_similarity_job(
     # but we check again here to be safe since these values will be used in file paths on the backend.
     sanitized_dbs = []
     for db_name in databases:
+        # Strip whitespace
         safe = str(db_name).strip()
-        if not safe or not all(c.isalnum() or c in ("_", "-") for c in safe):
-            return f"Invalid database name: {db_name}"
+        # Reject any names that contain characters other than letters, numbers, underscores, or hyphens.
+        if not re.match(r"^[0-9A-Za-z_-]+$", safe):
+            return f"Invalid database name: {db_name}. Name must only contain numbers, letters, and _ or -"
         sanitized_dbs.append(safe)
 
     # sanity check: ensure we have at least one valid database after sanitization
@@ -223,7 +227,7 @@ def submit_structure_similarity_job(
     # Validate structure file extension if provided.
     if structure_filename:
         # Extract the file extension and check against allowed extensions.
-        ext = "." + structure_filename.rsplit(".", 1)[-1].lower() if "." in structure_filename else ""
+        ext = Path(structure_filename).suffix.lower()
         # the UI upload component should prevent disallowed file types,
         # but we validate again here to be safe since the file will be processed on the backend.
         if ext not in ALLOWED_EXTENSIONS:
