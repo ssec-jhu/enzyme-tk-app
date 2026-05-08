@@ -6,6 +6,9 @@ Exports ``TOOL_DEF`` consumed by the tools auto-discovery system.
 from enzyme_tk_app.app.components.icons import ICON_TOOL_STRUCTURE
 from enzyme_tk_app.app.tools import ToolDef
 
+# Allowed file extensions for structure uploads (with leading dot, lowercase).
+ALLOWED_EXTENSIONS: frozenset[str] = frozenset({".cif", ".pdb", ".mmcif"})
+
 TOOL_DEF: ToolDef = {
     "slug": "sequence-structure-similarity",
     "title": "Sequence and Structure-Based Similarity",

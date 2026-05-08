@@ -4,6 +4,9 @@ This modal appears when the user clicks the Launch button on the
 Sequence and Structure-Based Similarity tool card.  It collects
 inputs needed to run a FoldSeek-based similarity search.
 
+Uses ``ALLOWED_EXTENSIONS`` from the tool package to derive the
+``accept`` attribute for the file upload component.
+
 Layout rules (see ``.github/agents/create-modal.md``)
 ------------------------------------------------------
 1. Top-level: ``dbc.Modal(size="lg", centered=True)``.
@@ -37,7 +40,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_input_section_header,
     create_modal_submission_results,
 )
-from enzyme_tk_app.app.tools.sequence_structure_similarity import TOOL_DEF
+from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options
 
 
@@ -243,7 +246,7 @@ def modal():
                                                 },
                                                 className="themed-control",
                                                 multiple=False,
-                                                accept=".cif,.pdb,.mmcif",
+                                                accept=",".join(ALLOWED_EXTENSIONS),
                                             ),
                                             html.Div(
                                                 id=f"id-div-{TOOL_DEF['slug']}-upload-filename",
