@@ -11,7 +11,6 @@
 
 A web application for protein engineering workflows, built with [Dash](https://dash.plotly.com/) (Plotly) and backed by [Celery](https://docs.celeryq.dev/) for asynchronous job processing. It provides a suite of bioinformatics tools that scientists can launch from the browser and monitor through a job-management dashboard.
 
-![EnzymeTK App](enzyme_tk_app/app/assets/app.jpg)
 
 ## Available Tools
 
@@ -23,7 +22,8 @@ A web application for protein engineering workflows, built with [Dash](https://d
 | **Sequence and Structure-Based Similarity** | FoldSeek-powered similarity search using protein sequences (ProstT5) or structures (CIF/PDB). Searches across multiple databases including PDB and AlphaFold/Swiss-Prot | `foldseek`, `prostt5` |
 | **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
 
-![Example Results](enzyme_tk_app/app/assets/example.jpg)
+![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
+
 
 New tools are auto-discovered — add a sub-package under `enzyme_tk_app/app/tools/` and it appears on the home page automatically. See the [Developer Guide](docs/developer-guide.md) for the full walkthrough.
 
@@ -38,7 +38,7 @@ docker compose up --build
 The app is available at **http://localhost:8050**. This starts the web server, Redis, and 3 Celery workers — everything needed to submit and run jobs.
 
 ```bash
-docker compose up --build -d     # detached
+docker compose up --build -d     # detached means it will run in the background and terminal is free
 docker compose down -v           # stop and remove volumes
 ```
 
@@ -85,6 +85,7 @@ services:
 
 Both services **must** mount the same volume at the same path. If you change `SHARED_VOLUME_PATH`, update both services.
 
+
 ## Developers — Adding a New Tool
 
 Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`. Auto-discovery scans sub-packages at import time — **no central file to edit**. Create a new folder and the tool card appears on the home page automatically.
@@ -120,3 +121,5 @@ tox -e build-dist       # build distribution package
 ```
 
 CI runs these same tox environments. See [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
+
+![Example Results](enzyme_tk_app/app/assets/example.jpg)
