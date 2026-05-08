@@ -23,7 +23,7 @@ A web application for protein engineering workflows, built with [Dash](https://d
 | **Sequence and Structure-Based Similarity** | FoldSeek-powered similarity search using protein sequences (ProstT5) or structures (CIF/PDB). Searches across multiple databases including PDB and AlphaFold/Swiss-Prot | `foldseek`, `prostt5` |
 | **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
 
-![Example Results](enzyme_tk_app/app/assets/example.png)
+![Example Results](enzyme_tk_app/app/assets/example.jpg)
 
 New tools are auto-discovered — add a sub-package under `enzyme_tk_app/app/tools/` and it appears on the home page automatically. See the [Developer Guide](docs/developer-guide.md) for the full walkthrough.
 
