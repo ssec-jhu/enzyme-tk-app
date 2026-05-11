@@ -7,6 +7,9 @@ custom location without modifying source code.
 
 Tool-specific paths that are only used within a single tool module should
 **not** live here — they derive from ``DATA_DIR`` in their own file.
+FoldSeek model assets (weights, databases) are considered shared app data
+because they are large, versioned independently of any single tool, and may
+be reused by future tools — so their paths are defined here.
 """
 
 import os

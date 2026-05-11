@@ -45,7 +45,10 @@ def _decode_structure_file(structure_content: str, structure_filename: str, tmpd
     else:
         payload = structure_content
 
-    raw_bytes = base64.b64decode(payload)
+    try:
+        raw_bytes = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        raise ValueError("Uploaded structure file contains invalid base64 data.") from exc
 
     # Use the original filename's suffix for the temp file, so FoldSeek can detect the format.
     suffix = Path(structure_filename).suffix.lower()
@@ -145,7 +148,7 @@ def run(params: dict) -> dict:
         if is_structure_mode:
             foldseek_kwargs["structure_column_name"] = "structure"
 
-        # make the enzymtk FoldSeek step and execute it on the query DataFrame
+        # make the enzymetk FoldSeek step and execute it on the query DataFrame
         step = FoldSeek(**foldseek_kwargs)
         result_df = step.execute(df)
 
