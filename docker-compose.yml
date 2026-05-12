@@ -1,34 +1,35 @@
-# docker-compose.yml — local / staging orchestration for EnzymeTK
+# docker-compose.yml — BASE configuration for EnzymeTK
+#
+# This file defines the common service topology shared by every
+# environment (dev, prod, verify).  It is **not runnable on its own** —
+# it has no port mappings, no host bind mounts, and no environment-
+# specific tuning.  Compose with one of the overlays:
+#
+#   make dev             # → -f docker-compose.yml -f docker-compose.dev.yml
+#   make prod            # → -f docker-compose.yml -f docker-compose.prod.yml
+#   (verify agent)       # → adds -f docker-compose.verify.yml
 #
 # Three services:
-#   web    — Dash app served by gunicorn (2 workers × 4 threads)
-#   redis  — message broker + result store for Celery
+#   web    — Dash app served by gunicorn
+#   redis  — Celery broker + result backend
 #   worker — Celery worker that executes tool compute tasks
 #
-# A named volume ("data") is shared between web and worker so large
-# job results written by the worker can be read by the web container.
-#
-# Usage:
-#   docker compose up --build          # start everything
-#   docker compose up --build -d       # start detached
-#   docker compose down -v             # stop and remove volumes
+# Volumes:
+#   job-data — shared between web and worker for large job-result JSON
+#              files written by the worker.  Mounted at /job-data.  The
+#              external data tier (/data) is configured per-overlay.
 
 services:
   # ── Dash web app ──────────────────────────────────────────────────
   web:
     build: .
-    ports:
-      - "8050:8050"
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/data
-      - JOB_OUTPUTS_PATH=/data/job_outputs
-      # SESSION_COOKIE_SECURE — the session cookie's Secure flag is
-      # auto-detected from the request (request.is_secure) by default.
-      # Set Flask's SESSION_COOKIE_SECURE=true in production behind a
-      # TLS-terminating reverse proxy to force the flag on.
+      - SHARED_VOLUME_PATH=/job-data
+      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - ETK_DATA_DIR=/data
     volumes:
-      - data:/data
+      - job-data:/job-data
     depends_on:
       - redis
 
@@ -36,30 +37,24 @@ services:
   # Used as Celery broker AND result backend (same DB 0).
   redis:
     image: redis:7-alpine
-    ports:
-      # Map to host 6380 to avoid conflicts with a local Redis on 6379.
-      - "6380:6379"
 
   # ── Celery worker ────────────────────────────────────────────────
-  # Runs tool compute tasks submitted by the web service.
-  # Each replica is an independent Celery worker process that pulls
-  # tasks from the shared Redis broker.  Scale up/down with:
-  #   docker compose up --scale worker=N
+  # Runs tool compute tasks submitted by the web service.  Replica
+  # count and other tuning live in the per-environment overlay.
   worker:
     build: .
     command: celery -A enzyme_tk_app.app.backend.celery_app worker -l info
-    deploy:
-      replicas: 3
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/data
+      - SHARED_VOLUME_PATH=/job-data
       # Must match the web service so both containers resolve the same path.
-      - JOB_OUTPUTS_PATH=/data/job_outputs
+      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - ETK_DATA_DIR=/data
     volumes:
-      - data:/data
+      - job-data:/job-data
     depends_on:
       - redis
 
 volumes:
   # Shared between web and worker for large job-result JSON files.
-  data:
+  job-data:

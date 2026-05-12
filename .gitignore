@@ -169,3 +169,16 @@ cython_debug/
 .DS_Store
 /enzyme_tk_app/app/data/foldseek_db/
 /enzyme_tk_app/app/data/foldseek_models/
+/enzyme_tk_app/app/data/sequences/
+/enzyme_tk_app/app/data/reactions/
+
+# Repo-root host data dir — keep the folder, ignore everything inside
+# except the placeholder + README so users can drop large files in
+# without polluting their working tree.
+/data/*
+!/data/.gitkeep
+!/data/README.md
+
+# Env files
+.env.prod
+.env.*.local

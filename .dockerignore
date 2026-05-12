@@ -39,7 +39,23 @@ AGENTS.md
 # Docker (prevent recursive copy)
 Dockerfile
 docker-compose.yml
+docker-compose.dev.yml
+docker-compose.prod.yml
+docker-compose.verify.yml
 
-# Large data directories not needed in image
+# Large external-tier data — MUST stay out of the image.  These dirs are
+# mounted from the host (dev) or cloud storage (prod) at runtime via the
+# ETK_DATA_DIR env var.  Only `enzyme_tk_app/app/data/structures/` is
+# bundled into the image (kept allowed by omission below).
 enzyme_tk_app/app/data/foldseek_db/
 enzyme_tk_app/app/data/foldseek_models/
+enzyme_tk_app/app/data/sequences/
+enzyme_tk_app/app/data/reactions/
+
+# Repo-root host bind-mount source — never bake into the image.
+data/
+
+# Env files
+.env
+.env.prod
+.env.*.local
