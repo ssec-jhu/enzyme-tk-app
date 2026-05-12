@@ -1,0 +1,23 @@
+# docker-compose.verify.yml — port overrides for the Verify Agent
+#
+# Used together with the dev stack to spin up an isolated smoke-test
+# stack that does NOT collide with a dev stack already running on the
+# default ports (8050 / 6380).
+#
+# Usage (the Verify Agent runs this automatically):
+#   PROJECT="etk-verify-$(date +%Y%m%d-%H%M%S)"
+#   docker compose -p "$PROJECT" \
+#     -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.verify.yml \
+#     up --build -d
+#
+# Stacking the dev overlay first inherits its ./data bind-mount and
+# replica counts; this file only shifts the host-side ports.
+
+services:
+  web:
+    ports:
+      - "8051:8050"       # verify web → 8051 (dev uses 8050)
+
+  redis:
+    ports:
+      - "6381:6379"       # verify redis → 6381 (dev uses 6380)

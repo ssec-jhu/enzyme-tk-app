@@ -1,0 +1,47 @@
+# docker-compose.dev.yml — DEV overlay for EnzymeTK (out-of-the-box)
+#
+# Pairs with docker-compose.yml.  Zero-config: a fresh clone runs with
+# no env file, no `mkdir`, no `cp .env.example`.  The repo ships an empty
+# ./data/ directory so the bind-mount target always exists.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#   (or simply: make dev)
+#
+# Drop your CSVs / FoldSeek DBs into ./data/ as needed; the container
+# sees them at /data immediately (read-only bind mount).  Expected layout
+# is documented in data/README.md.
+#
+# Want dev to read data from a different host path?  Edit the `device:`
+# line at the bottom of this file, or overlay your own
+# docker-compose.local.yml.
+
+services:
+  web:
+    ports:
+      # Host 8050 → container 8050.
+      - "8050:8050"
+    volumes:
+      - app-data:/data:ro
+
+  redis:
+    ports:
+      # Map to host 6380 to avoid conflicts with a local Redis on 6379.
+      - "6380:6379"
+
+  worker:
+    deploy:
+      replicas: 2
+    volumes:
+      - app-data:/data:ro
+
+volumes:
+  # User tool data (sequences, reactions, foldseek DBs, …).  Bound to
+  # the repo's ./data/ directory by default — a folder that ships in the
+  # repo (kept alive by data/.gitkeep + data/README.md).
+  app-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data

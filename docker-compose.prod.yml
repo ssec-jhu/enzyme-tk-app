@@ -1,0 +1,99 @@
+# docker-compose.prod.yml — PROD overlay for EnzymeTK
+#
+# Pairs with docker-compose.yml.  All knobs are driven by the env file
+# the operator passes via `--env-file`.  See `.env.prod.example` for the
+# complete list of variables.
+#
+# Usage:
+#   cp .env.prod.example .env.prod
+#   $EDITOR .env.prod                 # set ETK_DATA_DIR_HOST, SECRET_KEY, …
+#   docker compose \
+#     -f docker-compose.yml -f docker-compose.prod.yml \
+#     --env-file .env.prod \
+#     up -d --build
+#   (or simply: make prod)
+#
+# Notable differences from dev:
+#   - No default for ETK_DATA_DIR_HOST → fails fast if unset.
+#   - Redis port is NOT exposed to the host.
+#   - Restart policies + healthchecks on every service.
+#   - SESSION_COOKIE_SECURE=true (HTTPS-only session cookie).
+#   - Replica counts and gunicorn tuning come from .env.prod.
+
+services:
+  web:
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    command:
+      - gunicorn
+      - enzyme_tk_app.app.app:server
+      - --bind=0.0.0.0:8050
+      - --workers=${GUNICORN_WORKERS:?GUNICORN_WORKERS must be set}
+      - --threads=${GUNICORN_THREADS:?GUNICORN_THREADS must be set}
+      - --access-logfile=-
+      - --error-logfile=-
+    environment:
+      - SECRET_KEY=${SECRET_KEY:?SECRET_KEY must be set}
+      - SESSION_COOKIE_SECURE=${SESSION_COOKIE_SECURE:-true}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - JOB_OUTPUTS_RETENTION_HOURS=${JOB_OUTPUTS_RETENTION_HOURS:-24}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      # Reserved for future use; surfaced here so prod ops can set them
+      # without editing this file.
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+    volumes:
+      - app-data:/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8050/').status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      replicas: ${WEB_REPLICAS:-1}
+
+  redis:
+    restart: unless-stopped
+    # No `ports:` — Redis is reachable only on the internal compose
+    # network.  The web/worker services use the service hostname `redis`.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  worker:
+    restart: unless-stopped
+    deploy:
+      replicas: ${WORKER_REPLICAS:-4}
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - JOB_OUTPUTS_RETENTION_HOURS=${JOB_OUTPUTS_RETENTION_HOURS:-24}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TLS=${REDIS_TLS:-false}
+      - SENTRY_DSN=${SENTRY_DSN:-}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
+    volumes:
+      - app-data:/data:ro
+    healthcheck:
+      test: ["CMD", "celery", "-A", "enzyme_tk_app.app.backend.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  # External data tier — bound to the host path supplied by the operator.
+  # No default: Compose fails fast with a clear error if ETK_DATA_DIR_HOST
+  # is unset, which is the correct prod behaviour.
+  app-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${ETK_DATA_DIR_HOST:?ETK_DATA_DIR_HOST must be set in .env.prod}
