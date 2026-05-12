@@ -43,11 +43,12 @@ Generate a timestamped project name so each verify run is isolated:
 PROJECT="etk-verify-$(date +%Y%m%d-%H%M%S)"
 ```
 
-Start the stack using the verify port-override file:
+Start the stack using the dev + verify port-override overlays:
 
 ```bash
 docker compose -p "$PROJECT" \
   -f docker-compose.yml \
+  -f docker-compose.dev.yml \
   -f docker-compose.verify.yml \
   up --build -d
 ```

@@ -32,58 +32,76 @@ New tools are auto-discovered — add a sub-package under `enzyme_tk_app/app/too
 ```bash
 git clone https://github.com/ssec-jhu/enzyme-tk-app
 cd enzyme-tk-app
-docker compose up --build
+make dev
 ```
 
-The app is available at **http://localhost:8050**. This starts the web server, Redis, and 3 Celery workers — everything needed to submit and run jobs.
+The app is available at **http://localhost:8050**. This starts the web
+server, Redis, and 2 Celery workers — everything needed to submit and
+run jobs. Drop your data files into `./data/` (see
+[data/README.md](data/README.md)) and they appear at `/data` inside the
+container immediately.
 
 ```bash
-docker compose up --build -d     # detached means it will run in the background and terminal is free
-docker compose down -v           # stop and remove volumes
+make dev          # foreground
+make dev-down     # stop the dev stack
+```
+
+Under the hood `make dev` is shorthand for:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
 Pull pre-built images: `docker pull ghcr.io/ssec-jhu/enzyme-tk-app:<tag>`
 
 ## Configuration
 
-### Environment Variables
+### Compose file layout
 
-All configuration is via environment variables, set in `docker-compose.yml` for both the `web` and `worker` services:
+| File | Purpose |
+|------|---------|
+| `docker-compose.yml` | Base service topology (web, redis, worker, `job-data` volume). Not runnable alone. |
+| `docker-compose.dev.yml` | Dev overlay: ports `8050` / `6380`, binds `./data` read-only to `/data`. Zero-config. |
+| `docker-compose.prod.yml` | Prod overlay: restart policies, healthchecks, requires `.env.prod`. |
+| `docker-compose.verify.yml` | Smoke-test overlay used by the Verify Agent (port shifts only). |
+
+### Data tiers
+
+- **Bundled** (`enzyme_tk_app/app/data/structures/`): version-locked
+  `.cif` files, baked into the image. Always available; never
+  overridable.
+- **External** (`./data/` in dev, `${ETK_DATA_DIR_HOST}` in prod): large
+  files (sequences, reactions, FoldSeek DBs / models). Mounted
+  read-only at `/data` inside the container. Dev hard-codes the path
+  to `./data`; prod requires `ETK_DATA_DIR_HOST` in `.env.prod`.
+
+### Environment variables
+
+All runtime configuration is via environment variables. Dev uses sane
+defaults baked into `docker-compose.dev.yml`. Prod is driven by
+`.env.prod` (see [`.env.prod.example`](.env.prod.example) for the full
+list).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL (broker + result backend) |
+| `REDIS_URL` | `redis://redis:6379/0` | Redis connection URL (broker + result backend) |
 | `JOB_TTL_SECONDS` | `86400` (24 h) | How long job metadata is retained in Redis |
-| `JOB_OUTPUTS_PATH` | `/data/job_outputs` | Directory for large result files (> 512 KB) |
-| `SHARED_VOLUME_PATH` | `/data` | Base path for the shared Docker volume |
+| `JOB_OUTPUTS_PATH` | `/job-data/job_outputs` | Directory for large result files (> 512 KB) |
+| `SHARED_VOLUME_PATH` | `/job-data` | Base path for the shared Docker volume |
+| `ETK_DATA_DIR` | `/data` (in container) | Root of the external data tier |
 | `MAX_RESULT_BYTES` | `524288` (512 KB) | Threshold above which results are offloaded to disk |
 
-### Shared Volume
+### Production
 
-The `web` and `worker` containers share a named Docker volume (`data:/data`) for large result files. When a job result exceeds `MAX_RESULT_BYTES`, the worker writes the result to `JOB_OUTPUTS_PATH` on the shared volume instead of storing it inline in Redis. The web container reads from the same path when the user views results.
-
-```yaml
-# docker-compose.yml (excerpt)
-volumes:
-  data:            # named volume shared between web + worker
-
-services:
-  web:
-    volumes:
-      - data:/data
-    environment:
-      - SHARED_VOLUME_PATH=/data
-      - JOB_OUTPUTS_PATH=/data/job_outputs
-
-  worker:
-    volumes:
-      - data:/data
-    environment:
-      - SHARED_VOLUME_PATH=/data
-      - JOB_OUTPUTS_PATH=/data/job_outputs
+```bash
+cp .env.prod.example .env.prod
+$EDITOR .env.prod                    # set ETK_DATA_DIR_HOST, SECRET_KEY, …
+make prod                            # → docker compose ... up -d --build
+make prod-down
 ```
 
-Both services **must** mount the same volume at the same path. If you change `SHARED_VOLUME_PATH`, update both services.
+`.env.prod` is gitignored by default. If your prod values contain no
+secrets you may opt to commit it via `git add -f .env.prod`.
 
 
 ## Developers — Adding a New Tool
