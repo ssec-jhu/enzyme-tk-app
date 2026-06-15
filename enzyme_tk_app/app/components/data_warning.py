@@ -32,9 +32,10 @@ def data_warning_badge(slug: str):
     Returns:
         ``None`` if the tool has no registered check or its check returns
         an empty list; otherwise a Dash component (badge + tooltip) listing
-        the missing data items.  A failing check is caught defensively and
-        rendered as a generic "Data check failed" badge so a buggy tool
-        cannot break the home page.
+        the missing data items.  The badge label always reads "Missing data";
+        a failing check is caught defensively and surfaced as a
+        "Data check failed" entry in the tooltip list so a buggy tool cannot
+        break the home page.
     """
     check_fn = CHECK_DATA.get(slug)
     if check_fn is None:
@@ -44,16 +45,17 @@ def data_warning_badge(slug: str):
         missing = check_fn()
     except Exception:
         # A buggy check must never break the home page render.  Log the
-        # underlying error and surface a generic failure badge instead.
+        # underlying error and surface a generic failure entry instead.
         logger.warning("check_data() raised for tool %s", slug, exc_info=True)
         missing = ["Data check failed"]
 
+    # if there is no missing data, return None, no badge is rendered.
     if not missing:
         return None
 
+    # if there is a missing data, render the badge and tooltip.
     badge_id = f"id-data-warning-{slug}"
     return html.Div(
-        className="card-data-badge-wrapper",
         children=[
             html.Span(
                 id=badge_id,
