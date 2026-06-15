@@ -4,7 +4,7 @@ Returns a list of human-readable labels describing missing data items.
 An empty list means the tool's data prerequisites are satisfied.
 """
 
-from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, FOLDSEEK_MODELS_DIR
+from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, FOLDSEEK_WEIGHTS_DIR
 
 
 def _has_subdirectory(path) -> bool:
@@ -38,8 +38,11 @@ def check_data() -> list[str]:
         A list of 0–2 labels naming the missing items.
     """
     missing: list[str] = []
+    # make sure required data directories/files exist
     if not _has_subdirectory(FOLDSEEK_DB_DIR):
-        missing.append("FoldSeek databases (data/foldseek_db/<name>/)")
-    if not _has_any_file(FOLDSEEK_MODELS_DIR):
-        missing.append("ProstT5 model weights (data/foldseek_models/)")
+        missing.append("FoldSeek databases (data/foldseek_db/)")
+
+    # make sure prostT5 model weights exist
+    if not _has_any_file(FOLDSEEK_WEIGHTS_DIR):
+        missing.append("ProstT5 model weights (data/foldseek_models/weights/)")
     return missing

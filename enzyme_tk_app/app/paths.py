@@ -32,8 +32,9 @@ STRUCTURES_DIR: Path = DATA_DIR / "structures"
 # Pre-built FoldSeek databases (one sub-directory per database).
 FOLDSEEK_DB_DIR: Path = DATA_DIR / "foldseek_db"
 
-# ProstT5 model weights used by FoldSeek for structure prediction.
+# Root directory for FoldSeek's ProstT5 model assets.  Acts as the prefix for
+# the weights directory below; tools should not reference this path directly.
 FOLDSEEK_MODELS_DIR: Path = DATA_DIR / "foldseek_models"
 
-# ProstT5 model weights used by FoldSeek for sequence-based searches.
-FOLDSEEK_WEIGHTS_DIR: Path = DATA_DIR / "foldseek_models" / "weights"
+# ProstT5 model weights used by FoldSeek for sequence-to-structure prediction.
+FOLDSEEK_WEIGHTS_DIR: Path = FOLDSEEK_MODELS_DIR / "weights"

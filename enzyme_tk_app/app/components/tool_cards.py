@@ -73,13 +73,19 @@ def tool_card(slug, title, description, icon_class, libraries=None):
                         id=f"id-btn-launch-{slug}",
                         color="link",
                         className="card-launch",
-                        style={"marginLeft": "auto"},
+                        # Override .card-launch.btn layout rules that fight the flex
+                        # row: drop its top margin and self-alignment so the button
+                        # sits centered in the footer row instead of pinned bottom-right.
+                        style={"marginLeft": "auto", "marginTop": 0, "alignSelf": "auto"},
                     ),
                 ],
                 style={
                     "display": "flex",
                     "justifyContent": "space-between",
                     "alignItems": "center",
+                    # Vertical spacing now lives on the footer container instead of
+                    # the button, so the badge and button stay aligned on the row.
+                    "marginTop": "0.75rem",
                 },
             ),
         ],

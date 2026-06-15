@@ -93,7 +93,7 @@ def test_csv_check_passes_when_csv_present(monkeypatch, tmp_path, module, path_a
 
 def test_struct_check_reports_both_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(struct_check, "FOLDSEEK_DB_DIR", tmp_path / "missing-db")
-    monkeypatch.setattr(struct_check, "FOLDSEEK_MODELS_DIR", tmp_path / "missing-models")
+    monkeypatch.setattr(struct_check, "FOLDSEEK_WEIGHTS_DIR", tmp_path / "missing-models")
     missing = struct_check.check_data()
     assert len(missing) == 2
 
@@ -103,7 +103,7 @@ def test_struct_check_reports_only_models_missing(monkeypatch, tmp_path):
     db_dir.mkdir()
     (db_dir / "alphafold").mkdir()
     monkeypatch.setattr(struct_check, "FOLDSEEK_DB_DIR", db_dir)
-    monkeypatch.setattr(struct_check, "FOLDSEEK_MODELS_DIR", tmp_path / "missing-models")
+    monkeypatch.setattr(struct_check, "FOLDSEEK_WEIGHTS_DIR", tmp_path / "missing-models")
     missing = struct_check.check_data()
     assert len(missing) == 1
     assert "ProstT5" in missing[0]
@@ -114,7 +114,7 @@ def test_struct_check_reports_only_db_missing(monkeypatch, tmp_path):
     models_dir.mkdir()
     (models_dir / "weights.bin").write_bytes(b"x")
     monkeypatch.setattr(struct_check, "FOLDSEEK_DB_DIR", tmp_path / "missing-db")
-    monkeypatch.setattr(struct_check, "FOLDSEEK_MODELS_DIR", models_dir)
+    monkeypatch.setattr(struct_check, "FOLDSEEK_WEIGHTS_DIR", models_dir)
     missing = struct_check.check_data()
     assert len(missing) == 1
     assert "FoldSeek" in missing[0]
@@ -128,7 +128,7 @@ def test_struct_check_passes_when_all_present(monkeypatch, tmp_path):
     models_dir.mkdir()
     (models_dir / "weights.bin").write_bytes(b"x")
     monkeypatch.setattr(struct_check, "FOLDSEEK_DB_DIR", db_dir)
-    monkeypatch.setattr(struct_check, "FOLDSEEK_MODELS_DIR", models_dir)
+    monkeypatch.setattr(struct_check, "FOLDSEEK_WEIGHTS_DIR", models_dir)
     assert struct_check.check_data() == []
 
 
@@ -140,7 +140,7 @@ def test_struct_check_ignores_hidden_entries(monkeypatch, tmp_path):
     models_dir.mkdir()
     (models_dir / ".hidden").write_text("")
     monkeypatch.setattr(struct_check, "FOLDSEEK_DB_DIR", db_dir)
-    monkeypatch.setattr(struct_check, "FOLDSEEK_MODELS_DIR", models_dir)
+    monkeypatch.setattr(struct_check, "FOLDSEEK_WEIGHTS_DIR", models_dir)
     missing = struct_check.check_data()
     # Both should still be reported as missing — hidden entries don't count.
     assert len(missing) == 2
