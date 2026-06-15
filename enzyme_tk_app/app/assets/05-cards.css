@@ -98,7 +98,7 @@
     box-shadow: none;
 }
 
-/*!* --- Missing-data pill badge -------------------------------------------- *!*/
+/* --- Missing-data pill badge --------------------------------------------- */
 
 .card-data-badge {
     display: inline-flex;
@@ -116,6 +116,6 @@
     white-space: nowrap;
 }
 
- .card-data-badge i {
-     font-size: 0.75rem;
- }
+.card-data-badge i {
+    font-size: 0.75rem;
+}
