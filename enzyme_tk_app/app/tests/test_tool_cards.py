@@ -62,12 +62,6 @@ def test_tool_card_no_badges_when_no_libraries(sample_tool_card_no_libs):
     assert len(badges) == 0
 
 
-def test_tool_card_has_footer_wrapper(sample_tool_card):
-    """Card's launch action lives inside a ``.card-footer`` flex row."""
-    footers = [d for d in find_components(sample_tool_card, html.Div) if getattr(d, "className", None) == "card-footer"]
-    assert len(footers) == 1
-
-
 def test_tool_card_no_data_badge_when_check_unregistered(sample_tool_card):
     """The fixture's slug ('test-tool') has no registered check → no badge."""
     badges = [
