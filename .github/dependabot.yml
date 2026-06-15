@@ -12,6 +12,10 @@ updates:
       # redis is capped at <6.5 by celery's kombu[redis] constraint.
       # Exclude it from automated updates and bump it manually only.
       - dependency-name: "redis"
+        update-types:
+          - "version-update:semver-major"
+          - "version-update:semver-minor"
+          - "version-update:semver-patch"
     groups:
       all-minor-and-patch-dependency-updates:
         applies-to: version-updates
