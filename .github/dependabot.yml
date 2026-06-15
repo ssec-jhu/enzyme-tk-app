@@ -9,6 +9,9 @@ updates:
       # Sphinx past 8.x until sphinx-rtd-theme adds Sphinx 9 support.
       - dependency-name: "sphinx"
         versions: [">=9"]
+      # redis is capped at <6.5 by celery's kombu[redis] constraint.
+      # Exclude it from automated updates and bump it manually only.
+      - dependency-name: "redis"
     groups:
       all-minor-and-patch-dependency-updates:
         applies-to: version-updates
