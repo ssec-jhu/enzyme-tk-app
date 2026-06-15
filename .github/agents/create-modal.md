@@ -155,6 +155,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **Labeling:** Always use `dbc.Label(..., className="col-form-label fw-bold")` inside a `dbc.Col(width=3)`.
 - **Controls:** Attach the `themed-control` class to all interactable input components (e.g. `dbc.Input`, `dcc.Dropdown`, `dbc.RadioItems`). This ensures they hook correctly into the custom CSS themes or Dash 4.0 Checkbox UI structures.
 - **Row layout:** Use `dbc.Row([dbc.Col(label, width=3), dbc.Col(control, width=9)], className="mb-2", align="center")` for label ↔ control alignment.
+- **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the [**Write-CSS Agent**](write-css.md) for banner/section-comment style and 4-space indentation.
 
 ## 7. Required vs Default Sections
 - **Section 1: Input Data:** Place *Task Name*, required identifiers (like SMILES or file uploads), and Demo Examples here.
