@@ -5,8 +5,10 @@
 #   redis  — message broker + result store for Celery
 #   worker — Celery worker that executes tool compute tasks
 #
-# A named volume ("data") is shared between web and worker so large
+# A named volume ("job-data") is shared between web and worker so large
 # job results written by the worker can be read by the web container.
+# Tool data (sequences, reactions, structures, foldseek DBs, etc.) is
+# bind-mounted read-only from the host at /app-data.
 #
 # Usage:
 #   docker compose up --build          # start everything
@@ -21,14 +23,17 @@ services:
       - "8050:8050"
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/data
-      - JOB_OUTPUTS_PATH=/data/job_outputs
+      - SHARED_VOLUME_PATH=/job-data
+      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - ETK_DATA_DIR=/app-data
       # SESSION_COOKIE_SECURE — the session cookie's Secure flag is
       # auto-detected from the request (request.is_secure) by default.
       # Set Flask's SESSION_COOKIE_SECURE=true in production behind a
       # TLS-terminating reverse proxy to force the flag on.
     volumes:
-      - data:/data
+      - job-data:/job-data
+      # TODO: change this path to where data is for deployment
+      - ./enzyme_tk_app/app/data:/app-data:ro
     depends_on:
       - redis
 
@@ -52,14 +57,16 @@ services:
       replicas: 3
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/data
+      - SHARED_VOLUME_PATH=/job-data
       # Must match the web service so both containers resolve the same path.
-      - JOB_OUTPUTS_PATH=/data/job_outputs
+      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - ETK_DATA_DIR=/app-data
     volumes:
-      - data:/data
+      - job-data:/job-data
+      - ./enzyme_tk_app/app/data:/app-data:ro
     depends_on:
       - redis
 
 volumes:
   # Shared between web and worker for large job-result JSON files.
-  data:
+  job-data:
