@@ -42,6 +42,15 @@
 - **Use inline styles** (Python dicts) for one-off styles scoped to a single component that don't need pseudo-classes — keep the style co-located with the element it applies to.
 - When converting a CSS class to inline, merge all cascading rules into one flat `STYLE_*` constant (e.g., `.badge` + `.badge-lib` → `STYLE_BADGE_LIB`).
 - CSS files live in `enzyme_tk_app/app/assets/` and are split by concern with numbered prefixes (e.g., `00-variables.css`, `05-cards.css`). Only add a new CSS class when the style truly needs CSS features or is reused across files.
+- **When writing or editing any CSS in `assets/`, match the banner/section-comment style and indentation already used across the existing stylesheets.** In short:
+  - **Top-of-file banner:** a three-line block opened and closed by a full row of `=`, with the title (and any note lines) indented 3 spaces in the middle:
+    ```css
+    /* ==========================================================================
+       Title — optional one-line note
+       ========================================================================== */
+    ```
+  - **Section separator:** a single-line comment `/* --- Title ---…--- */` where the trailing dashes pad the line to roughly 75 columns.
+  - **Indentation:** selectors and at-rules start at column 0; their declarations are indented **4 spaces** (never tabs).
 
 ## Shared UI Components — Stat Cards
 - **All stat-card-style elements across the app must use the same CSS classes** defined in `08-jobs.css`:
