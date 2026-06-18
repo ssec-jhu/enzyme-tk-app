@@ -10,6 +10,7 @@ changes needed here.  See ``enzyme_tk_app.app.tools`` for details.
 import dash_bootstrap_components as dbc
 from dash import html
 
+from enzyme_tk_app.app.components.data_warning import data_warning_badge
 from enzyme_tk_app.app.tools import TOOLS
 
 # Matches the old .badge-lib CSS — kept co-located with the only consumer.
@@ -63,12 +64,29 @@ def tool_card(slug, title, description, icon_class, libraries=None):
             ),
             # --- Card body: description ---
             html.P(description, className="card-desc"),
-            # --- Card footer: launch action ---
-            dbc.Button(
-                "Launch →",
-                id=f"id-btn-launch-{slug}",
-                color="link",
-                className="card-launch",
+            # --- Card footer: missing-data badge (left) | launch action (right) ---
+            html.Div(
+                children=[
+                    html.Div(data_warning_badge(slug)),
+                    dbc.Button(
+                        "Launch →",
+                        id=f"id-btn-launch-{slug}",
+                        color="link",
+                        className="card-launch",
+                        # Override .card-launch.btn layout rules that fight the flex
+                        # row: drop its top margin and self-alignment so the button
+                        # sits centered in the footer row instead of pinned bottom-right.
+                        style={"marginLeft": "auto", "marginTop": 0, "alignSelf": "auto"},
+                    ),
+                ],
+                style={
+                    "display": "flex",
+                    "justifyContent": "space-between",
+                    "alignItems": "center",
+                    # Vertical spacing now lives on the footer container instead of
+                    # the button, so the badge and button stay aligned on the row.
+                    "marginTop": "0.75rem",
+                },
             ),
         ],
     )

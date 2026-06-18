@@ -62,6 +62,14 @@ def test_tool_card_no_badges_when_no_libraries(sample_tool_card_no_libs):
     assert len(badges) == 0
 
 
+def test_tool_card_no_data_badge_when_check_unregistered(sample_tool_card):
+    """The fixture's slug ('test-tool') has no registered check → no badge."""
+    badges = [
+        s for s in find_components(sample_tool_card, html.Span) if getattr(s, "className", None) == "card-data-badge"
+    ]
+    assert badges == []
+
+
 # -- ToolGrid --
 
 

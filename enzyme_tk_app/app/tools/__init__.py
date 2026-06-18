@@ -67,6 +67,11 @@ class ToolDef(TypedDict):
 TOOLS: list[ToolDef] = []  # Accumulated ToolDef dicts, one per discovered tool
 _modal_funcs: list = []  # Callables (Modal factories) that return dbc.Modal components
 RESULTS_LAYOUTS: dict[str, Callable] = {}  # slug → ResultsLayout callable
+# slug → check_data() callable returning a list of human-readable labels
+# describing missing data items (empty list = data check passes).  Tools opt
+# in by adding a ``check_data.py`` submodule; tools without one are treated
+# as "no data dependencies" and never show a missing-data warning.
+CHECK_DATA: dict[str, Callable[[], list[str]]] = {}
 
 
 def _discover_tools() -> None:
@@ -182,6 +187,29 @@ def _discover_tools() -> None:
                 )
         except Exception:
             logger.warning("Failed to import results for %s", full_name, exc_info=True)
+
+        # --- Step 5: Import check_data.py (optional) ---
+        # If present, ``check_data.py`` must expose a ``check_data()`` callable
+        # that returns a list of human-readable labels describing missing data
+        # items (empty list = data check passes).  Used by the home-page card
+        # to render a "Missing data" badge.  Tools without this module are
+        # treated as having no data dependencies.
+        try:
+            check_mod = importlib.import_module(f"{full_name}.check_data")
+            check_fn = getattr(check_mod, "check_data", None)
+            if check_fn is not None:
+                CHECK_DATA[tool_def["slug"]] = check_fn
+        except ModuleNotFoundError as exc:
+            expected_module = f"{full_name}.check_data"
+            if exc.name != expected_module:
+                logger.warning(
+                    "check_data module for %s failed: missing dependency %r",
+                    full_name,
+                    exc.name,
+                    exc_info=True,
+                )
+        except Exception:
+            logger.warning("Failed to import check_data for %s", full_name, exc_info=True)
 
     # Sort tools by explicit ``order`` field so the card grid is deterministic
     # regardless of filesystem directory listing order.  Sorting here (rather

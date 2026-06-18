@@ -13,6 +13,7 @@ ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
 ICON_TOOL_STRUCTURE = "fa-solid fa-cube"
 ICON_TOOL_TBD = "fa-solid fa-gears"
 ICON_TOOL_TIMER = "fa-solid fa-hourglass-half"
+ICON_DATA_WARNING = "fa-solid fa-triangle-exclamation"
 
 # --- Hero Feature Pills ---
 ICON_HERO_PYTHON = "fa-brands fa-python"

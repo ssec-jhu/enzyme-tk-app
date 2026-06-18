@@ -333,4 +333,10 @@ def get_text(component):
     elif isinstance(children, list):
         for child in children:
             parts.append(get_text(child))
+    # If children is a single component (not a string or list),
+    # we recursively extract its text content
+    # this will allow it to reach tools like dbc.Badge which have a
+    # single child that is the text we want to extract
+    elif children is not None:
+        parts.append(get_text(children))
     return " ".join(parts).strip()
