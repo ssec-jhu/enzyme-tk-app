@@ -16,6 +16,7 @@ To add a tool, create a folder with:
 | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
 | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
 | `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
+| `check_data.py` | No | `check_data() → list[str]` | Reports missing bundled data; non-empty list renders a "Missing data" badge on the tool card (see §2b) |
 
 - `TOOL_DEF` requires an `order: int` field that controls the card's position in the grid.
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
@@ -35,9 +36,19 @@ To add a tool, create a folder with:
 ### Folder-name invariant
 - The folder name **must** equal `slug.replace("-", "_")`. If you change the slug, rename the folder to match.
 
+## 2b. Missing-Data Badge — `check_data.py`
+If a tool depends on bundled data (model weights, prebuilt databases, reference files), add an **optional** `check_data.py` exporting `check_data() -> list[str]`:
+- Return an **empty list** when all data prerequisites are satisfied.
+- Return a list of **human-readable labels** (one per missing item) when data is absent — these render as tooltip lines under a "Missing data" badge on the tool card.
+- Auto-discovery in `tools/__init__.py` registers the callable into the `CHECK_DATA` dict keyed by `TOOL_DEF["slug"]`. Tools **without** this module are treated as having no data dependencies and never show a badge.
+- Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a new constant there if a needed path is missing.
+- Keep checks cheap and side-effect-free (existence/non-empty checks): `check_data()` runs at home-page render time. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
+
 ## 3. UI & Modal Delegation
 > [!IMPORTANT]
 > If the task involves creating or modifying a `modal.py` file, you **MUST** trigger the [**Modal Creation Agent**](create-modal.md) and follow its strict layout and styling rules.
+>
+> If the task involves creating or modifying any CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style), you **MUST** follow the [**Write-CSS Agent**](write-css.md) for banner/section-comment style and indentation.
 
 ### Modal dropdowns, inputs, and form controls
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.

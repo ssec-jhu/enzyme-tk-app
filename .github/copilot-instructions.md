@@ -32,6 +32,13 @@
 - **For detailed callback authoring patterns** (guard clauses vs. intentional DOM writes, decorator syntax, naming), follow the [Write-Callback Agent](agents/write-callback.md).
 
 
+## Page vs. Component Organization
+- `enzyme_tk_app/app/pages/` modules are route entry points (each calls `dash.register_page()`) and own their `layout()` plus any page-specific helpers and callbacks.
+- **Keep page-private helpers inline in the page module** and prefix them with a leading underscore (e.g., `_build_stat_card`, `_jobs_to_rows`, `_dashboard_layout` in `admin.py`; `_build_stats`, `_build_status_badge` in `my_tasks.py`). Do **not** move single-page helpers into `components/` just because there are many of them — locality is preferred.
+- **Promote a helper to `enzyme_tk_app/app/components/` only when it is shared across ≥2 pages or tools.** Shared helper modules use a `*_helpers.py` name and public (non-underscore) functions — see `modal_helpers.py` (every tool modal) and `results_helpers.py` (every results page).
+- Standalone, reusable UI widgets also live in `components/` (e.g., `navbar.py`, `footer.py`, `hero.py`, `tool_cards.py`). Page modules should compose these rather than re-implement them — see `home.py`.
+- Rule of thumb: **used by one page → inline `_`-helper in that page; used by many → public helper in `components/`.**
+
 ## Inline Styles
 - Group related styles into constants at the top of the file (e.g., `STYLE_NAVBAR`, `STYLE_FOOTER`).
 - Use descriptive names for style constants that indicate where they are applied.

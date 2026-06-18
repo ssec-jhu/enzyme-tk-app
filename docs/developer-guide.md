@@ -14,8 +14,9 @@ This guide walks through how to add a new tool to the EnzymeTK Tool Suite, from 
 5. **Create `callbacks.py`** — wire the modal open/close, form validation, and job submission.
 6. **Create `results.py`** (optional) — build a custom results layout. Read this section first to understand what the framework renders automatically, so you know which special keys to return from `compute.py`.
 7. **Create `compute.py`** — implement `run(params) → dict` with your algorithm. This runs on the Celery worker. Return the special keys described in the Results section (e.g., `_stat_cards`, `dataframe`).
-8. **Run `tox -e format && tox`** to format and validate.
-9. **Done.** The tool auto-appears on the home page — no central file to edit.
+8. **Create `check_data.py`** (optional) — if the tool depends on bundled data (model weights, prebuilt databases, reference files), export `check_data() → list[str]` returning labels for any missing items (empty list = data OK). A non-empty list renders a "Missing data" badge on the tool card.
+9. **Run `tox -e format && tox`** to format and validate.
+10. **Done.** The tool auto-appears on the home page — no central file to edit.
 
 ## Conventions
 
@@ -65,7 +66,7 @@ Callback function names start with a verb describing the action:
 
 ## File Layout
 
-Each tool is a sub-package with up to five files:
+Each tool is a sub-package with up to six files:
 
 | File | Required? | Must export | Purpose |
 |------|-----------|-------------|---------|
@@ -74,6 +75,7 @@ Each tool is a sub-package with up to five files:
 | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
 | `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
 | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
+| `check_data.py` | No | `check_data() → list[str]` | Reports missing bundled data; a non-empty list renders a "Missing data" badge on the tool card |
 
 ### Auto-discovery
 
@@ -83,6 +85,7 @@ The module `enzyme_tk_app/app/tools/__init__.py` uses `pkgutil.iter_modules()` t
 2. Imports `callbacks.py` (side-effect: registers `@callback` decorators).
 3. Imports `modal.py` and collects the `modal()` factory.
 4. Imports `results.py` and collects `results_layout()` into `RESULTS_LAYOUTS`.
+5. Imports `check_data.py` (if present) and registers `check_data()` into `CHECK_DATA`, keyed by slug.
 
 No central registry file to edit — just create your folder and the tool appears.
 
