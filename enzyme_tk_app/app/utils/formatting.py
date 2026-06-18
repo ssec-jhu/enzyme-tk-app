@@ -74,6 +74,20 @@ def format_duration(seconds: float | int, *, precise: bool = False) -> str:
     return f"{minutes}m {secs}s" if precise else f"{minutes}m"
 
 
+def truncate_id(value: str, chars: int = 6) -> str:
+    """Truncate an ID to its last *chars* characters with an ellipsis prefix.
+
+    Args:
+        value: The full ID string (e.g. a UUID).
+        chars: Number of trailing characters to keep.
+
+    Returns:
+        ``"...{last chars}"`` when *value* is longer than *chars*,
+        otherwise *value* unchanged.
+    """
+    return f"...{value[-chars:]}" if len(value) > chars else value
+
+
 def expires_in(
     iso_str: str | None,
     *,
