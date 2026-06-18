@@ -45,6 +45,14 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 **Trigger:** When creating, modifying, or adding columns to an AG Grid results table (e.g., `results.py`).
 **Action:** The agent MUST follow the column definition rules, theme conventions, and `autoHeight` guidelines defined in [`.github/agents/create-ag-grid.md`](.github/agents/create-ag-grid.md).
 
+## Write-CSS Agent
+**Trigger:** When creating a new CSS file in `enzyme_tk_app/app/assets/` or adding/modifying rules in an existing one (e.g., a new badge, card, or status style added while building a tool or modal).
+**Action:** The agent MUST follow the banner/section-comment conventions, 4-space indentation, and class-naming rules defined in [`.github/agents/write-css.md`](.github/agents/write-css.md).
+
 ## Edit Dockerfile Agent
 **Trigger:** When adding, removing, or modifying binary dependencies, system packages, or build steps in the `Dockerfile` (e.g., while integrating a new tool that requires an external binary).
 **Action:** The agent MUST follow the cross-platform, multi-architecture compatibility rules defined in [`.github/agents/edit-dockerfile.md`](.github/agents/edit-dockerfile.md). Every Dockerfile change must support `linux/amd64` and `linux/arm64`. If a binary cannot support both architectures, the agent must document the limitation and add a conditional guard.
+
+## Check Updates Agent
+**Trigger:** Ask the agent to "check updates", "check for package updates", "audit dependencies", "update requirements", or "audit requirements".
+**Action:** The agent must discover available updates for every pinned package in `requirements/`, create a `requirements_v2/` directory with updated versions, run the test suite against the new pins, and produce a detailed compatibility report following the workflow in [`.github/agents/check-updates.md`](.github/agents/check-updates.md).
