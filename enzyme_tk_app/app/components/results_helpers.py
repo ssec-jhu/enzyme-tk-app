@@ -90,6 +90,25 @@ TABLE_STYLE_DATA_CONDITIONAL: list[dict] = [
 """Alternating-row striping for readability."""
 
 
+def build_stat_card(value: int | str, label: str) -> html.Div:
+    """Render a single stat card using the shared jobs stat-card classes.
+
+    Args:
+        value: The numeric or string value to display.
+        label: The label beneath the value.
+
+    Returns:
+        An ``html.Div`` styled as a stat card.
+    """
+    return html.Div(
+        className="jobs-stat-card",
+        children=[
+            html.Div(str(value), className="jobs-stat-value"),
+            html.Div(label, className="jobs-stat-label"),
+        ],
+    )
+
+
 def build_result_stat_cards(job: JobInfo) -> html.Div | None:
     """Build a stat-card strip from the job's ``_stat_cards`` key, if present.
 
@@ -120,15 +139,7 @@ def build_result_stat_cards(job: JobInfo) -> html.Div | None:
         return None
 
     cards = [
-        html.Div(
-            className="jobs-stat-card",
-            children=[
-                html.Div(str(item.get("value", "")), className="jobs-stat-value"),
-                html.Div(str(item.get("label", "")), className="jobs-stat-label"),
-            ],
-        )
-        for item in meta_items
-        if isinstance(item, dict)
+        build_stat_card(item.get("value", ""), item.get("label", "")) for item in meta_items if isinstance(item, dict)
     ]
     if not cards:
         return None

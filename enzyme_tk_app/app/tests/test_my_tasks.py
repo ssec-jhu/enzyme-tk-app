@@ -12,7 +12,6 @@ from enzyme_tk_app.app.components.icons import ICON_JOB_BACK
 from enzyme_tk_app.app.pages.my_tasks import (
     _build_job_row,
     _build_jobs_table,
-    _build_stat_card,
     _build_stats,
     _build_status_badge,
     cancel_all_running_jobs,
@@ -49,12 +48,14 @@ def test_build_status_badge_renders_for_every_status(status):
     assert status.value in text
 
 
-# ── _build_stat_card ─────────────────────────────────────────────────────────
+# ── build_stat_card ──────────────────────────────────────────────────────────
 
 
 def test_build_stat_card_renders_value_and_label():
-    """_build_stat_card must produce a card with the given value and label."""
-    card = _build_stat_card(42, "Total Tasks")
+    """build_stat_card must produce a card with the given value and label."""
+    from enzyme_tk_app.app.components.results_helpers import build_stat_card
+
+    card = build_stat_card(42, "Total Tasks")
 
     assert isinstance(card, html.Div)
     assert card.className == "jobs-stat-card"
@@ -500,10 +501,10 @@ def test_build_job_info_header_shows_computed_duration_for_completed_job():
 
 def test_build_job_info_header_uses_known_tool_title():
     """When the tool slug matches a registered tool, the header must use its human-readable title."""
-    from enzyme_tk_app.app.pages.my_tasks_view_results import _TOOL_TITLE_MAP
+    from enzyme_tk_app.app.tools import TOOL_TITLE_MAP
 
     # Pick the first registered tool slug/title pair.
-    slug, title = next(iter(_TOOL_TITLE_MAP.items()))
+    slug, title = next(iter(TOOL_TITLE_MAP.items()))
     job = make_job(tool_slug=slug)
     header = _build_job_info_header(job)
 
