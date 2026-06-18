@@ -20,7 +20,7 @@ updates succeeded and which broke tests.
 ### Step 1 — Snapshot Current Pins
 
 Read every `.txt` file in `requirements/` (`prd.txt`, `test.txt`, `dev.txt`,
-`build.txt`, `docs.txt`).  For each file, list every package with its
+`build.txt`, `docs.txt`, `all.txt`).  For each file, list every package with its
 currently pinned version.  Skip:
 
 - `-r` include lines (just note them)
