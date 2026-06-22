@@ -104,7 +104,7 @@ def build_stat_card(value: int | str, label: str) -> html.Div:
         className="jobs-stat-card",
         children=[
             html.Div(str(value), className="jobs-stat-value"),
-            html.Div(label, className="jobs-stat-label"),
+            html.Div(str(label), className="jobs-stat-label"),
         ],
     )
 

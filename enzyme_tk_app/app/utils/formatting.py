@@ -79,12 +79,17 @@ def truncate_id(value: str, chars: int = 6) -> str:
 
     Args:
         value: The full ID string (e.g. a UUID).
-        chars: Number of trailing characters to keep.
+        chars: Number of trailing characters to keep (must be >= 1).
 
     Returns:
         ``"...{last chars}"`` when *value* is longer than *chars*,
         otherwise *value* unchanged.
+
+    Raises:
+        ValueError: If *chars* is less than 1.
     """
+    if chars < 1:
+        raise ValueError(f"chars must be >= 1, got {chars}")
     return f"...{value[-chars:]}" if len(value) > chars else value
 
 
