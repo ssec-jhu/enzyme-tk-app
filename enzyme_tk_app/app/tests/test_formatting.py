@@ -222,11 +222,11 @@ def test_round_column_values_ignores_missing_columns():
 @pytest.mark.parametrize(
     ("value", "expected"),
     [
-        ("abcdef123456", "...123456"),
+        ("abcdef123456", "abcdef"),
         ("abc", "abc"),
     ],
     ids=["long-id", "short-id"],
 )
 def test_truncate_id(value, expected):
-    """truncate_id keeps the last 6 chars with ellipsis or passes through short values."""
+    """truncate_id keeps the first 6 chars or passes through shorter values."""
     assert truncate_id(value) == expected

@@ -74,23 +74,16 @@ def format_duration(seconds: float | int, *, precise: bool = False) -> str:
     return f"{minutes}m {secs}s" if precise else f"{minutes}m"
 
 
-def truncate_id(value: str, chars: int = 6) -> str:
-    """Truncate an ID to its last *chars* characters with an ellipsis prefix.
+def truncate_id(value: str) -> str:
+    """Shorten an ID to its first 6 characters (like an abbreviated git SHA).
 
     Args:
         value: The full ID string (e.g. a UUID).
-        chars: Number of trailing characters to keep (must be >= 1).
 
     Returns:
-        ``"...{last chars}"`` when *value* is longer than *chars*,
-        otherwise *value* unchanged.
-
-    Raises:
-        ValueError: If *chars* is less than 1.
+        The first 6 characters of *value* (the whole string when shorter).
     """
-    if chars < 1:
-        raise ValueError(f"chars must be >= 1, got {chars}")
-    return f"...{value[-chars:]}" if len(value) > chars else value
+    return value[:6]
 
 
 def expires_in(

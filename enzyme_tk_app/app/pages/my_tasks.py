@@ -129,7 +129,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
     max_dur = _TOOL_MAX_DURATION.get(job.tool_slug, 3600)
     task_name = (job.params or {}).get("task_name", "") or ""
 
-    # Truncated task ID: show last 6 characters, hover reveals the full ID.
+    # Truncated task ID: show first 6 characters, hover reveals the full ID.
     short_id = truncate_id(job.job_id)
 
     # Action buttons
