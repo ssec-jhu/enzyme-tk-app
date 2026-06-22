@@ -71,16 +71,17 @@ jobs:
         path: coverage.xml
         retention-days: 14
         if-no-files-found: error
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        env_vars: OS,PYTHON
-        fail_ci_if_error: false
-        files: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        verbose: true
+    # Disabled — no active Codecov subscription. Uncomment to re-enable.
+    # - name: Upload coverage to Codecov
+    #   uses: codecov/codecov-action@v5
+    #   with:
+    #     token: ${{ secrets.CODECOV_TOKEN }}
+    #     env_vars: OS,PYTHON
+    #     fail_ci_if_error: false
+    #     files: ./coverage.xml
+    #     flags: unittests
+    #     name: codecov-umbrella
+    #     verbose: true
 
   docs:
     name: Build docs with Python ${{ matrix.python-version }}
