@@ -136,7 +136,7 @@ def test_build_job_row_shows_truncated_job_id():
     spans = find_components(row, html.Span)
     id_spans = [s for s in spans if getattr(s, "title", None) == "abcdef-123456789"]
     assert len(id_spans) == 1
-    assert id_spans[0].children == "...456789"
+    assert id_spans[0].children == "abcdef"
 
 
 def test_build_job_row_completed_shows_computed_duration():
