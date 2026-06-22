@@ -224,6 +224,10 @@ def _discover_tools() -> None:
 # already-populated ``TOOLS`` list.
 _discover_tools()
 
+# Derived lookup: slug → human-readable title.  Built once after discovery
+# and shared by any page that needs to display a tool name from a slug.
+TOOL_TITLE_MAP: dict[str, str] = {t["slug"]: t["title"] for t in TOOLS}
+
 
 def tool_modals() -> html.Div:
     """Return all discovered tool modals bundled in a single container.

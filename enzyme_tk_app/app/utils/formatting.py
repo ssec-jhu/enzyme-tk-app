@@ -74,6 +74,18 @@ def format_duration(seconds: float | int, *, precise: bool = False) -> str:
     return f"{minutes}m {secs}s" if precise else f"{minutes}m"
 
 
+def truncate_id(value: str) -> str:
+    """Shorten an ID to its first 6 characters (like an abbreviated git SHA).
+
+    Args:
+        value: The full ID string (e.g. a UUID).
+
+    Returns:
+        The first 6 characters of *value* (the whole string when shorter).
+    """
+    return value[:6]
+
+
 def expires_in(
     iso_str: str | None,
     *,

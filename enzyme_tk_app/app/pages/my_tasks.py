@@ -34,17 +34,21 @@ from enzyme_tk_app.app.components.icons import (
     ICON_STATUS_SUCCESS,
     ICON_STATUS_TIMEOUT,
 )
-from enzyme_tk_app.app.tools import TOOLS
-from enzyme_tk_app.app.utils.formatting import compute_duration, expires_in, format_duration, format_timestamp
+from enzyme_tk_app.app.components.results_helpers import build_stat_card
+from enzyme_tk_app.app.tools import TOOL_TITLE_MAP, TOOLS
+from enzyme_tk_app.app.utils.formatting import (
+    compute_duration,
+    expires_in,
+    format_duration,
+    format_timestamp,
+    truncate_id,
+)
 
 dash.register_page(__name__, path="/my-tasks")
 
 # ----------------
 # Constants
 # ----------------
-
-# Map tool slug → tool title for display.
-_TOOL_TITLE_MAP: dict[str, str] = {t["slug"]: t["title"] for t in TOOLS}
 
 # Map tool slug → max_duration for "expected runtime" display.
 _TOOL_MAX_DURATION: dict[str, int] = {t["slug"]: t.get("max_duration", 3600) for t in TOOLS}
@@ -90,25 +94,6 @@ def _build_status_badge(status: JobStatus) -> html.Span:
     )
 
 
-def _build_stat_card(value: int | str, label: str) -> html.Div:
-    """Render a single stat card for the summary row.
-
-    Args:
-        value: The numeric or string value to display.
-        label: The label beneath the value.
-
-    Returns:
-        An ``html.Div`` styled as a stat card.
-    """
-    return html.Div(
-        className="jobs-stat-card",
-        children=[
-            html.Div(str(value), className="jobs-stat-value"),
-            html.Div(label, className="jobs-stat-label"),
-        ],
-    )
-
-
 def _build_stats(jobs: list[JobInfo]) -> list:
     """Build the stats summary cards from a list of jobs.
 
@@ -123,10 +108,10 @@ def _build_stats(jobs: list[JobInfo]) -> list:
     completed = sum(1 for j in jobs if j.status == JobStatus.SUCCESS)
     failed = sum(1 for j in jobs if j.status in {JobStatus.FAILURE, JobStatus.TIMEOUT, JobStatus.REVOKED})
     return [
-        _build_stat_card(total, "Total Tasks"),
-        _build_stat_card(running, "Running"),
-        _build_stat_card(completed, "Completed"),
-        _build_stat_card(failed, "Failed / Cancelled"),
+        build_stat_card(total, "Total Tasks"),
+        build_stat_card(running, "Running"),
+        build_stat_card(completed, "Completed"),
+        build_stat_card(failed, "Failed / Cancelled"),
     ]
 
 
@@ -140,12 +125,12 @@ def _build_job_row(job: JobInfo) -> html.Tr:
         An ``html.Tr`` with task ID, task name, tool name, status badge,
         submitted time, expected duration, expiry countdown, and action buttons.
     """
-    tool_title = _TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
+    tool_title = TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
     max_dur = _TOOL_MAX_DURATION.get(job.tool_slug, 3600)
     task_name = (job.params or {}).get("task_name", "") or ""
 
-    # Truncated task ID: show last 6 characters, hover reveals the full ID.
-    short_id = f"...{job.job_id[-6:]}" if len(job.job_id) > 6 else job.job_id
+    # Truncated task ID: show first 6 characters, hover reveals the full ID.
+    short_id = truncate_id(job.job_id)
 
     # Action buttons
     actions = []

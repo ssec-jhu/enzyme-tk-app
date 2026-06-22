@@ -16,6 +16,7 @@ from enzyme_tk_app.app.utils.formatting import (
     format_duration,
     format_timestamp,
     round_column_values,
+    truncate_id,
     validate_top_n,
 )
 
@@ -213,3 +214,19 @@ def test_round_column_values_ignores_missing_columns():
     result = round_column_values(["a", "nonexistent"], df)
     assert result["a"].iloc[0] == pytest.approx(3.1416)
     assert list(result.columns) == ["a"]
+
+
+# ── truncate_id ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("abcdef123456", "abcdef"),
+        ("abc", "abc"),
+    ],
+    ids=["long-id", "short-id"],
+)
+def test_truncate_id(value, expected):
+    """truncate_id keeps the first 6 chars or passes through shorter values."""
+    assert truncate_id(value) == expected

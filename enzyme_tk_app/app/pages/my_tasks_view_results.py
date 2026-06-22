@@ -19,7 +19,7 @@ from enzyme_tk_app.app.components.icons import (
     ICON_STATUS_TIMEOUT,
 )
 from enzyme_tk_app.app.components.results_helpers import build_result_input_params
-from enzyme_tk_app.app.tools import RESULTS_LAYOUTS, TOOLS, default_results_layout
+from enzyme_tk_app.app.tools import RESULTS_LAYOUTS, TOOL_TITLE_MAP, default_results_layout
 from enzyme_tk_app.app.utils.formatting import compute_duration, expires_in, format_timestamp
 
 dash.register_page(__name__, path_template="/my-tasks/<job_id>")
@@ -34,9 +34,6 @@ _STATUS_MESSAGES: dict[JobStatus, str] = {
 }
 
 # --- Helpers ---------------------------------------------------------------
-
-# Map slug → title for display.
-_TOOL_TITLE_MAP: dict[str, str] = {t["slug"]: t["title"] for t in TOOLS}
 
 # Map status → icon.
 _STATUS_ICONS: dict[JobStatus, str] = {
@@ -75,7 +72,7 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
         An ``html.Div`` with a page header, subtitle, and stat cards.
     """
     # Get the tool title and status icon, with fallbacks for unknown slugs or statuses.
-    tool_title = _TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
+    tool_title = TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
     status_icon = _STATUS_ICONS.get(job.status, ICON_STATUS_PENDING)
 
     # Page header: icon + title + status badge (matches my_tasks page header)
