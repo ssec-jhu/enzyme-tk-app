@@ -449,7 +449,7 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
         dashGridOptions={
             "pagination": True,
             "paginationPageSize": 20,
-            "paginationPageSizeSelector": [10, 20, 50, 100],
+            "paginationPageSizeSelector": True,
             "domLayout": "autoHeight",
             "enableCellTextSelection": True,
             "ensureDomOrder": True,

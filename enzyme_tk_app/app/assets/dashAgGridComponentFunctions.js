@@ -91,3 +91,44 @@ dagcomponentfuncs.SvgRenderer = function (props) {
         })
     );
 };
+
+/* ------------------------------------------------------------------ */
+/*  StatusBadgeRenderer — colored status badge with FontAwesome icon   */
+/* ------------------------------------------------------------------ */
+/**
+ * Renders a job status value as a colored badge with a FontAwesome icon,
+ * matching the badge styling used on the My Tasks HTML table.
+ *
+ * Usage in columnDefs:
+ *   {"field": "status", "cellRenderer": "StatusBadgeRenderer"}
+ *
+ * The cell value should be the status string (e.g. "PENDING", "SUCCESS").
+ * Applies CSS classes: badge-status badge-{STATUS}
+ */
+dagcomponentfuncs.StatusBadgeRenderer = function (props) {
+    if (!props.value) {
+        return null;
+    }
+
+    // Map status values to FontAwesome icon classes (mirrors icons.py).
+    var iconMap = {
+        PENDING: "fa-solid fa-clock",
+        STARTED: "fa-solid fa-gear",
+        SUCCESS: "fa-solid fa-circle-check",
+        FAILURE: "fa-solid fa-circle-xmark",
+        REVOKED: "fa-solid fa-ban",
+        TIMEOUT: "fa-solid fa-hourglass-end",
+    };
+
+    var status = props.value;
+    var iconClass = iconMap[status] || "fa-solid fa-question";
+
+    return React.createElement(
+        "span",
+        { className: "badge-status badge-" + status },
+        React.createElement("i", {
+            className: iconClass + " badge-status-icon",
+        }),
+        " " + status
+    );
+};

@@ -30,3 +30,27 @@ JOB_OUTPUTS_PATH: str = os.environ.get(
 # than this are written to the shared volume and a reference is stored
 # in Redis instead.
 MAX_RESULT_BYTES: int = int(os.environ.get("MAX_RESULT_BYTES", str(512 * 1024)))
+
+
+# Shared secret that unlocks the hidden ``/admin`` dashboard.  Supplied
+# only at deploy time via the environment — it is NEVER committed to the
+# repository.  An empty value (the default) means the admin page is
+# DISABLED entirely: the login can never succeed (fail-closed).  This is
+# the safe default for a public codebase where anyone can read the source
+# but only the deployer knows the token.
+ADMIN_TOKEN: str = os.environ.get("ETK_ADMIN_TOKEN", "")
+
+# Secret key used by Flask to cryptographically sign the session cookie
+# that records a successful admin login.  Must be a long, random,
+# deployer-provided value in production so the ``is_admin`` flag cannot be
+# forged.  When unset, the app falls back to a random per-process key
+# (see ``app.py``) — usable for local dev but logs admins out on restart.
+SECRET_KEY: str = os.environ.get("ETK_SECRET_KEY", "")
+
+# Idle timeout (seconds) for an unlocked admin session.  The admin cookie
+# is a browser-session cookie (cleared on browser close), but browsers
+# that restore sessions can keep it alive indefinitely.  To bound this,
+# the server slides an expiry forward on every authenticated admin request
+# (the dashboard polls every 10 s while open).  Once the tab closes the
+# polling stops and the session expires after this window.  Default: 5 min.
+ADMIN_SESSION_TTL_SECONDS: int = int(os.environ.get("ETK_ADMIN_SESSION_TTL_SECONDS", "300"))

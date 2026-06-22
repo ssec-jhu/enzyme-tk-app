@@ -46,6 +46,20 @@ Pull pre-built images: `docker pull ghcr.io/ssec-jhu/enzyme-tk-app:<tag>`
 
 ## Configuration
 
+### Admin Secrets (`.env`)
+
+The hidden `/admin` dashboard is gated by two secrets that live in a gitignored
+`.env` file at the repository root. Generate it with fresh random values:
+
+```bash
+./scripts/generate-env.sh
+```
+
+This writes `.env` with a random `ETK_ADMIN_TOKEN` (the login token) and
+`ETK_SECRET_KEY` (used to sign the admin session cookie). Re-run the script to
+rotate the secrets — it prompts before overwriting an existing `.env`. **Never
+commit `.env`.** If the secrets are left unset, the admin login fails closed.
+
 ### Environment Variables
 
 All configuration is via environment variables, set in `docker-compose.yml` for both the `web` and `worker` services:
