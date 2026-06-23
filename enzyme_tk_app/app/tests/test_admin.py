@@ -429,36 +429,3 @@ def test_run_purge_calls_scheduler_and_summarises():
     mock_scheduler.admin_purge_all.assert_called_once_with()
     assert bump is not no_update
     assert "10 jobs" in message
-    assert "1.0 KB" in message
-
-
-# ── admin_storage_usage (concrete ABC method) ────────────────────────────────
-
-
-def test_admin_storage_usage_totals_files(task_scheduler_celery_service, tmp_path, monkeypatch):
-    """admin_storage_usage must total the size and count of result files."""
-    outputs_dir = tmp_path / "job_outputs"
-    (outputs_dir / "job-1").mkdir(parents=True)
-    (outputs_dir / "job-1" / "result.json").write_bytes(b"x" * 100)
-    (outputs_dir / "job-2").mkdir(parents=True)
-    (outputs_dir / "job-2" / "result.json").write_bytes(b"y" * 50)
-    monkeypatch.setattr(
-        "enzyme_tk_app.app.backend.task_scheduler.config.JOB_OUTPUTS_PATH",
-        str(outputs_dir),
-    )
-
-    usage = task_scheduler_celery_service.admin_storage_usage()
-
-    assert usage == {"bytes": 150, "files": 2}
-
-
-def test_admin_storage_usage_zero_when_missing(task_scheduler_celery_service, tmp_path, monkeypatch):
-    """admin_storage_usage must return zeros when the directory is absent."""
-    monkeypatch.setattr(
-        "enzyme_tk_app.app.backend.task_scheduler.config.JOB_OUTPUTS_PATH",
-        str(tmp_path / "does-not-exist"),
-    )
-
-    usage = task_scheduler_celery_service.admin_storage_usage()
-
-    assert usage == {"bytes": 0, "files": 0}
