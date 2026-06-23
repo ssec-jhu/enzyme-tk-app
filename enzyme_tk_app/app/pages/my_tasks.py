@@ -27,14 +27,9 @@ from enzyme_tk_app.app.components.icons import (
     ICON_JOB_CLEAR,
     ICON_JOB_VIEW,
     ICON_JOBS_PAGE,
-    ICON_STATUS_FAILURE,
     ICON_STATUS_PENDING,
-    ICON_STATUS_REVOKED,
-    ICON_STATUS_STARTED,
-    ICON_STATUS_SUCCESS,
-    ICON_STATUS_TIMEOUT,
 )
-from enzyme_tk_app.app.components.results_helpers import build_stat_card
+from enzyme_tk_app.app.components.results_helpers import STATUS_ICONS, build_stat_card
 from enzyme_tk_app.app.tools import TOOL_TITLE_MAP, TOOLS
 from enzyme_tk_app.app.utils.formatting import (
     compute_duration,
@@ -53,15 +48,6 @@ dash.register_page(__name__, path="/my-tasks")
 # Map tool slug → max_duration for "expected runtime" display.
 _TOOL_MAX_DURATION: dict[str, int] = {t["slug"]: t.get("max_duration", 3600) for t in TOOLS}
 
-# Map JobStatus → (icon class, CSS badge class suffix).
-_STATUS_ICONS: dict[JobStatus, str] = {
-    JobStatus.PENDING: ICON_STATUS_PENDING,
-    JobStatus.STARTED: ICON_STATUS_STARTED,
-    JobStatus.SUCCESS: ICON_STATUS_SUCCESS,
-    JobStatus.FAILURE: ICON_STATUS_FAILURE,
-    JobStatus.REVOKED: ICON_STATUS_REVOKED,
-    JobStatus.TIMEOUT: ICON_STATUS_TIMEOUT,
-}
 
 # Terminal statuses — jobs in these states can be cleared.
 _TERMINAL = {JobStatus.SUCCESS, JobStatus.FAILURE, JobStatus.REVOKED, JobStatus.TIMEOUT}
@@ -84,7 +70,7 @@ def _build_status_badge(status: JobStatus) -> html.Span:
     Returns:
         An ``html.Span`` with the appropriate CSS class and icon.
     """
-    icon_class = _STATUS_ICONS.get(status, ICON_STATUS_PENDING)
+    icon_class = STATUS_ICONS.get(status, ICON_STATUS_PENDING)
     return html.Span(
         className=f"badge-status badge-{status.value}",
         children=[

@@ -50,8 +50,29 @@ from __future__ import annotations
 import dash_ag_grid as dag
 from dash import html
 
-from enzyme_tk_app.app.backend.models import JobInfo
+from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.components.icons import (
+    ICON_STATUS_FAILURE,
+    ICON_STATUS_PENDING,
+    ICON_STATUS_REVOKED,
+    ICON_STATUS_STARTED,
+    ICON_STATUS_SUCCESS,
+    ICON_STATUS_TIMEOUT,
+)
 from enzyme_tk_app.app.utils import columns as col
+
+# ---------------------------------------------------------------------------
+# Shared status → icon mapping
+# ---------------------------------------------------------------------------
+
+STATUS_ICONS: dict[JobStatus, str] = {
+    JobStatus.PENDING: ICON_STATUS_PENDING,
+    JobStatus.STARTED: ICON_STATUS_STARTED,
+    JobStatus.SUCCESS: ICON_STATUS_SUCCESS,
+    JobStatus.FAILURE: ICON_STATUS_FAILURE,
+    JobStatus.REVOKED: ICON_STATUS_REVOKED,
+    JobStatus.TIMEOUT: ICON_STATUS_TIMEOUT,
+}
 
 # ---------------------------------------------------------------------------
 # Shared DataTable style constants
