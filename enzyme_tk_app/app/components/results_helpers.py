@@ -51,7 +51,6 @@ import dash_ag_grid as dag
 from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
-from enzyme_tk_app.app.tools.substrate_product_similarity import SimilarityAlgorithm
 from enzyme_tk_app.app.utils import columns as col
 
 # ---------------------------------------------------------------------------
@@ -326,9 +325,9 @@ def shared_col_defs() -> list[dict]:
     """
     return [
         # ── Similarity scores ────────────────────────────────────────
-        {"field": SimilarityAlgorithm.TANIMOTO.column, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": SimilarityAlgorithm.COSINE.column, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": SimilarityAlgorithm.RUSSELL.column, "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_TANIMOTO, "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_COSINE, "width": 100, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_RUSSELL, "width": 100, "filter": "agNumberColumnFilter"},
         # ── Reaction metadata ────────────────────────────────────────
         {"field": col.COL_DATABASE, "wrapText": True, "width": 120},
         {"field": col.COL_ID, "width": 120},
