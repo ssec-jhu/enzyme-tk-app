@@ -722,7 +722,7 @@ def run_admin_purge(submit_n_clicks: int) -> tuple:
         f"Purged everything — {summary.get('jobs_deleted', 0)} jobs, "
         f"{summary.get('sessions_cleared', 0)} sessions, "
         f"{summary.get('tasks_revoked', 0)} tasks revoked, "
-        #f"{format_bytes(summary.get('volume_bytes_freed', 0))} freed "
+        # f"{format_bytes(summary.get('volume_bytes_freed', 0))} freed "
         f"({summary.get('volume_files_deleted', 0)} files)."
     )
     return time.time(), message
