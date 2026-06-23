@@ -44,8 +44,8 @@ if config.SECRET_KEY:
     server.secret_key = config.SECRET_KEY
 else:
     server.secret_key = secrets.token_hex(32)
-    print(
-        "WARNING: ETK_SECRET_KEY is not set — using an ephemeral per-process key. "
+    server.logger.warning(
+        "ETK_SECRET_KEY is not set — using an ephemeral per-process key. "
         "Admin sessions will not survive a restart. Set ETK_SECRET_KEY in production."
     )
 
