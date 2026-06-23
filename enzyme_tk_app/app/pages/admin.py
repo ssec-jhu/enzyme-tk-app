@@ -8,7 +8,7 @@ be unlocked.
 
 Once unlocked, the dashboard shows — across **all** anonymous sessions:
 
-- Summary stat cards (sessions, jobs, running, succeeded, failed, storage).
+- Summary stat cards (sessions, jobs, running, succeeded, failed).
 - A table of active sessions derived from job data.
 - An AG Grid of every job with multi-row selection + bulk cancel.
 - Two destructive maintenance actions, each behind a confirm dialog:

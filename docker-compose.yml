@@ -28,7 +28,7 @@ services:
       - ETK_DATA_DIR=/app-data
       # Admin dashboard secrets — supplied at deploy time via a local
       # .env file (gitignored), NEVER hardcoded here. Leaving them unset
-      # disables the /admin login (fail-closed). See .env.example.
+      # disables the /admin login (fail-closed). See scripts/template.env.
       - ETK_ADMIN_TOKEN=${ETK_ADMIN_TOKEN:-}
       - ETK_SECRET_KEY=${ETK_SECRET_KEY:-}
       # SESSION_COOKIE_SECURE — the session cookie's Secure flag is
