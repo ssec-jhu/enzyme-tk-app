@@ -3,7 +3,8 @@
 #
 # Writes a `.env` file to the repository root (one directory up from this
 # script) using scripts/template.env, filling in freshly generated random
-# values for ETK_ADMIN_TOKEN and ETK_SECRET_KEY. NEVER commit the resulting
+# values for ETK_ADMIN_TOKEN and ETK_SECRET_KEY. 
+# NEVER commit the resulting `.env` file.
 #
 # Usage:
 #   ./scripts/generate-env.sh
