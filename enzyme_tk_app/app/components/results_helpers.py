@@ -319,14 +319,6 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
 # Shared AG Grid column definitions & grid builder
 # ---------------------------------------------------------------------------
 
-STYLE_LONG_TEXT: dict = {
-    "fontSize": "0.8rem",
-    "whiteSpace": "nowrap",
-    "overflow": "hidden",
-    "textOverflow": "ellipsis",
-}
-"""Cell style for long text columns — single-line with ellipsis overflow."""
-
 
 def shared_col_defs() -> list[dict]:
     """Return column definitions shared across AG Grid result tables.
