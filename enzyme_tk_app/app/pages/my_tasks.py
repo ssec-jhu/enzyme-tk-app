@@ -20,7 +20,7 @@ from dash.html import Div, Table
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.backend.models import ACTIVE_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
     ICON_JOB_CANCEL,
     ICON_JOB_CANCEL_ALL,
@@ -47,13 +47,6 @@ dash.register_page(__name__, path="/my-tasks")
 
 # Map tool slug → max_duration for "expected runtime" display.
 _TOOL_MAX_DURATION: dict[str, int] = {t["slug"]: t.get("max_duration", 3600) for t in TOOLS}
-
-
-# Terminal statuses — jobs in these states can be cleared.
-_TERMINAL = {JobStatus.SUCCESS, JobStatus.FAILURE, JobStatus.REVOKED, JobStatus.TIMEOUT}
-
-# Active statuses — jobs in these states can be cancelled.
-_ACTIVE = {JobStatus.PENDING, JobStatus.STARTED}
 
 
 # ----------------
@@ -90,7 +83,7 @@ def _build_stats(jobs: list[JobInfo]) -> list:
         List of stat card components.
     """
     total = len(jobs)
-    running = sum(1 for j in jobs if j.status in _ACTIVE)
+    running = sum(1 for j in jobs if j.status in ACTIVE_STATUSES)
     completed = sum(1 for j in jobs if j.status == JobStatus.SUCCESS)
     failed = sum(1 for j in jobs if j.status in {JobStatus.FAILURE, JobStatus.TIMEOUT, JobStatus.REVOKED})
     return [
@@ -143,7 +136,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
                 ],
             ),
         )
-    if job.status in _ACTIVE:
+    if job.status in ACTIVE_STATUSES:
         actions.append(
             html.A(
                 className="btn-job-action view-results",
@@ -175,7 +168,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
             html.Td(tool_title),
             html.Td(_build_status_badge(job.status)),
             html.Td(format_timestamp(job.submitted_at)),
-            html.Td("TBD" if job.status in _ACTIVE else compute_duration(job.started_at, job.completed_at)),
+            html.Td("TBD" if job.status in ACTIVE_STATUSES else compute_duration(job.started_at, job.completed_at)),
             html.Td(format_duration(max_dur)),
             html.Td(expires_in(job.submitted_at)),
             html.Td(
@@ -212,12 +205,12 @@ def _build_jobs_table(jobs: list[JobInfo]) -> Div | Table:
     # Sort jobs: active first, then by submitted_at descending.
     sorted_jobs = sorted(
         jobs,
-        key=lambda j: (j.status not in _ACTIVE, j.submitted_at or ""),
+        key=lambda j: (j.status not in ACTIVE_STATUSES, j.submitted_at or ""),
         reverse=False,
     )
     # Within the active group we want newest first, terminal group also newest first
-    active = [j for j in sorted_jobs if j.status in _ACTIVE]
-    terminal = [j for j in sorted_jobs if j.status not in _ACTIVE]
+    active = [j for j in sorted_jobs if j.status in ACTIVE_STATUSES]
+    terminal = [j for j in sorted_jobs if j.status not in ACTIVE_STATUSES]
     active.sort(key=lambda j: j.submitted_at or "", reverse=True)
     terminal.sort(key=lambda j: j.submitted_at or "", reverse=True)
     ordered = active + terminal
@@ -387,7 +380,7 @@ def cancel_all_running_jobs(n_clicks: int) -> str:
     scheduler = get_task_scheduler()
     jobs = scheduler.list_jobs(g.session_id)
     for job in jobs:
-        if job.status in _ACTIVE:
+        if job.status in ACTIVE_STATUSES:
             scheduler.cancel_job(job.job_id, g.session_id)
     return ""
 

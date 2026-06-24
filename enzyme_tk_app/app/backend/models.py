@@ -76,3 +76,12 @@ TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
         JobStatus.TIMEOUT,
     }
 )
+
+# Active statuses — jobs still in progress that can be cancelled.
+# Defined once here to avoid duplication across pages.
+ACTIVE_STATUSES: frozenset[JobStatus] = frozenset(
+    {
+        JobStatus.PENDING,
+        JobStatus.STARTED,
+    }
+)

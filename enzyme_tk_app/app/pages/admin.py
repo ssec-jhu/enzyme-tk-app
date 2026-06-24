@@ -34,7 +34,7 @@ from flask import session
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.backend.config import ADMIN_SESSION_TTL_SECONDS, ADMIN_TOKEN
-from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.backend.models import ACTIVE_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
     ICON_ADMIN_CANCEL_SELECTED,
     ICON_ADMIN_CLEAR,
@@ -53,9 +53,6 @@ dash.register_page(__name__, path="/admin")
 # ----------------
 # Constants
 # ----------------
-
-# Active statuses — jobs in these states are still running and can be cancelled.
-_ACTIVE = {JobStatus.PENDING, JobStatus.STARTED}
 
 # Auto-refresh cadence (ms).  Lighter than My Tasks (5 s) since admin polls
 # scan every job across all sessions.
@@ -131,7 +128,7 @@ def _compute_stats(jobs: list[JobInfo]) -> list:
         List of stat card components.
     """
     total = len(jobs)
-    running = sum(1 for j in jobs if j.status in _ACTIVE)
+    running = sum(1 for j in jobs if j.status in ACTIVE_STATUSES)
     succeeded = sum(1 for j in jobs if j.status == JobStatus.SUCCESS)
     failed = sum(1 for j in jobs if j.status in {JobStatus.FAILURE, JobStatus.TIMEOUT})
     sessions = len({j.session_id for j in jobs})
@@ -154,8 +151,10 @@ def _jobs_to_rows(jobs: list[JobInfo]) -> list[dict]:
         List of row dicts.  Each carries the full ``job_id`` (for cancel
         actions) plus display-friendly fields.
     """
-    active = sorted((j for j in jobs if j.status in _ACTIVE), key=lambda j: j.submitted_at or "", reverse=True)
-    terminal = sorted((j for j in jobs if j.status not in _ACTIVE), key=lambda j: j.submitted_at or "", reverse=True)
+    active = sorted((j for j in jobs if j.status in ACTIVE_STATUSES), key=lambda j: j.submitted_at or "", reverse=True)
+    terminal = sorted(
+        (j for j in jobs if j.status not in ACTIVE_STATUSES), key=lambda j: j.submitted_at or "", reverse=True
+    )
     rows: list[dict] = []
     for job in [*active, *terminal]:
         rows.append(
@@ -167,7 +166,9 @@ def _jobs_to_rows(jobs: list[JobInfo]) -> list[dict]:
                 "short_session": truncate_id(job.session_id),
                 "status": job.status.value,
                 "submitted": format_timestamp(job.submitted_at),
-                "duration": "TBD" if job.status in _ACTIVE else compute_duration(job.started_at, job.completed_at),
+                "duration": "TBD"
+                if job.status in ACTIVE_STATUSES
+                else compute_duration(job.started_at, job.completed_at),
                 "expires_in": expires_in(job.submitted_at),
             }
         )
@@ -190,7 +191,7 @@ def _sessions_to_rows(jobs: list[JobInfo]) -> list[dict]:
     for job in jobs:
         info = by_session.setdefault(job.session_id, {"total": 0, "running": 0, "last": ""})
         info["total"] += 1
-        if job.status in _ACTIVE:
+        if job.status in ACTIVE_STATUSES:
             info["running"] += 1
         ts = job.submitted_at or ""
         if ts > info["last"]:

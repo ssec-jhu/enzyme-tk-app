@@ -7,7 +7,7 @@ from dash import Input, Output, dcc, html
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
+from enzyme_tk_app.app.backend.models import ACTIVE_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
     ICON_JOB_BACK,
     ICON_JOBS_PAGE,
@@ -18,9 +18,6 @@ from enzyme_tk_app.app.tools import RESULTS_LAYOUTS, TOOL_TITLE_MAP, default_res
 from enzyme_tk_app.app.utils.formatting import compute_duration, expires_in, format_timestamp
 
 dash.register_page(__name__, path_template="/my-tasks/<job_id>")
-
-# Active statuses — tasks still in progress.
-_ACTIVE = {JobStatus.PENDING, JobStatus.STARTED}
 
 # Status messages for the in-progress banner.
 _STATUS_MESSAGES: dict[JobStatus, str] = {
@@ -90,7 +87,7 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
     )
 
     # Core job stats — show "TBD" for duration when the job is still active.
-    is_active = job.status in _ACTIVE
+    is_active = job.status in ACTIVE_STATUSES
     duration_value = "TBD" if is_active else compute_duration(job.started_at, job.completed_at)
     stats: list[tuple[str, str]] = [
         ("Duration", duration_value),
@@ -189,7 +186,7 @@ def layout(job_id: str | None = None) -> html.Div:
     # ------------------------------
     tool_result_content = []
 
-    if job.status in _ACTIVE:
+    if job.status in ACTIVE_STATUSES:
         # Status banner with contextual message and cancel button.
         tool_result_content.append(
             html.Div(
