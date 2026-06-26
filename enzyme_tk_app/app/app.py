@@ -49,6 +49,18 @@ else:
         "Admin sessions will not survive a restart. Set ETK_SECRET_KEY in production."
     )
 
+# Harden the Flask session cookie that carries the admin ``is_admin`` flag.
+# HttpOnly: prevent JavaScript from reading the cookie (blocks XSS theft).
+server.config["SESSION_COOKIE_HTTPONLY"] = True
+# SameSite=Lax: browser won't attach the cookie on cross-site POST requests,
+# blocking CSRF attacks against Dash callback endpoints.
+server.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Secure: cookie is only sent over HTTPS.  Safe to force on because the app
+# is always deployed behind a TLS-terminating reverse proxy.  In local dev
+# (no proxy) Flask's built-in server uses HTTP, but the admin token is unset
+# anyway so the cookie is never created.
+server.config["SESSION_COOKIE_SECURE"] = True
+
 # Register anonymous session-cookie management so every request gets a
 # ``flask.g.session_id`` that Dash callbacks can read.
 from enzyme_tk_app.app.backend.session import init_session  # noqa: E402
