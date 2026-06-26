@@ -21,6 +21,11 @@
     text-align: center;
 }
 
+.admin-login-card h2::after {
+    margin-left: auto;
+    margin-right: auto;
+}
+
 .admin-login-icon {
     font-size: 1.75rem;
     color: var(--primary-color);
@@ -48,6 +53,11 @@
     color: var(--status-failure);
     font-size: 0.85rem;
     font-weight: 600;
+}
+
+.admin-login-disabled {
+    opacity: 0.5;
+    pointer-events: none;
 }
 
 /* --- Action feedback ----------------------------------------------------- */

@@ -36,18 +36,22 @@ app.layout = layout
 server = app.server
 
 # Secret key used to sign the Flask session cookie that records a
-# successful admin login.  In production this MUST be supplied via
-# ``ETK_SECRET_KEY`` so the signed cookie cannot be forged.  When unset we
-# generate a random per-process key: convenient for local dev (no config
-# needed) but it rotates on every restart, logging admins out.
+# successful admin login.  When admin is enabled (ETK_ADMIN_TOKEN set),
+# the secret key MUST also be provided — otherwise the app refuses to start.
+# When admin is disabled (no token), a random ephemeral key is used so the
+# app starts without any env vars for local development.  This branch only
+# runs in single-process local dev (admin disabled); in production both env
+# vars are always set, so all gunicorn workers share the same stable key.
 if config.SECRET_KEY:
-    server.secret_key = config.SECRET_KEY
-else:
-    server.secret_key = secrets.token_hex(32)
-    server.logger.warning(
-        "ETK_SECRET_KEY is not set — using an ephemeral per-process key. "
-        "Admin sessions will not survive a restart. Set ETK_SECRET_KEY in production."
+    server.config["SECRET_KEY"] = config.SECRET_KEY
+elif config.ADMIN_TOKEN:
+    raise RuntimeError(
+        "ETK_ADMIN_TOKEN is set but ETK_SECRET_KEY is not. "
+        "A stable secret key is required to sign admin session cookies. "
+        "Run scripts/generate-env.sh to generate both."
     )
+else:
+    server.config["SECRET_KEY"] = secrets.token_hex(32)
 
 # This tells the browser that the cookie should only be sent in HTTP requests
 # and should not be accessible via client-side scripts (like JavaScript's document.cookie).

@@ -54,3 +54,8 @@ SECRET_KEY: str = os.environ.get("ETK_SECRET_KEY", "")
 # (the dashboard polls every 10 s while open).  Once the tab closes the
 # polling stops and the session expires after this window.  Default: 5 min.
 ADMIN_SESSION_TTL_SECONDS: int = int(os.environ.get("ETK_ADMIN_SESSION_TTL_SECONDS", "300"))
+
+
+def admin_enabled() -> bool:
+    """Return True only when both ADMIN_TOKEN and SECRET_KEY are configured."""
+    return bool(ADMIN_TOKEN and SECRET_KEY)

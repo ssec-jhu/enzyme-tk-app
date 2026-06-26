@@ -33,7 +33,7 @@ from dash.exceptions import PreventUpdate
 from flask import session
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.backend.config import ADMIN_SESSION_TTL_SECONDS, ADMIN_TOKEN
+from enzyme_tk_app.app.backend.config import ADMIN_SESSION_TTL_SECONDS, ADMIN_TOKEN, admin_enabled
 from enzyme_tk_app.app.backend.models import ACTIVE_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
     ICON_ADMIN_CANCEL_SELECTED,
@@ -326,14 +326,22 @@ def _login_layout(error: str | None = None) -> html.Div:
     Returns:
         An ``html.Div`` containing the login form.
     """
+    disabled = not admin_enabled()
+    # if admin is disabled the login layout will look disabled and show a message, 
+    # but the input and button are still rendered so the layout doesn't jump around when the admin token is later set.
+    card_class = "admin-login-card admin-login-disabled" if disabled else "admin-login-card"
     children = [
         # icon for the admin login card
         html.Div(html.I(className=ICON_ADMIN_LOCK), className="admin-login-icon"),
         html.H2("Admin Access", style={"margin": "0 0 0.5rem 0"}),
+    ]
+    if disabled:
+        children.append(html.Div("Admin not configured.", className="admin-login-error"))
+    children += [
         html.P(
             "Enter the admin token to manage sessions and jobs.",
             className="jobs-page-subtitle",
-            style={"marginBottom": "1rem"},
+            style={"marginBottom": "1rem", "textAlign": "center"},
         ),
         # user input for the admin token
         dcc.Input(
@@ -343,6 +351,7 @@ def _login_layout(error: str | None = None) -> html.Div:
             className="admin-login-input",
             n_submit=0,
             debounce=False,
+            disabled=disabled,
         ),
         # submit button for the admin token
         html.Button(
@@ -350,6 +359,7 @@ def _login_layout(error: str | None = None) -> html.Div:
             id="id-btn-admin-login",
             className="btn-toolbar danger",
             n_clicks=0,
+            disabled=disabled,
         ),
     ]
     # append error message if present
@@ -358,7 +368,7 @@ def _login_layout(error: str | None = None) -> html.Div:
 
     # return the login card container layout,
     # no action here just creating the layout
-    return html.Div(html.Div(children, className="admin-login-card"), className="admin-login-wrap")
+    return html.Div(html.Div(children, className=card_class), className="admin-login-wrap")
 
 
 def _dashboard_layout() -> html.Div:
