@@ -189,19 +189,33 @@ def _sessions_to_rows(jobs: list[JobInfo]) -> list[dict]:
     """
     by_session: dict[str, dict] = {}
     for job in jobs:
-        info = by_session.setdefault(job.session_id, {"total": 0, "running": 0, "last": ""})
+        info = by_session.setdefault(
+            job.session_id,
+            {
+                "total": 0,
+                "running": 0,
+                "last": "",
+                "ip_address": "",
+            },
+        )
         info["total"] += 1
         if job.status in ACTIVE_STATUSES:
             info["running"] += 1
         ts = job.submitted_at or ""
         if ts > info["last"]:
             info["last"] = ts
+            # Inherit metadata from the most recently submitted job
+            if job.ip_address:
+                info["ip_address"] = job.ip_address
+
+    # make a list of row dicts from the session info
     rows = [
         {
             "session_id": session_id,
             "total": info["total"],
             "running": info["running"],
             "last_activity": format_timestamp(info["last"]),
+            "ip_address": info["ip_address"],
         }
         for session_id, info in by_session.items()
     ]
@@ -220,9 +234,10 @@ def _build_sessions_grid() -> dag.AgGrid:
         id="id-grid-admin-sessions",
         columnDefs=[
             {"headerName": "Session ID", "field": "session_id", "width": 240},
+            {"headerName": "IP Address", "field": "ip_address", "width": 140},
             {"headerName": "Total Jobs", "field": "total", "width": 130, "filter": "agNumberColumnFilter"},
             {"headerName": "Running", "field": "running", "width": 120, "filter": "agNumberColumnFilter"},
-            {"headerName": "Last Activity (UTC)", "field": "last_activity", "width": 200},
+            {"headerName": "Last Activity (UTC)", "field": "last_activity", "width": 180},
         ],
         rowData=[],
         defaultColDef={
@@ -327,7 +342,7 @@ def _login_layout(error: str | None = None) -> html.Div:
         An ``html.Div`` containing the login form.
     """
     disabled = not admin_enabled()
-    # if admin is disabled the login layout will look disabled and show a message, 
+    # if admin is disabled the login layout will look disabled and show a message,
     # but the input and button are still rendered so the layout doesn't jump around when the admin token is later set.
     card_class = "admin-login-card admin-login-disabled" if disabled else "admin-login-card"
     children = [

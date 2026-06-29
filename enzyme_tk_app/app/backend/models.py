@@ -61,6 +61,7 @@ class JobInfo:
     result: dict[str, Any] | None = None
     error: str | None = None
     output_log: str = ""
+    ip_address: str = ""
 
 
 # Terminal statuses — once a job reaches one of these states it is
