@@ -17,6 +17,7 @@ from enzyme_tk_app.app.pages.admin import (
     _grant_admin,
     _is_admin,
     _jobs_to_rows,
+    _login_layout,
     _sessions_to_rows,
     _verify_token,
     cancel_selected_admin_jobs,
@@ -33,46 +34,76 @@ from .conftest import find_components, get_text, make_job
 
 ADMIN_TOKEN_PATH = "enzyme_tk_app.app.pages.admin.ADMIN_TOKEN"
 SCHEDULER_PATH = "enzyme_tk_app.app.pages.admin.get_task_scheduler"
+ADMIN_ENABLED_PATH = "enzyme_tk_app.app.pages.admin.admin_enabled"
 
 
 # ── _verify_token ────────────────────────────────────────────────────────────
 
 
-def test_verify_token_rejects_when_token_unset():
-    """An empty configured token must reject every candidate (fail-closed)."""
-    with patch(ADMIN_TOKEN_PATH, ""):
-        assert _verify_token("anything") is False
-        assert _verify_token("") is False
-        assert _verify_token(None) is False
-
-
-def test_verify_token_accepts_exact_match():
-    """A non-empty configured token must accept only an exact match."""
-    with patch(ADMIN_TOKEN_PATH, "s3cret-token"):
-        assert _verify_token("s3cret-token") is True
-
-
-def test_verify_token_rejects_wrong_value():
-    """A non-empty configured token must reject a mismatched candidate."""
-    with patch(ADMIN_TOKEN_PATH, "s3cret-token"):
-        assert _verify_token("wrong") is False
-        assert _verify_token(None) is False
+@pytest.mark.parametrize(
+    ("configured", "candidate", "expected"),
+    [
+        ("", "anything", False),
+        ("", "", False),
+        ("", None, False),
+        ("s3cret-token", "s3cret-token", True),
+        ("s3cret-token", "wrong", False),
+        ("s3cret-token", None, False),
+    ],
+    ids=[
+        "unset-rejects-string",
+        "unset-rejects-empty",
+        "unset-rejects-none",
+        "match-accepted",
+        "mismatch-rejected",
+        "none-rejected",
+    ],
+)
+def test_verify_token(configured, candidate, expected):
+    """_verify_token must fail closed when unconfigured and only accept an exact match."""
+    with patch(ADMIN_TOKEN_PATH, configured):
+        assert _verify_token(candidate) is expected
 
 
 # ── _is_admin ────────────────────────────────────────────────────────────────
 
 
-def test_is_admin_false_by_default():
-    """A fresh session must not be considered admin."""
-    with server.test_request_context():
-        assert _is_admin() is False
+def _setup_fresh():
+    """No session state — fresh request."""
 
 
-def test_is_admin_true_when_flag_set():
-    """A freshly granted admin session must be considered admin."""
+def _setup_granted():
+    """Freshly granted admin session."""
+    _grant_admin()
+
+
+def _setup_expired():
+    from flask import session  # noqa: PLC0415
+
+    session["is_admin"] = True
+    session["admin_expires_at"] = time.time() - 1
+
+
+def _setup_flag_no_expiry():
+    from flask import session  # noqa: PLC0415
+
+    session["is_admin"] = True
+
+
+@pytest.mark.parametrize(
+    ("setup_fn", "expected"),
+    [
+        (_setup_fresh, False),
+        (_setup_granted, True),
+        (_setup_expired, False),
+        (_setup_flag_no_expiry, False),
+    ],
+)
+def test_is_admin_return_value(setup_fn, expected):
+    """_is_admin must return the correct boolean based on session state."""
     with server.test_request_context():
-        _grant_admin()
-        assert _is_admin() is True
+        setup_fn()
+        assert _is_admin() is expected
 
 
 def test_grant_admin_sets_future_expiry():
@@ -85,16 +116,6 @@ def test_grant_admin_sets_future_expiry():
         assert session["admin_expires_at"] > time.time()
 
 
-def test_is_admin_false_when_expired():
-    """An admin session whose idle window has elapsed must not be admin."""
-    with server.test_request_context():
-        from flask import session  # noqa: PLC0415
-
-        session["is_admin"] = True
-        session["admin_expires_at"] = time.time() - 1
-        assert _is_admin() is False
-
-
 def test_is_admin_clears_stale_keys_when_expired():
     """An expired session must have its admin keys purged."""
     with server.test_request_context():
@@ -105,15 +126,6 @@ def test_is_admin_clears_stale_keys_when_expired():
         _is_admin()
         assert "is_admin" not in session
         assert "admin_expires_at" not in session
-
-
-def test_is_admin_false_when_expiry_missing():
-    """A flag without an expiry timestamp must be treated as expired."""
-    with server.test_request_context():
-        from flask import session  # noqa: PLC0415
-
-        session["is_admin"] = True
-        assert _is_admin() is False
 
 
 def test_is_admin_slides_expiry_forward():
@@ -209,6 +221,34 @@ def test_sessions_to_rows_aggregates_by_session():
     assert by_id["s2"]["running"] == 0
 
 
+def test_sessions_to_rows_inherits_ip_from_most_recent_job():
+    """A session row must carry the IP address of its most recently submitted job."""
+    jobs = [
+        make_job(
+            job_id="older",
+            session_id="s1",
+            submitted_at="2025-01-01T00:00:00+00:00",
+            ip_address="10.0.0.1",
+        ),
+        make_job(
+            job_id="newer",
+            session_id="s1",
+            submitted_at="2025-01-01T00:05:00+00:00",
+            ip_address="10.0.0.2",
+        ),
+    ]
+    rows = _sessions_to_rows(jobs)
+
+    assert rows[0]["ip_address"] == "10.0.0.2"
+
+
+def test_sessions_to_rows_ip_defaults_to_empty_when_absent():
+    """A session whose jobs carry no IP address must report an empty string."""
+    rows = _sessions_to_rows([make_job(job_id="a", session_id="s1")])
+
+    assert rows[0]["ip_address"] == ""
+
+
 # ── Grid factories ───────────────────────────────────────────────────────────
 
 
@@ -218,6 +258,14 @@ def test_build_sessions_grid_has_expected_id():
 
     assert isinstance(grid, dag.AgGrid)
     assert grid.id == "id-grid-admin-sessions"
+
+
+def test_build_sessions_grid_has_ip_address_column():
+    """The sessions grid must expose a column bound to the ip_address field."""
+    grid = _build_sessions_grid()
+
+    fields = {col["field"] for col in grid.columnDefs}
+    assert "ip_address" in fields
 
 
 def test_build_jobs_grid_enables_multi_selection():
@@ -242,6 +290,39 @@ def test_layout_shows_login_when_not_admin():
     assert isinstance(result, html.Div)
     inputs = find_components(result, dcc.Input)
     assert any(getattr(i, "id", None) == "id-input-admin-token" for i in inputs)
+
+
+# ── _login_layout (admin enabled vs disabled) ────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("enabled", "expect_disabled", "expect_message"),
+    [
+        (True, False, False),  # configured → input active, no notice
+        (False, True, True),  # not configured → input disabled, notice shown
+    ],
+    ids=["enabled", "disabled"],
+)
+def test_login_layout_reflects_admin_enabled(enabled, expect_disabled, expect_message):
+    """_login_layout must mirror admin_enabled() on the token input and notice.
+
+    The input is always rendered (so the layout doesn't jump when the token is
+    later set) but it is disabled and shows a notice when admin is not configured.
+    """
+    with patch(ADMIN_ENABLED_PATH, return_value=enabled):
+        card = _login_layout()
+
+    token_input = next(i for i in find_components(card, dcc.Input) if i.id == "id-input-admin-token")
+    assert token_input.disabled is expect_disabled
+    assert ("Admin not configured" in get_text(card)) is expect_message
+
+
+def test_login_layout_renders_error_message():
+    """An error string passed to _login_layout must appear in the card."""
+    with patch(ADMIN_ENABLED_PATH, return_value=True):
+        card = _login_layout(error="Invalid token. Access denied.")
+
+    assert "Invalid token. Access denied." in get_text(card)
 
 
 def test_layout_shows_dashboard_when_admin():
