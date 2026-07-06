@@ -185,6 +185,7 @@ class CeleryTaskScheduler(TaskScheduler):
             result=json.loads(data["result"]) if data.get("result") else None,
             error=data.get("error"),
             output_log=data.get("output_log", ""),
+            ip_address=data.get("ip_address", ""),
         )
 
     def _owns_job(self, job_id: str, session_id: str) -> bool:
@@ -253,6 +254,19 @@ class CeleryTaskScheduler(TaskScheduler):
         job_key = self._job_key(job_id)
         session_key = self._session_key(session_id)
 
+        # Extract IP and Browser from Flask request context if available
+        ip_address = ""
+        try:
+            from flask import has_request_context, request
+
+            # attempt to extract the IP address from the Flask request context
+            if has_request_context():
+                ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+                if ip_address:
+                    ip_address = ip_address.split(",")[0].strip()
+        except Exception as e:
+            logger.debug("Could not extract request metadata: %s", e)
+
         # 2. Look up per-tool timeout.
         #    Each tool can declare ``max_duration`` — the number of seconds
         #    the computation is allowed to run.  Celery's *soft* time limit
@@ -288,6 +302,7 @@ class CeleryTaskScheduler(TaskScheduler):
                 "submitted_at": submitted_at,
                 "params": json.dumps(params),
                 "output_log": "",
+                "ip_address": ip_address,
                 # Persist timeout thresholds so read-time stale-job
                 # detection can compute the deadline without consulting
                 # the TOOLS registry or application lifecycle.

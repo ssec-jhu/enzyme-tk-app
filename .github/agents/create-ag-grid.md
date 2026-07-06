@@ -172,7 +172,7 @@ Set by `build_ag_grid()`:
 dashGridOptions={
     "pagination": True,
     "paginationPageSize": 20,
-    "paginationPageSizeSelector": [10, 20, 50, 100],
+    "paginationPageSizeSelector": True,
     "domLayout": "autoHeight",
     "enableCellTextSelection": True,
     "ensureDomOrder": True,

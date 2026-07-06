@@ -61,6 +61,7 @@ class JobInfo:
     result: dict[str, Any] | None = None
     error: str | None = None
     output_log: str = ""
+    ip_address: str = ""
 
 
 # Terminal statuses — once a job reaches one of these states it is
@@ -74,5 +75,14 @@ TERMINAL_STATUSES: frozenset[JobStatus] = frozenset(
         JobStatus.FAILURE,
         JobStatus.REVOKED,
         JobStatus.TIMEOUT,
+    }
+)
+
+# Active statuses — jobs still in progress that can be cancelled.
+# Defined once here to avoid duplication across pages.
+ACTIVE_STATUSES: frozenset[JobStatus] = frozenset(
+    {
+        JobStatus.PENDING,
+        JobStatus.STARTED,
     }
 )

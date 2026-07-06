@@ -56,3 +56,7 @@ These sub-agents do **not** run automatically unless their trigger condition is 
 ## Check Updates Agent
 **Trigger:** Ask the agent to "check updates", "check for package updates", "audit dependencies", "update requirements", or "audit requirements".
 **Action:** The agent must discover available updates for every pinned package in `requirements/`, create a `requirements_v2/` directory with updated versions, run the test suite against the new pins, and produce a detailed compatibility report following the workflow in [`.github/agents/check-updates.md`](.github/agents/check-updates.md).
+
+## Admin Page Agent
+**Trigger:** When modifying admin page code, admin security, keys, or session token methods.
+**Action:** The agent MUST ensure security invariants are maintained and keep the documentation synced by following the rules defined in [`.github/agents/admin-page.md`](.github/agents/admin-page.md).

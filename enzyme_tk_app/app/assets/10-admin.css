@@ -1,0 +1,111 @@
+/* ==========================================================================
+   Admin Dashboard — login gate, danger zone, action feedback
+   CSS is used here for the centered login card and shared hover styling.
+   ========================================================================== */
+
+/* --- Login gate ---------------------------------------------------------- */
+.admin-login-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 4rem 1rem;
+}
+
+.admin-login-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lg);
+    padding: 2rem;
+    text-align: center;
+}
+
+.admin-login-card h2::after {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.admin-login-icon {
+    font-size: 1.75rem;
+    color: var(--primary-color);
+    margin-bottom: 0.75rem;
+}
+
+.admin-login-input {
+    width: 100%;
+    padding: 0.55rem 0.75rem;
+    margin-bottom: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    color: var(--text-primary);
+    background: var(--bg-body);
+}
+
+.admin-login-input:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+
+.admin-login-error {
+    margin-top: 1rem;
+    color: var(--status-failure);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.admin-login-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+/* --- Action feedback ----------------------------------------------------- */
+.admin-action-result {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+/* --- Danger zone --------------------------------------------------------- */
+.admin-danger-zone {
+    margin-top: 2rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, var(--border-color));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--status-failure) 4%, var(--bg-surface));
+}
+
+.admin-danger-title {
+    margin: 0 0 0.25rem 0;
+    color: var(--status-failure);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.admin-danger-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 1rem;
+}
+
+.admin-danger-desc p {
+    margin: 0.35rem 0;
+}
+
+/* --- Info banner --------------------------------------------------------- */
+.admin-info-banner {
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1.25rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background: color-mix(in srgb, var(--primary-color) 6%, var(--bg-surface));
+    border-left: 3px solid var(--primary-color);
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+}
