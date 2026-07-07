@@ -52,7 +52,10 @@ def get_task_scheduler() -> TaskScheduler:
     global _scheduler  # noqa: PLW0603
     if _scheduler is None:
         with _scheduler_lock:
-            from enzyme_tk_app.app.backend.task_scheduler_celery import CeleryTaskScheduler  # noqa: PLC0415
+            # Re-check inside the lock: another thread may have constructed
+            # the scheduler while we waited to acquire it.
+            if _scheduler is None:
+                from enzyme_tk_app.app.backend.task_scheduler_celery import CeleryTaskScheduler  # noqa: PLC0415
 
-            _scheduler = CeleryTaskScheduler()
+                _scheduler = CeleryTaskScheduler()
     return _scheduler
