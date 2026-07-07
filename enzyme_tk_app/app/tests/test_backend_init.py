@@ -82,12 +82,12 @@ def test_get_task_scheduler_constructs_once_under_concurrency(monkeypatch):
     # concurrently. This simulates multiple threads racing to construct
     # the singleton at the same time.
     threads = [threading.Thread(target=call) for _ in range(20)]
-    
+
     # Start all threads so they hit the barrier and attempt to construct
     # the scheduler concurrently. Then join them to wait for completion.
     for t in threads:
-        # spawns the OS thread and begins running its target (call) concurrently. 
-        #  The thread will block at the barrier until all threads are ready, 
+        # spawns the OS thread and begins running its target (call) concurrently.
+        #  The thread will block at the barrier until all threads are ready,
         #  then proceed to call get_task_scheduler, simulating concurrent access.
         t.start()
     for t in threads:
