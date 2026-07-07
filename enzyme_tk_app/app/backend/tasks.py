@@ -8,8 +8,8 @@ The single ``run_tool_task`` task:
 4. Calls ``compute.run(params)`` and stores the result.
 5. On failure, stores the traceback and any partial captured output.
 
-Large results (> ``MAX_RESULT_BYTES``) are automatically offloaded to the
-shared volume and replaced with a reference dict in Redis.
+Every result is written to the shared volume as JSON; Redis keeps only a
+pointer (``_result_ref``) plus a lightweight preview of the result.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import traceback
 from datetime import datetime, timezone
 
@@ -50,28 +51,25 @@ def _get_redis() -> redis.Redis:
 
 
 def _store_result(job_id: str, result: dict) -> dict:
-    """Decide whether to store *result* inline or offload to volume.
+    """Always offload *result* to the shared volume, returning a pointer dict.
+
+    Every result is written to ``JOB_OUTPUTS_PATH/<job_id>/result.json`` on
+    the shared volume.  Redis keeps only the returned pointer dict
+    (``_result_ref`` + size + preview), never the full result inline.
 
     Args:
         job_id: Used to build the output directory path.
         result: The dict returned by ``compute.run()``.
 
     Returns:
-        The dict to persist in Redis — either the original *result*
-        (if small enough) or a reference dict pointing to the volume file.
+        A reference dict pointing to the volume file, plus a preview.
     """
     serialized = json.dumps(result, ensure_ascii=False)
-
-    if len(serialized.encode("utf-8")) <= config.MAX_RESULT_BYTES:
-        return result
-
-    # Too large — write to shared volume.
     output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "result.json")
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False)
-
     return {
         "_result_ref": output_path,
         "_result_size_bytes": len(serialized.encode("utf-8")),
@@ -121,7 +119,7 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         2. Convert the tool slug to a Python module path and import it.
         3. Run the tool's ``compute.run(params)`` while capturing any
            ``print()`` output the algorithm produces.
-        4. Store the result back in Redis (or offload to disk if too big).
+        4. Offload the result to the shared volume and store a pointer in Redis.
         5. If anything crashes, store the full traceback so the user can
            see what went wrong.
 
@@ -179,10 +177,9 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
             result = compute_module.run(params)
 
         # Step 4: Persist the result.
-        # _store_result checks the size — if the result dict serialises to
-        # more than 512 KB of JSON, it writes the full data to a file on
-        # the shared Docker volume and returns a small pointer dict instead.
-        # This prevents Redis from running out of memory on large outputs.
+        # _store_result always writes the full result to a file on the shared
+        # Docker volume and returns a small pointer dict (ref + preview).
+        # This keeps Redis lean regardless of result size.
         stored = _store_result(job_id, result)
 
         # Write the final SUCCESS state + result + captured output to Redis.
@@ -234,3 +231,32 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         # ownership checks and job listing even though the job still exists.
         session_key = f"session:{session_id}:jobs"
         r.expire(session_key, job_ttl)
+
+
+@celery_app.task(name="celery_beat_sweep_orphaned_outputs")
+def celery_beat_sweep_orphaned_outputs() -> int:
+    """Delete job_outputs dirs whose Redis ``job:<id>`` key has expired.
+
+    Runs periodically via Celery beat.  Reclaims disk for results whose
+    Redis metadata has aged out (TTL reached) but whose ``result.json``
+    file still lingers on the shared volume.
+
+    Returns:
+        The number of orphaned directories removed.
+    """
+    outputs_dir = config.JOB_OUTPUTS_PATH
+    if not os.path.isdir(outputs_dir):
+        return 0
+
+    r = _get_redis()
+    removed = 0
+    # ponytail: one EXISTS per dir, fine for a once-a-day background sweep.
+    # If dir counts get huge and sweep latency matters, pipeline the EXISTS.
+    with os.scandir(outputs_dir) as entries:
+        for entry in entries:
+            if entry.is_dir() and not r.exists(f"job:{entry.name}"):
+                shutil.rmtree(entry.path, ignore_errors=True)
+                removed += 1
+
+    logger.info("Orphan sweep: removed %d orphaned outputs", removed)
+    return removed

@@ -402,11 +402,10 @@ class CeleryTaskScheduler(TaskScheduler):
     def get_job(self, job_id: str, session_id: str) -> JobInfo | None:
         """Retrieve full job details, including the computation result.
 
-        When a tool produces a very large result (> 512 KB), the worker
-        saves the full JSON to a file on the shared volume and stores a
-        small ``{"_result_ref": "/data/job_outputs/..."}`` pointer in
-        Redis instead.  This method detects that pointer and loads the
-        full result from disk transparently, so callers always get the
+        Every tool result is saved as JSON on the shared volume; Redis
+        stores only a small ``{"_result_ref": "/data/job_outputs/..."}``
+        pointer.  This method detects that pointer and loads the full
+        result from disk transparently, so callers always get the
         complete data.
 
         Returns:

@@ -16,20 +16,19 @@ REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 # Default: 24 hours.
 JOB_TTL_SECONDS: int = int(os.environ.get("JOB_TTL_SECONDS", "86400"))
 
+# How often the Celery beat orphan-sweep runs (seconds).  The sweep removes
+# job_outputs dirs whose Redis job:<id> key has expired.  Default: 24 hours.
+CELERY_SWEEP_INTERVAL_SECONDS: int = int(os.environ.get("CELERY_SWEEP_INTERVAL_SECONDS", "86400"))
 
-# Directory for temporary job result files.  When a tool result exceeds
-# ``MAX_RESULT_BYTES`` the worker writes it here as JSON.  The web
-# container reads from the same path to serve results.  Cleaned up
-# when a job is deleted or ``admin_purge_all()`` is called.
+
+# Directory for temporary job result files.  Every tool result is written
+# here as JSON; Redis keeps only a pointer + preview.  The web container
+# reads from the same path to serve results.  Cleaned up when a job is
+# deleted, by the orphan sweep, or when ``admin_purge_all()`` is called.
 JOB_OUTPUTS_PATH: str = os.environ.get(
     "JOB_OUTPUTS_PATH",
     os.path.join(os.environ.get("SHARED_VOLUME_PATH", "/data"), "job_outputs"),
 )
-
-# Maximum result size (bytes) stored inline in Redis.  Results larger
-# than this are written to the shared volume and a reference is stored
-# in Redis instead.
-MAX_RESULT_BYTES: int = int(os.environ.get("MAX_RESULT_BYTES", str(512 * 1024)))
 
 
 # Shared secret that unlocks the hidden ``/admin`` dashboard.  Supplied
