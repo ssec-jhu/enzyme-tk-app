@@ -2,7 +2,7 @@ celery[redis]==5.6.3
 dash==4.2.0
 dash-ag-grid==35.2.0
 dash-bootstrap-components==2.0.4
-enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@main
+enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@b45509fcf5cd138370eb7cb90b5d5e326232178a
 gunicorn==26.0.0
 pandas==3.0.3
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
