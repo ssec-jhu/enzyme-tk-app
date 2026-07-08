@@ -18,7 +18,9 @@ JOB_TTL_SECONDS: int = int(os.environ.get("JOB_TTL_SECONDS", "86400"))
 
 # How often the Celery beat orphan-sweep runs (seconds).  The sweep removes
 # job_outputs dirs whose Redis job:<id> key has expired.  Default: 24 hours.
-CELERY_SWEEP_INTERVAL_SECONDS: int = int(os.environ.get("CELERY_SWEEP_INTERVAL_SECONDS", "86400"))
+# Clamped to >= 1s: a 0/negative value fed to Celery beat makes it fire
+# continuously (or crash at startup), so we floor it to a sane minimum.
+CELERY_SWEEP_INTERVAL_SECONDS: int = max(1, int(os.environ.get("CELERY_SWEEP_INTERVAL_SECONDS", "86400")))
 
 
 # Directory for temporary job result files.  Every tool result is written
