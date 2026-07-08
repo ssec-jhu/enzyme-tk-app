@@ -23,14 +23,29 @@ JOB_TTL_SECONDS: int = int(os.environ.get("JOB_TTL_SECONDS", "86400"))
 CELERY_SWEEP_INTERVAL_SECONDS: int = max(1, int(os.environ.get("CELERY_SWEEP_INTERVAL_SECONDS", "86400")))
 
 
-# Directory for temporary job result files.  Every tool result is written
-# here as JSON; Redis keeps only a pointer + preview.  The web container
-# reads from the same path to serve results.  Cleaned up when a job is
-# deleted, by the orphan sweep, or when ``admin_purge_all()`` is called.
+# Directory for offloaded job files.  Every tool result and its captured log
+# are written here; Redis keeps only a pointer to the result.  The web
+# container reads from the same path to serve results.  Cleaned up when a job
+# is deleted, by the orphan sweep, or when ``admin_purge_all()`` is called.
 JOB_OUTPUTS_PATH: str = os.environ.get(
     "JOB_OUTPUTS_PATH",
     os.path.join(os.environ.get("SHARED_VOLUME_PATH", "/data"), "job_outputs"),
 )
+
+# Filenames written under ``JOB_OUTPUTS_PATH/<job_id>/`` by the worker and read
+# back by the web container.  Defined here so the writer (``tasks.py``) and the
+# reader (``task_scheduler_celery.py``) can never drift out of sync.
+JOB_RESULT_FILENAME: str = "result.json"
+JOB_LOG_FILENAME: str = "output_log.txt"
+
+
+def job_output_dir(job_id: str) -> str:
+    """Return the shared-volume output directory ``JOB_OUTPUTS_PATH/<job_id>``.
+
+    Both the result (``JOB_RESULT_FILENAME``) and log (``JOB_LOG_FILENAME``)
+    files for a job live inside this directory.
+    """
+    return os.path.join(JOB_OUTPUTS_PATH, job_id)
 
 
 # Shared secret that unlocks the hidden ``/admin`` dashboard.  Supplied

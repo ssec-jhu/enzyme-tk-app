@@ -8,8 +8,8 @@ The single ``run_tool_task`` task:
 4. Calls ``compute.run(params)`` and stores the result.
 5. On failure, stores the traceback and any partial captured output.
 
-Every result is written to the shared volume as JSON; Redis keeps only a
-pointer (``_result_ref``) plus a lightweight preview of the result.
+Every result is written to the shared volume as JSON and the captured log to
+a sibling text file; Redis keeps only a pointer (``_result_ref``) to the result.
 """
 
 from __future__ import annotations
@@ -51,54 +51,49 @@ def _get_redis() -> redis.Redis:
 
 
 def _store_result(job_id: str, result: dict) -> dict:
-    """Always offload *result* to the shared volume, returning a pointer dict.
+    """Offload *result* to the shared volume, returning a pointer dict.
 
     Every result is written to ``JOB_OUTPUTS_PATH/<job_id>/result.json`` on
     the shared volume.  Redis keeps only the returned pointer dict
-    (``_result_ref`` + size + preview), never the full result inline.
+    (``_result_ref`` + size), never the full result inline.
+
+    A filesystem error here (e.g. disk full / volume unmounted) raises
+    ``OSError``, which the ``run_tool_task`` handler catches and records as
+    a FAILURE — the write failed, so the job failed.
 
     Args:
         job_id: Used to build the output directory path.
         result: The dict returned by ``compute.run()``.
 
     Returns:
-        A reference dict pointing to the volume file, plus a preview.
+        A reference dict pointing to the volume file.
     """
     serialized = json.dumps(result, ensure_ascii=False)
-    output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
+    output_dir = config.job_output_dir(job_id)
     os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "result.json")
+    output_path = os.path.join(output_dir, config.JOB_RESULT_FILENAME)
     with open(output_path, "w", encoding="utf-8") as fh:
         json.dump(result, fh, ensure_ascii=False)
     return {
         "_result_ref": output_path,
         "_result_size_bytes": len(serialized.encode("utf-8")),
-        "preview": _make_preview(result),
     }
 
 
-def _make_preview(result: dict, max_items: int = 5) -> dict:
-    """Create a lightweight preview of *result* for the jobs list page.
+def _store_log(job_id: str, log_text: str) -> None:
+    """Write the captured job log to ``JOB_OUTPUTS_PATH/<job_id>/output_log.txt``.
 
-    Args:
-        result: Full result dict.
-        max_items: Maximum number of top-level keys to include.
-
-    Returns:
-        A trimmed copy containing at most *max_items* keys.
+    Best-effort: logs are non-critical, so a filesystem error is logged and
+    swallowed rather than failing an otherwise-finished job.  ``get_job`` reads
+    this file back so the Redis hash keeps no log body.
     """
-    preview: dict = {}
-    for i, (key, value) in enumerate(result.items()):
-        if i >= max_items:
-            break
-        # Truncate large nested values to a summary string.
-        if isinstance(value, list) and len(value) > 3:
-            preview[key] = f"[{len(value)} items]"
-        elif isinstance(value, dict) and len(value) > 3:
-            preview[key] = f"{{{len(value)} keys}}"
-        else:
-            preview[key] = value
-    return preview
+    try:
+        output_dir = config.job_output_dir(job_id)
+        os.makedirs(output_dir, exist_ok=True)
+        with open(os.path.join(output_dir, config.JOB_LOG_FILENAME), "w", encoding="utf-8") as fh:
+            fh.write(log_text)
+    except OSError:
+        logger.warning("Failed to write output log for job %s", job_id, exc_info=True)
 
 
 def _now_iso() -> str:
@@ -178,18 +173,17 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
 
         # Step 4: Persist the result.
         # _store_result always writes the full result to a file on the shared
-        # Docker volume and returns a small pointer dict (ref + preview).
+        # Docker volume and returns a small pointer dict (ref + size).
         # This keeps Redis lean regardless of result size.
         stored = _store_result(job_id, result)
 
-        # Write the final SUCCESS state + result + captured output to Redis.
+        # Write the final SUCCESS state + result pointer to Redis.
         r.hset(
             job_key,
             mapping={
                 "status": JobStatus.SUCCESS.value,
                 "completed_at": _now_iso(),
                 "result": json.dumps(stored),
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
@@ -204,25 +198,27 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
                 "status": JobStatus.TIMEOUT.value,
                 "completed_at": _now_iso(),
                 "error": "Job exceeded the maximum allowed duration and was stopped.",
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
     except Exception:
         # Step 5b: If the algorithm (or import) raised an exception, store
         # the full Python traceback so the user can diagnose the failure.
-        # Any partial stdout/stderr captured before the crash is also saved.
         r.hset(
             job_key,
             mapping={
                 "status": JobStatus.FAILURE.value,
                 "completed_at": _now_iso(),
                 "error": traceback.format_exc(),
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
     finally:
+        # Offload the captured log to the volume on every outcome (success,
+        # timeout, or crash) — the args are identical in all branches, so a
+        # single write here covers them and keeps no log body in Redis. Any
+        # partial stdout/stderr captured before a crash is preserved.
+        _store_log(job_id, stdout_buf.getvalue() + stderr_buf.getvalue())
         # Always refresh the TTL so the job metadata stays available for
         # the full lifecycle window regardless of outcome.
         r.expire(job_key, job_ttl)
