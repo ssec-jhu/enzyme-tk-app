@@ -10,8 +10,9 @@ from unittest import mock
 
 import pytest
 
+from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.backend.models import JobStatus
-from enzyme_tk_app.app.backend.tasks import _make_preview, _store_result, celery_beat_sweep_orphaned_outputs
+from enzyme_tk_app.app.backend.tasks import _store_result, celery_beat_sweep_orphaned_outputs
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -33,7 +34,9 @@ def mock_compute(fake_redis, tmp_path):
     with (
         mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
         mock.patch("enzyme_tk_app.app.backend.tasks.importlib") as mock_importlib,
-        mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg,
+        # Patch only JOB_OUTPUTS_PATH on the real config so the real
+        # ``job_output_dir`` helper and filename constants stay in play.
+        mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")),
         mock.patch(
             "enzyme_tk_app.app.backend.tasks.DEFAULT_MAX_DURATION",
             3600,
@@ -47,71 +50,15 @@ def mock_compute(fake_redis, tmp_path):
             side_effect=lambda max_duration=3600, grace=60: max_duration + grace + 86400,
         ),
     ):
-        cfg.JOB_TTL_SECONDS = 86400
-        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
         mock_importlib.import_module.return_value = compute
         yield compute
 
 
-# ── _make_preview ─────────────────────────────────────────────────────────
-# _make_preview builds a lightweight summary of a result dict so the
-# jobs-list page can show a useful snippet without loading megabytes of
-# data from Redis.  Each test below exercises one distinct summarisation
-# rule to verify they work in isolation.
-
-
-def test_make_preview_small_dict():
-    """Preview of a small dict returns it unchanged.
-
-    Why this matters: when all values are small scalars and there are few
-    keys, the preview should be an exact copy — no information loss.
-    """
-    result = {"a": 1, "b": 2}
-    preview = _make_preview(result)
-    assert preview == {"a": 1, "b": 2}
-
-
-def test_make_preview_truncates_large_list():
-    """Preview summarises list values with more than 3 items.
-
-    Why this matters: tool results often contain large arrays (e.g. 10 000
-    similarity scores).  The preview replaces them with a count string so
-    the JSON stored in Redis stays small.
-    """
-    result = {"rows": list(range(100))}
-    preview = _make_preview(result)
-    assert preview["rows"] == "[100 items]"
-
-
-def test_make_preview_truncates_large_nested_dict():
-    """Preview summarises dict values with more than 3 keys.
-
-    Why this matters: deeply nested dicts can be arbitrarily large.
-    Replacing them with "{N keys}" keeps the preview bounded regardless
-    of depth.
-    """
-    result = {"meta": {"a": 1, "b": 2, "c": 3, "d": 4}}
-    preview = _make_preview(result)
-    assert preview["meta"] == "{4 keys}"
-
-
-def test_make_preview_limits_top_level_keys():
-    """Preview includes at most max_items (default 5) top-level keys.
-
-    Why this matters: even if every individual value is tiny, a result
-    with hundreds of keys would produce an unwieldy preview.  Capping at
-    max_items keeps the preview small regardless of the result shape.
-    """
-    result = {f"key{i}": i for i in range(20)}
-    preview = _make_preview(result, max_items=5)
-    assert len(preview) == 5
-
-
 # ── _store_result ─────────────────────────────────────────────────────────
-# _store_result now ALWAYS offloads the full result to the shared Docker
-# volume and returns only a pointer dict (ref + size + preview).  There is
-# no longer a size threshold or an inline path — small and large results
-# behave identically, so one parametrized test covers both.
+# _store_result ALWAYS offloads the full result to the shared Docker volume
+# and returns only a pointer dict (ref + size).  There is no size threshold
+# and no inline path — small and large results behave identically, so one
+# parametrized test covers both.
 
 
 @pytest.mark.parametrize(
@@ -130,12 +77,11 @@ def test_store_result_always_offloads(tmp_path, job_id, result):
     pointer dict, while the complete result must round-trip losslessly
     from ``<JOB_OUTPUTS_PATH>/<job_id>/result.json`` on the shared volume.
     """
-    with mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg:
-        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
+    with mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")):
         stored = _store_result(job_id, result)
 
     # Redis only ever gets the pointer dict — never the full result inline.
-    assert set(stored) == {"_result_ref", "_result_size_bytes", "preview"}
+    assert set(stored) == {"_result_ref", "_result_size_bytes"}
 
     # The full result must round-trip from the file on the shared volume,
     # proving no data was lost during offloading.
@@ -162,8 +108,8 @@ def test_run_tool_task_success(fake_redis, mock_compute):
 
     Why this matters: the happy path must write both "status" and "result"
     fields so the UI can show the outcome.  Since results are always
-    offloaded, Redis stores the pointer dict (ref + preview), and the full
-    result must round-trip from the file on the shared volume.
+    offloaded, Redis stores only the pointer dict and the full result must
+    round-trip from the file on the shared volume.
     """
     mock_compute.run.return_value = {"similarity": 0.95}
 
@@ -174,24 +120,31 @@ def test_run_tool_task_success(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-123")
     assert job_data["status"] == JobStatus.SUCCESS.value
 
-    # Redis holds only the pointer dict, whose preview mirrors the result.
+    # Redis holds only the pointer dict — no full result, no log body.
     stored = json.loads(job_data["result"])
-    assert stored["preview"] == {"similarity": 0.95}
+    assert set(stored) == {"_result_ref", "_result_size_bytes"}
+    assert "output_log" not in job_data
 
     # The full result must round-trip from the offloaded file.
     with open(stored["_result_ref"]) as fh:
         assert json.load(fh) == {"similarity": 0.95}
 
 
-def test_run_tool_task_failure(fake_redis, mock_compute):
-    """A failing compute.run() stores FAILURE status and traceback.
+def test_run_tool_task_failure(fake_redis, mock_compute, tmp_path):
+    """A failing compute.run() stores FAILURE status and offloads its log.
 
     Why this matters: when a tool crashes (e.g. invalid user input), the
     task must NOT propagate the exception to Celery.  Instead it records
-    the traceback in Redis so the UI can display a user-friendly error.
-    If this behaviour breaks, user-facing errors would be silent.
+    the traceback in Redis so the UI can display a user-friendly error, and
+    it still offloads any captured partial log so the user can diagnose the
+    crash.  If this behaviour breaks, user-facing errors would be silent.
     """
-    mock_compute.run.side_effect = ValueError("Invalid SMILES")
+
+    def run_then_fail(params):
+        print("halfway through")  # noqa: T201
+        raise ValueError("Invalid SMILES")
+
+    mock_compute.run.side_effect = run_then_fail
 
     from enzyme_tk_app.app.backend.tasks import run_tool_task
 
@@ -200,15 +153,43 @@ def test_run_tool_task_failure(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-fail")
     assert job_data["status"] == JobStatus.FAILURE.value
     assert "Invalid SMILES" in job_data["error"]
+    # The partial log is offloaded to the volume, not stored inline in Redis.
+    assert "output_log" not in job_data
+    log_text = (tmp_path / "job_outputs" / "job-fail" / "output_log.txt").read_text()
+    assert "halfway through" in log_text
 
 
-def test_run_tool_task_captures_stdout(fake_redis, mock_compute):
-    """stdout from compute.run() is captured in the output_log.
+def test_run_tool_task_result_write_failure_marks_failure(fake_redis, mock_compute):
+    """If the result write fails (OSError), the job is recorded as FAILURE.
+
+    Why this matters: the storage volume can be full or unmounted.  When the
+    offload write raises, the job must fail loudly with the error surfaced to
+    the front end — never be mislabeled SUCCESS and never fall back to
+    stuffing the full result into Redis (the exact bloat we offload to avoid).
+    """
+    mock_compute.run.return_value = {"similarity": 0.95}
+
+    from enzyme_tk_app.app.backend import tasks
+    from enzyme_tk_app.app.backend.tasks import run_tool_task
+
+    with mock.patch.object(tasks, "_store_result", side_effect=OSError("No space left on device")):
+        run_tool_task("test-tool", {}, "sess-1", "job-diskfull")
+
+    job_data = fake_redis.hgetall("job:job-diskfull")
+    assert job_data["status"] == JobStatus.FAILURE.value
+    assert "No space left on device" in job_data["error"]
+    # Redis must not hold the result — the write failed, so nothing is stored.
+    assert not job_data.get("result")
+
+
+def test_run_tool_task_captures_stdout(fake_redis, mock_compute, tmp_path):
+    """stdout from compute.run() is captured and offloaded to the log file.
 
     Why this matters: scientific tools commonly use print() for progress
     logging.  The task wraps execution with redirect_stdout so users can
-    review algorithm output after the job completes.  Without this,
-    print() output would be lost inside the Celery worker.
+    review algorithm output after the job completes.  The log is written to
+    ``output_log.txt`` on the volume (not inline in Redis), so we assert the
+    file holds the output and the Redis field stays empty.
     """
 
     def run_with_output(params):
@@ -222,9 +203,10 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute):
 
     run_tool_task("test-tool", {}, "sess-1", "job-stdout")
 
-    job_data = fake_redis.hgetall("job:job-stdout")
-    assert "Processing query..." in job_data["output_log"]
-    assert "Done!" in job_data["output_log"]
+    assert fake_redis.hget("job:job-stdout", "output_log") is None
+    log_text = (tmp_path / "job_outputs" / "job-stdout" / "output_log.txt").read_text()
+    assert "Processing query..." in log_text
+    assert "Done!" in log_text
 
 
 def test_run_tool_task_timeout(fake_redis, mock_compute):
@@ -247,6 +229,8 @@ def test_run_tool_task_timeout(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-timeout")
     assert job_data["status"] == JobStatus.TIMEOUT.value
     assert "exceeded" in job_data["error"].lower()
+    # The log is offloaded even on timeout — Redis keeps no log body.
+    assert "output_log" not in job_data
 
 
 # ── Session set TTL refresh ───────────────────────────────────────────────────
