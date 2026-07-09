@@ -73,7 +73,7 @@ def _store_result(job_id: str, result: dict) -> dict:
     serialized = json.dumps(result, ensure_ascii=False)
     output_dir = config.job_output_dir(job_id)
     os.makedirs(output_dir, exist_ok=True)
-    # get the job-specific output directory and ensure 
+    # get the job-specific output directory and ensure
     # it exists before writing the result file.
     output_path = os.path.join(output_dir, config.JOB_RESULT_FILENAME)
     with open(output_path, "w", encoding="utf-8") as fh:
@@ -251,7 +251,7 @@ def celery_beat_sweep_orphaned_outputs() -> int:
 
     r = _get_redis()
     removed = 0
-    # ponytail: one EXISTS per dir, fine for a once-a-day background sweep.
+    # one EXISTS per dir, fine for a once-a-day background sweep.
     # If dir counts get huge and sweep latency matters, pipeline the EXISTS.
     with os.scandir(outputs_dir) as entries:
         for entry in entries:
