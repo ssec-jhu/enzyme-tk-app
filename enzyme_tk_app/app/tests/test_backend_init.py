@@ -18,13 +18,16 @@ from enzyme_tk_app.app.backend import get_task_scheduler
 
 
 @pytest.fixture(autouse=True)
-def _reset_singleton(monkeypatch):
-    """Reset the module-level ``_scheduler`` global before each test.
+def _reset_singleton():
+    """Force the module-level ``_scheduler`` global to ``None`` around every test.
 
-    Without this, whichever test runs first would permanently populate
-    the singleton for the rest of the test session.
+    Reset both before and after so neither a prior test nor this module can leak a
+    constructed singleton into the next test or the next test module (which would
+    make later tests pass or fail depending on collection order).
     """
-    monkeypatch.setattr(backend_pkg, "_scheduler", None)
+    backend_pkg._scheduler = None
+    yield
+    backend_pkg._scheduler = None
 
 
 def test_get_task_scheduler_returns_singleton(monkeypatch):
@@ -50,7 +53,7 @@ def test_get_task_scheduler_returns_singleton(monkeypatch):
 
 
 @pytest.mark.skipif(
-    bool(os.environ.get("CI")),  # bool: skipif evals a bare string as a Python expression
+    os.environ.get("CI", "").lower() in ("1", "true", "yes"),
     reason="Timing-dependent thread race is flaky on shared CI runners; run locally via tox.",
 )
 def test_get_task_scheduler_constructs_once_under_concurrency(monkeypatch):
@@ -63,6 +66,7 @@ def test_get_task_scheduler_constructs_once_under_concurrency(monkeypatch):
     long enough for the others to pile up — so the bug reliably shows up.
     """
     instances = []
+    errors = []  # thread exceptions land here so they can fail the test body
 
     class FakeScheduler:
         def __init__(self):
@@ -74,31 +78,32 @@ def test_get_task_scheduler_constructs_once_under_concurrency(monkeypatch):
         FakeScheduler,
     )
 
-    # Create a barrier so all threads start the call to get_task_scheduler
-    # at the same time, forcing the race condition to test the singleton
-    # construction under concurrency.
-    barrier = threading.Barrier(20)
+    # Barrier with a timeout so all threads start the call to get_task_scheduler
+    # at the same instant, forcing the race — and so a thread that never
+    # rendezvous raises BrokenBarrierError instead of wedging the suite forever.
+    barrier = threading.Barrier(20, timeout=5)
 
     def call():
-        barrier.wait()  # release all threads at once to force the race
-        get_task_scheduler()
+        try:
+            barrier.wait()  # release all threads at once to force the race
+            get_task_scheduler()
+        except Exception as exc:  # surface thread failures to the test body
+            errors.append(exc)
 
     # Launch all threads to hit the barrier and call get_task_scheduler
     # concurrently. This simulates multiple threads racing to construct
     # the singleton at the same time.
     threads = [threading.Thread(target=call) for _ in range(20)]
 
-    # Start all threads so they hit the barrier and attempt to construct
-    # the scheduler concurrently. Then join them to wait for completion.
     for t in threads:
-        # spawns the OS thread and begins running its target (call) concurrently.
-        #  The thread will block at the barrier until all threads are ready,
-        #  then proceed to call get_task_scheduler, simulating concurrent access.
         t.start()
+    # join with a timeout so a stuck thread can't hang the run; assert liveness
+    # so a deadlock fails the test loudly instead of passing on partial results.
     for t in threads:
-        t.join()
+        t.join(timeout=5)
+        assert not t.is_alive(), "thread did not finish — possible deadlock"
 
-    # Only one instance should have been constructed despite the
-    # concurrent calls, verifying the singleton behavior under
-    # multithreaded access.
+    # No thread raised, and only one instance was constructed despite the
+    # concurrent calls, verifying the singleton behavior under multithreaded access.
+    assert not errors, f"threads raised: {errors}"
     assert len(instances) == 1
