@@ -6,7 +6,7 @@
 #   worker — Celery worker that executes tool compute tasks
 #   beat   — single Celery beat process; fires the periodic orphan sweep
 #
-# A named volume ("job-data") is shared between web and worker so large
+# A named volume ("job-outputs") is shared between web and worker so large
 # job results written by the worker can be read by the web container.
 # Tool data (sequences, reactions, structures, foldseek DBs, etc.) is
 # bind-mounted read-only from the host at /app-data.
@@ -24,8 +24,7 @@ services:
       - "8050:8050"
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/job-data
-      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - JOB_OUTPUTS_PATH=${JOB_OUTPUTS_PATH:-/job-outputs}
       - ETK_DATA_DIR=/app-data
       # Admin dashboard secrets — supplied at deploy time via a local
       # .env file (gitignored), NEVER hardcoded here. Leaving them unset
@@ -37,7 +36,7 @@ services:
       # Set Flask's SESSION_COOKIE_SECURE=true in production behind a
       # TLS-terminating reverse proxy to force the flag on.
     volumes:
-      - job-data:/job-data
+      - job-outputs:/job-outputs
       # TODO: change this path to where data is for deployment
       - ./enzyme_tk_app/app/data:/app-data:ro
     depends_on:
@@ -63,12 +62,11 @@ services:
       replicas: 3
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - SHARED_VOLUME_PATH=/job-data
       # Must match the web service so both containers resolve the same path.
-      - JOB_OUTPUTS_PATH=/job-data/job_outputs
+      - JOB_OUTPUTS_PATH=${JOB_OUTPUTS_PATH:-/job-outputs}
       - ETK_DATA_DIR=/app-data
     volumes:
-      - job-data:/job-data
+      - job-outputs:/job-outputs
       - ./enzyme_tk_app/app/data:/app-data:ro
     depends_on:
       - redis
@@ -77,13 +75,11 @@ services:
   # Single scheduler process that fires the periodic orphan-output sweep.
   # MUST stay at one replica — a replicated beat fires duplicate ticks.
   # Beat only *schedules*: it enqueues the sweep task to Redis and a worker
-  # executes it, so beat needs no job-data volume or path env — just the
+  # executes it, so beat needs no job-outputs volume or path env — just the
   # broker URL and the sweep interval.
   beat:
     build: .
     command: celery -A enzyme_tk_app.app.backend.celery_app beat --loglevel=info
-    deploy:
-      replicas: 1
     environment:
       - REDIS_URL=redis://redis:6379/0
       # How often the orphan-sweep fires (seconds)
@@ -93,4 +89,4 @@ services:
 
 volumes:
   # Shared between web and worker for large job-result JSON files.
-  job-data:
+  job-outputs:

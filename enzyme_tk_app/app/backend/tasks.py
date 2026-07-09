@@ -68,12 +68,17 @@ def _store_result(job_id: str, result: dict) -> dict:
     Returns:
         A reference dict pointing to the volume file.
     """
+    # Serialize once, then write that exact string — so _result_size_bytes
+    # matches the on-disk payload and we don't encode the result twice.
     serialized = json.dumps(result, ensure_ascii=False)
     output_dir = config.job_output_dir(job_id)
     os.makedirs(output_dir, exist_ok=True)
+    # get the job-specific output directory and ensure 
+    # it exists before writing the result file.
     output_path = os.path.join(output_dir, config.JOB_RESULT_FILENAME)
     with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump(result, fh, ensure_ascii=False)
+        # Write the serialized JSON to the file.
+        fh.write(serialized)
     return {
         "_result_ref": output_path,
         "_result_size_bytes": len(serialized.encode("utf-8")),

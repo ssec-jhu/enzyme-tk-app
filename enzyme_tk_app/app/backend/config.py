@@ -27,10 +27,7 @@ CELERY_SWEEP_INTERVAL_SECONDS: int = max(1, int(os.environ.get("CELERY_SWEEP_INT
 # are written here; Redis keeps only a pointer to the result.  The web
 # container reads from the same path to serve results.  Cleaned up when a job
 # is deleted, by the orphan sweep, or when ``admin_purge_all()`` is called.
-JOB_OUTPUTS_PATH: str = os.environ.get(
-    "JOB_OUTPUTS_PATH",
-    os.path.join(os.environ.get("SHARED_VOLUME_PATH", "/data"), "job_outputs"),
-)
+JOB_OUTPUTS_PATH: str = os.environ.get("JOB_OUTPUTS_PATH", "/job-outputs")
 
 # Filenames written under ``JOB_OUTPUTS_PATH/<job_id>/`` by the worker and read
 # back by the web container.  Defined here so the writer (``tasks.py``) and the
