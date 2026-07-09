@@ -35,7 +35,7 @@ cd enzyme-tk-app
 docker compose up --build
 ```
 
-The app is available at **http://localhost:8050**. This starts the web server, Redis, and 3 Celery workers — everything needed to submit and run jobs.
+The app is available at **http://localhost:8050**. This starts four services — the web server, Redis, 3 Celery workers, and a single-replica Celery `beat` scheduler (runs the periodic orphan-sweep) — everything needed to submit and run jobs.
 
 ```bash
 docker compose up --build -d     # detached means it will run in the background and terminal is free
