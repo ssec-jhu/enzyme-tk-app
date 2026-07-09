@@ -411,7 +411,8 @@ class CeleryTaskScheduler(TaskScheduler):
             return None
 
         # Both the result and log files live under this job's directory on the
-        # shared volume (a Docker volume mounted at /data on both web + worker).
+        # shared volume (a Docker volume mounted at `JOB_OUTPUTS_PATH``
+        # on both web + worker).
         job_dir = config.job_output_dir(job_id)
 
         # Load the result from the shared volume if the Redis hash
