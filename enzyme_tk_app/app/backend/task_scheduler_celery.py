@@ -400,11 +400,6 @@ class CeleryTaskScheduler(TaskScheduler):
     def get_job(self, job_id: str, session_id: str) -> JobInfo | None:
         """Retrieve full job details, including the computation result and log.
 
-        Both the result and the captured log are saved on the shared volume;
-        Redis stores only a small ``{"_result_ref": "/data/job_outputs/..."}``
-        pointer for the result and nothing for the log.  This method loads both
-        from disk transparently, so callers always get the complete data.
-
         Returns:
             ``JobInfo`` if found and owned by *session_id*, else ``None``.
         """
