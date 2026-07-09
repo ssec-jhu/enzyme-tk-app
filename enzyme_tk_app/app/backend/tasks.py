@@ -251,8 +251,13 @@ def celery_beat_sweep_orphaned_outputs() -> int:
     with os.scandir(outputs_dir) as entries:
         for entry in entries:
             if entry.is_dir() and not r.exists(f"job:{entry.name}"):
-                shutil.rmtree(entry.path, ignore_errors=True)
-                removed += 1
+                try:
+                    shutil.rmtree(entry.path)
+                    # Count only actual removals so the return value stays a
+                    # trustworthy signal of disk reclaimed.
+                    removed += 1
+                except OSError:
+                    logger.warning("Orphan sweep: failed to remove %s", entry.path, exc_info=True)
 
     logger.info("Orphan sweep: removed %d orphaned outputs", removed)
     return removed

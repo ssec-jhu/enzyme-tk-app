@@ -6,6 +6,7 @@ without a broker, worker, or live Redis instance.
 """
 
 import json
+import logging
 from unittest import mock
 
 import pytest
@@ -338,3 +339,24 @@ def test_sweep_returns_zero_when_outputs_dir_missing(sweep_env):
     assert not sweep_env.exists()
 
     assert celery_beat_sweep_orphaned_outputs() == 0
+
+
+def test_sweep_does_not_count_failed_removal(sweep_env, caplog):
+    """A dir that fails to delete is skipped (not counted) and logged, not raised.
+
+    Why this matters: the return value is an operational signal of disk
+    reclaimed.  If ``rmtree`` fails (e.g. permissions, busy file), the count
+    must exclude that dir, the sweep must keep going, and the failure must
+    surface in the worker log rather than being silently swallowed.
+    """
+    job_dir = _make_output_dir(sweep_env, "stuck-1")
+
+    with (
+        mock.patch("enzyme_tk_app.app.backend.tasks.shutil.rmtree", side_effect=OSError("permission denied")),
+        caplog.at_level(logging.WARNING),
+    ):
+        removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 0
+    assert job_dir.exists()  # deletion failed, so the dir is still there
+    assert "failed to remove" in caplog.text

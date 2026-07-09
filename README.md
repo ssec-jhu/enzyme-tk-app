@@ -68,13 +68,15 @@ All configuration is via environment variables, set in `docker-compose.yml` for 
 |----------|---------|-------------|
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection URL (broker + result backend) |
 | `JOB_TTL_SECONDS` | `86400` (24 h) | How long job metadata is retained in Redis |
-| `JOB_OUTPUTS_PATH` | `/data/job_outputs` | Directory for large result files (> 512 KB) |
+| `JOB_OUTPUTS_PATH` | `/data/job_outputs` | Directory for offloaded result + log files |
 | `SHARED_VOLUME_PATH` | `/data` | Base path for the shared Docker volume |
-| `MAX_RESULT_BYTES` | `524288` (512 KB) | Threshold above which results are offloaded to disk |
+| `CELERY_SWEEP_INTERVAL_SECONDS` | `86400` (24 h) | How often Celery beat sweeps orphaned output dirs (clamped to ≥ 1) |
 
 ### Shared Volume
 
-The `web` and `worker` containers share a named Docker volume (`data:/data`) for large result files. When a job result exceeds `MAX_RESULT_BYTES`, the worker writes the result to `JOB_OUTPUTS_PATH` on the shared volume instead of storing it inline in Redis. The web container reads from the same path when the user views results.
+The `web` and `worker` containers share a named Docker volume (`data:/data`). Redis holds only lightweight job metadata (status, parameters, timestamps); the heavy payloads live on the volume. For every job the worker writes `result.json` and `output_log.txt` under `JOB_OUTPUTS_PATH/<job_id>/`, and Redis keeps only a pointer to the result. The web container reads both files from the same path when the user views results.
+
+Cleanup happens on job delete/clear and, for anything left behind, via a periodic **Celery beat** sweep (`celery_beat_sweep_orphaned_outputs`) that removes output dirs whose Redis `job:<id>` key has expired — see the `beat` service in `docker-compose.yml`.
 
 ```yaml
 # docker-compose.yml (excerpt)
