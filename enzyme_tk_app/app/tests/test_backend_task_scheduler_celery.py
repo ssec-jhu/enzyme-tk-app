@@ -10,6 +10,7 @@ the ``write_job_into_fake_redis`` helper are provided by ``conftest.py``.
 import uuid
 from unittest import mock
 
+from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.tests.conftest import write_job_into_fake_redis
 
@@ -319,7 +320,7 @@ def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_r
     # Create a fake volume directory to verify disk cleanup.
     outputs_dir = tmp_path / "job_outputs" / "j1"
     outputs_dir.mkdir(parents=True)
-    (outputs_dir / "result.json").write_text('{"big": "data"}')
+    (outputs_dir / config.JOB_RESULT_FILENAME).write_text('{"big": "data"}')
 
     with (
         mock.patch("enzyme_tk_app.app.backend.task_scheduler_celery.run_tool_task") as mock_task,

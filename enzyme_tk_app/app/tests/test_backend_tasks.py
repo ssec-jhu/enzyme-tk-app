@@ -86,7 +86,7 @@ def test_store_result_always_offloads(tmp_path, job_id, result):
 
     # The full result must round-trip from the file on the shared volume,
     # proving no data was lost during offloading.
-    result_file = tmp_path / "job_outputs" / job_id / "result.json"
+    result_file = tmp_path / "job_outputs" / job_id / config.JOB_RESULT_FILENAME
     assert result_file.exists()
     with open(result_file) as fh:
         assert json.load(fh) == result
@@ -156,7 +156,7 @@ def test_run_tool_task_failure(fake_redis, mock_compute, tmp_path):
     assert "Invalid SMILES" in job_data["error"]
     # The partial log is offloaded to the volume, not stored inline in Redis.
     assert "output_log" not in job_data
-    log_text = (tmp_path / "job_outputs" / "job-fail" / "output_log.txt").read_text()
+    log_text = (tmp_path / "job_outputs" / "job-fail" / config.JOB_LOG_FILENAME).read_text()
     assert "halfway through" in log_text
 
 
@@ -205,7 +205,7 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute, tmp_path):
     run_tool_task("test-tool", {}, "sess-1", "job-stdout")
 
     assert fake_redis.hget("job:job-stdout", "output_log") is None
-    log_text = (tmp_path / "job_outputs" / "job-stdout" / "output_log.txt").read_text()
+    log_text = (tmp_path / "job_outputs" / "job-stdout" / config.JOB_LOG_FILENAME).read_text()
     assert "Processing query..." in log_text
     assert "Done!" in log_text
 
@@ -292,7 +292,7 @@ def _make_output_dir(outputs_dir, job_id):
     """Create ``<outputs_dir>/<job_id>/result.json`` for the sweep tests."""
     job_dir = outputs_dir / job_id
     job_dir.mkdir(parents=True)
-    (job_dir / "result.json").write_text("{}")
+    (job_dir / config.JOB_RESULT_FILENAME).write_text("{}")
     return job_dir
 
 
