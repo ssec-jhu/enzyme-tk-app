@@ -7,7 +7,6 @@ and an actual concurrency race to catch a regression to the broken
 (missing inner check) version of the pattern.
 """
 
-
 import pytest
 
 import enzyme_tk_app.app.backend as backend_pkg
