@@ -30,8 +30,10 @@ CELERY_SWEEP_INTERVAL_SECONDS: int = max(1, int(os.environ.get("CELERY_SWEEP_INT
 JOB_OUTPUTS_PATH: str = os.environ.get("JOB_OUTPUTS_PATH", "/job-outputs")
 
 # Filenames written under ``JOB_OUTPUTS_PATH/<job_id>/`` by the worker and read
-# back by the web container.  Defined here so the writer (``tasks.py``) and the
-# reader (``task_scheduler_celery.py``) can never drift out of sync.
+# back by the web container.  These literal values live ONLY here — the single
+# source of truth.  All other code (and docstrings) references the constants so
+# the writer (``tasks.py``) and reader (``task_scheduler_celery.py``) can never
+# drift out of sync.
 JOB_RESULT_FILENAME: str = "result.json"
 JOB_LOG_FILENAME: str = "output_log.txt"
 

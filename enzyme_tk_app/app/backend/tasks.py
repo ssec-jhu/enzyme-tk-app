@@ -53,7 +53,7 @@ def _get_redis() -> redis.Redis:
 def _store_result(job_id: str, result: dict) -> dict:
     """Offload *result* to the shared volume, returning a pointer dict.
 
-    Every result is written to ``JOB_OUTPUTS_PATH/<job_id>/result.json`` on
+    Every result is written to ``JOB_OUTPUTS_PATH/<job_id>/JOB_RESULT_FILENAME`` on
     the shared volume.  Redis keeps only the returned pointer dict
     (``_result_ref`` + size), never the full result inline.
 
@@ -86,7 +86,7 @@ def _store_result(job_id: str, result: dict) -> dict:
 
 
 def _store_log(job_id: str, log_text: str) -> None:
-    """Write the captured job log to ``JOB_OUTPUTS_PATH/<job_id>/output_log.txt``.
+    """Write the captured job log to ``JOB_OUTPUTS_PATH/<job_id>/JOB_LOG_FILENAME``.
 
     Best-effort: logs are non-critical, so a filesystem error is logged and
     swallowed rather than failing an otherwise-finished job.  ``get_job`` reads
@@ -239,7 +239,7 @@ def celery_beat_sweep_orphaned_outputs() -> int:
     """Delete job_outputs dirs whose Redis ``job:<id>`` key has expired.
 
     Runs periodically via Celery beat.  Reclaims disk for results whose
-    Redis metadata has aged out (TTL reached) but whose ``result.json``
+    Redis metadata has aged out (TTL reached) but whose ``JOB_RESULT_FILENAME``
     file still lingers on the shared volume.
 
     Returns:

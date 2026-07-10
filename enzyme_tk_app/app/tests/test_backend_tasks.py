@@ -76,7 +76,7 @@ def test_store_result_always_offloads(tmp_path, job_id, result):
     Why this matters: keeping full results out of Redis avoids memory
     bloat and OOM risk regardless of size.  Redis only ever sees the
     pointer dict, while the complete result must round-trip losslessly
-    from ``<JOB_OUTPUTS_PATH>/<job_id>/result.json`` on the shared volume.
+    from ``<JOB_OUTPUTS_PATH>/<job_id>/JOB_RESULT_FILENAME`` on the shared volume.
     """
     with mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")):
         stored = _store_result(job_id, result)
@@ -189,7 +189,7 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute, tmp_path):
     Why this matters: scientific tools commonly use print() for progress
     logging.  The task wraps execution with redirect_stdout so users can
     review algorithm output after the job completes.  The log is written to
-    ``output_log.txt`` on the volume (not inline in Redis), so we assert the
+    ``JOB_LOG_FILENAME`` on the volume (not inline in Redis), so we assert the
     file holds the output and the Redis field stays empty.
     """
 
@@ -289,7 +289,7 @@ def sweep_env(fake_redis, tmp_path):
 
 
 def _make_output_dir(outputs_dir, job_id):
-    """Create ``<outputs_dir>/<job_id>/result.json`` for the sweep tests."""
+    """Create ``<outputs_dir>/<job_id>/JOB_RESULT_FILENAME`` for the sweep tests."""
     job_dir = outputs_dir / job_id
     job_dir.mkdir(parents=True)
     (job_dir / config.JOB_RESULT_FILENAME).write_text("{}")
@@ -300,7 +300,7 @@ def test_sweep_removes_orphan(sweep_env):
     """A result dir with no live Redis key is deleted.
 
     Why this matters: this is the whole point of the sweep — when a job's
-    Redis metadata has aged out (TTL reached) the leftover ``result.json``
+    Redis metadata has aged out (TTL reached) the leftover ``JOB_RESULT_FILENAME``
     on the shared volume is dead weight and must be reclaimed.
     """
     job_dir = _make_output_dir(sweep_env, "orphan-1")

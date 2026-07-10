@@ -73,7 +73,7 @@ All configuration is via environment variables, set in `docker-compose.yml` for 
 
 ### Shared Volume
 
-The `web` and `worker` containers share a named Docker volume (`job-outputs`). Redis holds only lightweight job metadata (status, parameters, timestamps); the heavy payloads live on the volume. For every job the worker writes `result.json` and `output_log.txt` under `JOB_OUTPUTS_PATH/<job_id>/`, and Redis keeps only a pointer to the result. The web container reads both files from the same path when the user views results.
+The `web` and `worker` containers share a named Docker volume (`job-outputs`). Redis holds only lightweight job metadata (status, parameters, timestamps); the heavy payloads live on the volume. For every job the worker writes the job resuls and logs under `JOB_OUTPUTS_PATH/<job_id>/`, and Redis keeps only a pointer to the result. The web container reads both files from the same path when the user views results.
 
 Cleanup happens on job delete/clear and, for anything left behind, via a periodic **Celery beat** sweep (`celery_beat_sweep_orphaned_outputs`) that removes output dirs whose Redis `job:<id>` key has expired — see the `beat` service in `docker-compose.yml`.
 

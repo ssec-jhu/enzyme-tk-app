@@ -132,7 +132,7 @@ class CeleryTaskScheduler(TaskScheduler):
     def _delete_job_outputs(job_id: str) -> None:
         """Remove a job's offloaded result + log files from the shared volume.
 
-        The worker writes a job's ``result.json`` and ``output_log.txt`` under
+        The worker writes a job's ``JOB_RESULT_FILENAME`` and ``JOB_LOG_FILENAME`` under
         ``JOB_OUTPUTS_PATH/<job_id>/``.  This helper deletes that directory tree
         so disk space is reclaimed when a job is deleted.
         """
