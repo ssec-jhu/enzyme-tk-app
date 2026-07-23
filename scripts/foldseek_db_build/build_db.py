@@ -10,6 +10,13 @@ Under the hood this is the same two commands enzymetk runs internally:
 ProstT5 predicts structure from sequence, so no PDB/structure files are needed.
 """
 
+import csv
+import shutil
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
 # ---- CONFIG: edit these ----
 CSV_PATH = "protein.csv"  # CSV of sequences, relative to this file
 ID_COLUMN = "Entry"  # column holding the protein ID
@@ -18,13 +25,6 @@ DB_NAME = ""  # DB name; blank => use the CSV filename stem
 OUTPUT_DIR = "output"  # DB (and downloaded weights, if any) go here (mount this to get them out)
 WEIGHTS_DIR = ""  # path to existing ProstT5 weights dir; blank => download into OUTPUT_DIR
 FORCE = False  # True = rebuild even if the DB already exists
-
-import csv
-import shutil
-import subprocess
-import sys
-import tempfile
-from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 
