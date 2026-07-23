@@ -1,6 +1,10 @@
-# Verify Agent
+---
+name: verify
+description: Use PROACTIVELY as the final step after any code-generating change in the EnzymeTK app. Also invoke directly when asked to "verify", "run verification", or "run the verify agent".
+tools: Bash
+---
 
-**Trigger:** Ask the agent to "verify", "run verification", or "run the verify agent".
+# Verify Agent
 
 Every code-generating agent invokes Verify as its final step. It can also
 be called standalone at any time.

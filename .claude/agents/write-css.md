@@ -1,11 +1,15 @@
-# Write-CSS Agent
+---
+name: write-css
+description: Use PROACTIVELY when creating a new CSS file in enzyme_tk_app/app/assets/, or adding/modifying rules in an existing one, in the EnzymeTK app — typically as part of adding a tool or modal (e.g. a new badge, card, or status style).
+tools: Read, Write, Edit, Grep, Glob, Bash
+---
 
-**Trigger:** When creating a new CSS file in `enzyme_tk_app/app/assets/`, or adding/modifying rules in an existing one — typically as part of adding a tool or modal (e.g. a new badge, card, or status style).
+# Write-CSS Agent
 
 This agent enforces the formatting conventions that keep every stylesheet in
 `assets/` visually consistent and free of whitespace-only diffs. Follow it for
 **any** hand-written CSS; for `className`/inline-style decisions defer to the
-"When to Use CSS vs Inline Styles" rules in `.github/copilot-instructions.md`.
+"Styling (CSS vs Inline)" rules in `CLAUDE.md`.
 
 ---
 
@@ -81,8 +85,8 @@ Rules:
 
 ## 5. Final Step — Verify
 
-After writing or editing CSS, run the **Verify Agent**
-(`.github/agents/verify.md`). `ruff` does not format CSS, so these conventions
-are enforced by this agent, not the formatter — re-read the changed block and
-confirm banner/separator style, 4-space indent, and ~79-col padding before
-finishing.
+After writing or editing CSS, execute the **`verify` subagent's** core steps
+(`tox run -e format` then `tox`). `ruff` does not
+format CSS, so these conventions are enforced by this agent, not the
+formatter — re-read the changed block and confirm banner/separator style,
+4-space indent, and ~79-col padding before finishing.

@@ -1,9 +1,10 @@
-# Dead Code Cleanup Agent
+---
+name: cleanup
+description: Use PROACTIVELY after completing any task that removes or replaces code in the EnzymeTK app (e.g., deleting a tool, renaming a slug, removing a component, refactoring a module). Also invoke when asked to "run cleanup", "check for dead code", or "find unused exports".
+tools: Read, Grep, Glob, Bash, Edit
+---
 
-**Trigger:** After completing any task that **removes or replaces** code
-(e.g., deleting a tool, renaming a slug, removing a component, refactoring
-a module). Ask the agent to "run cleanup", "check for dead code", or
-"find unused exports".
+# Dead Code Cleanup Agent
 
 **Role:** You are a dead-code detector for the **EnzymeTK** Dash web app.
 Your job is to scan the codebase for orphaned symbols — Python functions,
@@ -282,8 +283,8 @@ Then:
    called or referenced in tests).
 3. **Delete** unused CSS class rules from the relevant `.css` file.
 4. **Delete** unreferenced asset files.
-5. Run the **Verify Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
-   (`tox run -e format` then `tox`) to clean up unused imports and verify no regressions.
+5. Run the **`verify` subagent's** core steps (`tox run -e format` then
+   `tox`) to clean up unused imports and verify no regressions.
 
 ---
 
@@ -302,5 +303,4 @@ Then:
 - `server = app.server` in `app.py` is used by gunicorn — never flag it.
 - Test files (`test_*.py`) are consumers, not candidates for cleanup.
   Do not flag symbols that are only used in tests as "unused".
-- After cleanup, always run the Verify Agent to keep the codebase green.
-
+- After cleanup, always run the `verify` subagent's core steps (`tox run -e format` then `tox`) to keep the codebase green.

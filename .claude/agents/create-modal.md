@@ -1,6 +1,10 @@
-# Modal Creation Agent
+---
+name: create-modal
+description: Use PROACTIVELY when modifying, designing, generating, or restyling a frontend tool modal (e.g. modal.py) in the EnzymeTK app.
+tools: Read, Write, Edit, Grep, Glob, Bash
+---
 
-**Trigger:** When modifying, designing, or generating new frontend tool modals (e.g., `modal.py`).
+# Modal Creation Agent
 
 When creating a new tool modal (e.g., in `enzyme_tk_app/app/tools/<tool_name>/modal.py`), follow this standardized layout structure to ensure a consistent, clean, and functional aesthetic across the entire application workspace.
 
@@ -17,7 +21,7 @@ Example:
 This modal appears when the user clicks the Launch button on the <Tool Name>
 tool card. It collects <brief description of inputs>.
 
-Layout rules  (see ``.github/agents/create-modal.md``)
+Layout rules  (see the create-modal subagent)
 ------------------------------------------------------
 1. Top-level: ``dbc.Modal(size="lg", centered=True)``.
 2. ``dbc.ModalBody`` gets ``className="p-4"``.
@@ -155,7 +159,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **Labeling:** Always use `dbc.Label(..., className="col-form-label fw-bold")` inside a `dbc.Col(width=3)`.
 - **Controls:** Attach the `themed-control` class to all interactable input components (e.g. `dbc.Input`, `dcc.Dropdown`, `dbc.RadioItems`). This ensures they hook correctly into the custom CSS themes or Dash 4.0 Checkbox UI structures.
 - **Row layout:** Use `dbc.Row([dbc.Col(label, width=3), dbc.Col(control, width=9)], className="mb-2", align="center")` for label ↔ control alignment.
-- **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the [**Write-CSS Agent**](write-css.md) for banner/section-comment style and 4-space indentation.
+- **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the `write-css` subagent for banner/section-comment style and 4-space indentation.
 
 ## 7. Required vs Default Sections
 - **Section 1: Input Data:** Place *Task Name*, required identifiers (like SMILES or file uploads), and Demo Examples here.
@@ -178,9 +182,9 @@ The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.
 
 ## MANDATORY AFTER-CREATION WORKFLOW
 
-After creating or modifying modal files, you **MUST** execute the **Verify
-Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
-(`tox run -e format` then `tox`). Fix any failures before concluding.
+After creating or modifying modal files, you **MUST** execute the **`verify`
+subagent's** core steps (`tox run -e format` then `tox`). Fix any failures
+before concluding.
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*

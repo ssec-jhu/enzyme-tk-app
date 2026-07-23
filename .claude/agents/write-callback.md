@@ -1,6 +1,10 @@
-# Write-Callback Agent
+---
+name: write-callback
+description: Use PROACTIVELY when writing, creating, or modifying Dash @callback functions in the EnzymeTK app.
+tools: Read, Write, Edit, Bash, Grep, Glob
+---
 
-**Trigger:** When writing, creating, or modifying Dash `@callback` functions.
+# Write-Callback Agent
 
 This agent defines the mandatory patterns for all Dash callback code in the EnzymeTK project.
 
@@ -74,9 +78,9 @@ def submit_job(submit_clicks, launch_clicks, ...):
 
 ## MANDATORY AFTER-CALLBACK WORKFLOW
 
-After creating or modifying callback code, you **MUST** execute the **Verify
-Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
-(`tox run -e format` then `tox`). Fix any failures before concluding.
+After creating or modifying callback code, you **MUST** execute the **`verify`
+subagent's** core steps (`tox run -e format` then `tox`). Fix any failures
+before concluding.
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*

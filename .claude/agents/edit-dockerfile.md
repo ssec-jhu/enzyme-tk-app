@@ -1,6 +1,10 @@
-# Edit Dockerfile Agent
+---
+name: edit-dockerfile
+description: Use PROACTIVELY when adding, removing, or modifying binary dependencies, system packages, or build steps in the Dockerfile for the EnzymeTK app.
+tools: Read, Edit, Bash
+---
 
-**Trigger:** When adding, removing, or modifying binary dependencies, system packages, or build steps in the `Dockerfile`.
+# Edit Dockerfile Agent
 
 Every change must preserve **multi-architecture** compatibility (`linux/amd64` + `linux/arm64`). All images are Linux containers — "Windows support" means Docker Desktop / WSL2, not native Windows images.
 
