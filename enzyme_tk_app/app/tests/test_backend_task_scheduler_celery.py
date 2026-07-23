@@ -10,6 +10,7 @@ the ``write_job_into_fake_redis`` helper are provided by ``conftest.py``.
 import uuid
 from unittest import mock
 
+from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.tests.conftest import write_job_into_fake_redis
 
@@ -319,7 +320,7 @@ def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_r
     # Create a fake volume directory to verify disk cleanup.
     outputs_dir = tmp_path / "job_outputs" / "j1"
     outputs_dir.mkdir(parents=True)
-    (outputs_dir / "result.json").write_text('{"big": "data"}')
+    (outputs_dir / config.JOB_RESULT_FILENAME).write_text('{"big": "data"}')
 
     with (
         mock.patch("enzyme_tk_app.app.backend.task_scheduler_celery.run_tool_task") as mock_task,
@@ -332,6 +333,35 @@ def test_admin_purge_all_clears_everything(task_scheduler_celery_service, fake_r
 
     assert summary["jobs_deleted"] == 2
     assert summary["sessions_cleared"] >= 1
+
+
+# ── _delete_job_outputs path-traversal guard ──────────────────────────────
+
+
+def test_delete_job_outputs_refuses_traversing_job_id(task_scheduler_celery_service, tmp_path):
+    """A traversing job_id must never rmtree data outside JOB_OUTPUTS_PATH.
+
+    Why this matters: ``_delete_job_outputs`` runs ``shutil.rmtree`` on a
+    directory derived from job_id.  If a malicious or buggy job_id such as
+    ``"../outside"`` escaped the shared volume, the delete could wipe
+    arbitrary data on the host.  The ``config.job_output_paths`` containment
+    check must refuse the path so nothing outside the volume is ever touched
+    — and the refusal must be swallowed, not raised, so cleanup keeps working.
+    """
+    # A sentinel directory + file living OUTSIDE the job-outputs volume.
+    # If the guard fails, "../outside" resolves here and rmtree would delete it.
+    sentinel_dir = tmp_path / "outside"
+    sentinel_dir.mkdir()
+    sentinel_file = sentinel_dir / "important.txt"
+    sentinel_file.write_text("do not delete")
+
+    with mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")):
+        # No exception may escape — the guard logs and returns instead of raising.
+        task_scheduler_celery_service._delete_job_outputs("../outside")
+
+    # The traversal was refused, so the sentinel data survives untouched.
+    assert sentinel_dir.exists()
+    assert sentinel_file.exists()
 
 
 # ── Read-time stale-job timeout detection ─────────────────────────────────

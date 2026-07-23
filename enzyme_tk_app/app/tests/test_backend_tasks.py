@@ -6,12 +6,14 @@ without a broker, worker, or live Redis instance.
 """
 
 import json
+import logging
 from unittest import mock
 
 import pytest
 
+from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.backend.models import JobStatus
-from enzyme_tk_app.app.backend.tasks import _make_preview, _store_result
+from enzyme_tk_app.app.backend.tasks import _store_result, celery_beat_sweep_orphaned_outputs
 
 # ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -33,7 +35,9 @@ def mock_compute(fake_redis, tmp_path):
     with (
         mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
         mock.patch("enzyme_tk_app.app.backend.tasks.importlib") as mock_importlib,
-        mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg,
+        # Patch only JOB_OUTPUTS_PATH on the real config so the real
+        # ``job_output_paths`` helper and filename constants stay in play.
+        mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")),
         mock.patch(
             "enzyme_tk_app.app.backend.tasks.DEFAULT_MAX_DURATION",
             3600,
@@ -47,119 +51,48 @@ def mock_compute(fake_redis, tmp_path):
             side_effect=lambda max_duration=3600, grace=60: max_duration + grace + 86400,
         ),
     ):
-        cfg.JOB_TTL_SECONDS = 86400
-        cfg.MAX_RESULT_BYTES = 512 * 1024
-        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
         mock_importlib.import_module.return_value = compute
         yield compute
 
 
-# ── _make_preview ─────────────────────────────────────────────────────────
-# _make_preview builds a lightweight summary of a result dict so the
-# jobs-list page can show a useful snippet without loading megabytes of
-# data from Redis.  Each test below exercises one distinct summarisation
-# rule to verify they work in isolation.
-
-
-def test_make_preview_small_dict():
-    """Preview of a small dict returns it unchanged.
-
-    Why this matters: when all values are small scalars and there are few
-    keys, the preview should be an exact copy — no information loss.
-    """
-    result = {"a": 1, "b": 2}
-    preview = _make_preview(result)
-    assert preview == {"a": 1, "b": 2}
-
-
-def test_make_preview_truncates_large_list():
-    """Preview summarises list values with more than 3 items.
-
-    Why this matters: tool results often contain large arrays (e.g. 10 000
-    similarity scores).  The preview replaces them with a count string so
-    the JSON stored in Redis stays small.
-    """
-    result = {"rows": list(range(100))}
-    preview = _make_preview(result)
-    assert preview["rows"] == "[100 items]"
-
-
-def test_make_preview_truncates_large_nested_dict():
-    """Preview summarises dict values with more than 3 keys.
-
-    Why this matters: deeply nested dicts can be arbitrarily large.
-    Replacing them with "{N keys}" keeps the preview bounded regardless
-    of depth.
-    """
-    result = {"meta": {"a": 1, "b": 2, "c": 3, "d": 4}}
-    preview = _make_preview(result)
-    assert preview["meta"] == "{4 keys}"
-
-
-def test_make_preview_limits_top_level_keys():
-    """Preview includes at most max_items (default 5) top-level keys.
-
-    Why this matters: even if every individual value is tiny, a result
-    with hundreds of keys would produce an unwieldy preview.  Capping at
-    max_items keeps the preview small regardless of the result shape.
-    """
-    result = {f"key{i}": i for i in range(20)}
-    preview = _make_preview(result, max_items=5)
-    assert len(preview) == 5
-
-
 # ── _store_result ─────────────────────────────────────────────────────────
-# _store_result decides whether to keep a result inline in Redis or
-# offload it to the shared Docker volume.  The threshold is set by
-# config.MAX_RESULT_BYTES (default 512 KB).
-# Only two code paths exist (inline vs offload) — one test each.
+# _store_result ALWAYS offloads the full result to the shared Docker volume
+# and returns only a pointer dict (ref + size).  There is no size threshold
+# and no inline path — small and large results behave identically, so one
+# parametrized test covers both.
 
 
-def test_store_result_inline_small(tmp_path):
-    """Small results are returned inline without writing to disk.
+@pytest.mark.parametrize(
+    ("job_id", "result"),
+    [
+        ("job-small", {"answer": 42}),
+        ("job-large", {"data": "x" * 200}),
+    ],
+    ids=["small-result", "large-result"],
+)
+def test_store_result_always_offloads(tmp_path, job_id, result):
+    """Every result — small or large — is offloaded to the shared volume.
 
-    Why this matters: most tool results are a few KB.  Keeping them in
-    Redis avoids extra disk I/O and simplifies retrieval.  This test
-    verifies the "no-op" path where the result stays in Redis as-is.
+    Why this matters: keeping full results out of Redis avoids memory
+    bloat and OOM risk regardless of size.  Redis only ever sees the
+    pointer dict, while the complete result must round-trip losslessly
+    from ``<JOB_OUTPUTS_PATH>/<job_id>/JOB_RESULT_FILENAME`` on the shared volume.
     """
-    result = {"answer": 42}
-    with mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg:
-        cfg.MAX_RESULT_BYTES = 512 * 1024
-        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
-        stored = _store_result("job-small", result)
+    with mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")):
+        stored = _store_result(job_id, result)
 
-    # The result dict should pass through unchanged.
-    assert stored == result
-    # No file should have been created on the shared volume.
-    assert not (tmp_path / "job_outputs" / "job-small").exists()
+    # Redis only ever gets the pointer dict — never the full result inline.
+    assert set(stored) == {"_result_ref", "_result_size_bytes"}
 
+    # The full result must round-trip from the file on the shared volume,
+    # proving no data was lost during offloading.
+    result_file = tmp_path / "job_outputs" / job_id / config.JOB_RESULT_FILENAME
+    assert result_file.exists()
+    with open(result_file) as fh:
+        assert json.load(fh) == result
 
-def test_store_result_offloads_large(tmp_path):
-    """Large results are written to the shared volume with a reference.
-
-    Why this matters: if a tool returns megabytes of data, keeping it in
-    Redis wastes memory and risks OOM.  The offload writes the full JSON
-    to the shared volume and returns a small reference dict + preview.
-    We use an intentionally low threshold (100 bytes) so the test triggers
-    offloading without needing megabytes of test data.
-    """
-    result = {"data": "x" * 200}
-    with mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg:
-        cfg.MAX_RESULT_BYTES = 100
-        cfg.JOB_OUTPUTS_PATH = str(tmp_path / "job_outputs")
-        stored = _store_result("job-big", result)
-
-    # The reference dict must contain all three expected keys.
-    assert "_result_ref" in stored
-    assert "_result_size_bytes" in stored
-    assert "preview" in stored
-
-    # The file on the shared volume must contain the original result,
-    # proving that no data was lost during offloading.
-    ref_path = stored["_result_ref"]
-    with open(ref_path) as fh:
-        loaded = json.load(fh)
-    assert loaded == result
+    # The returned reference must point at the file we just verified.
+    assert stored["_result_ref"] == str(result_file)
 
 
 # ── run_tool_task (mocked execution) ──────────────────────────────────────
@@ -172,11 +105,12 @@ def test_store_result_offloads_large(tmp_path):
 
 
 def test_run_tool_task_success(fake_redis, mock_compute):
-    """A successful compute.run() stores SUCCESS status and result in Redis.
+    """A successful compute.run() stores SUCCESS status and a result pointer.
 
     Why this matters: the happy path must write both "status" and "result"
-    fields so the UI can show the outcome.  This confirms the full
-    pipeline — import → run → serialise → store — works end-to-end.
+    fields so the UI can show the outcome.  Since results are always
+    offloaded, Redis stores only the pointer dict and the full result must
+    round-trip from the file on the shared volume.
     """
     mock_compute.run.return_value = {"similarity": 0.95}
 
@@ -186,18 +120,32 @@ def test_run_tool_task_success(fake_redis, mock_compute):
 
     job_data = fake_redis.hgetall("job:job-123")
     assert job_data["status"] == JobStatus.SUCCESS.value
-    assert json.loads(job_data["result"]) == {"similarity": 0.95}
+
+    # Redis holds only the pointer dict — no full result, no log body.
+    stored = json.loads(job_data["result"])
+    assert set(stored) == {"_result_ref", "_result_size_bytes"}
+    assert "output_log" not in job_data
+
+    # The full result must round-trip from the offloaded file.
+    with open(stored["_result_ref"]) as fh:
+        assert json.load(fh) == {"similarity": 0.95}
 
 
-def test_run_tool_task_failure(fake_redis, mock_compute):
-    """A failing compute.run() stores FAILURE status and traceback.
+def test_run_tool_task_failure(fake_redis, mock_compute, tmp_path):
+    """A failing compute.run() stores FAILURE status and offloads its log.
 
     Why this matters: when a tool crashes (e.g. invalid user input), the
     task must NOT propagate the exception to Celery.  Instead it records
-    the traceback in Redis so the UI can display a user-friendly error.
-    If this behaviour breaks, user-facing errors would be silent.
+    the traceback in Redis so the UI can display a user-friendly error, and
+    it still offloads any captured partial log so the user can diagnose the
+    crash.  If this behaviour breaks, user-facing errors would be silent.
     """
-    mock_compute.run.side_effect = ValueError("Invalid SMILES")
+
+    def run_then_fail(params):
+        print("halfway through")  # noqa: T201
+        raise ValueError("Invalid SMILES")
+
+    mock_compute.run.side_effect = run_then_fail
 
     from enzyme_tk_app.app.backend.tasks import run_tool_task
 
@@ -206,15 +154,43 @@ def test_run_tool_task_failure(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-fail")
     assert job_data["status"] == JobStatus.FAILURE.value
     assert "Invalid SMILES" in job_data["error"]
+    # The partial log is offloaded to the volume, not stored inline in Redis.
+    assert "output_log" not in job_data
+    log_text = (tmp_path / "job_outputs" / "job-fail" / config.JOB_LOG_FILENAME).read_text()
+    assert "halfway through" in log_text
 
 
-def test_run_tool_task_captures_stdout(fake_redis, mock_compute):
-    """stdout from compute.run() is captured in the output_log.
+def test_run_tool_task_result_write_failure_marks_failure(fake_redis, mock_compute):
+    """If the result write fails (OSError), the job is recorded as FAILURE.
+
+    Why this matters: the storage volume can be full or unmounted.  When the
+    offload write raises, the job must fail loudly with the error surfaced to
+    the front end — never be mislabeled SUCCESS and never fall back to
+    stuffing the full result into Redis (the exact bloat we offload to avoid).
+    """
+    mock_compute.run.return_value = {"similarity": 0.95}
+
+    from enzyme_tk_app.app.backend import tasks
+    from enzyme_tk_app.app.backend.tasks import run_tool_task
+
+    with mock.patch.object(tasks, "_store_result", side_effect=OSError("No space left on device")):
+        run_tool_task("test-tool", {}, "sess-1", "job-diskfull")
+
+    job_data = fake_redis.hgetall("job:job-diskfull")
+    assert job_data["status"] == JobStatus.FAILURE.value
+    assert "No space left on device" in job_data["error"]
+    # Redis must not hold the result — the write failed, so nothing is stored.
+    assert not job_data.get("result")
+
+
+def test_run_tool_task_captures_stdout(fake_redis, mock_compute, tmp_path):
+    """stdout from compute.run() is captured and offloaded to the log file.
 
     Why this matters: scientific tools commonly use print() for progress
     logging.  The task wraps execution with redirect_stdout so users can
-    review algorithm output after the job completes.  Without this,
-    print() output would be lost inside the Celery worker.
+    review algorithm output after the job completes.  The log is written to
+    ``JOB_LOG_FILENAME`` on the volume (not inline in Redis), so we assert the
+    file holds the output and the Redis field stays empty.
     """
 
     def run_with_output(params):
@@ -228,9 +204,10 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute):
 
     run_tool_task("test-tool", {}, "sess-1", "job-stdout")
 
-    job_data = fake_redis.hgetall("job:job-stdout")
-    assert "Processing query..." in job_data["output_log"]
-    assert "Done!" in job_data["output_log"]
+    assert fake_redis.hget("job:job-stdout", "output_log") is None
+    log_text = (tmp_path / "job_outputs" / "job-stdout" / config.JOB_LOG_FILENAME).read_text()
+    assert "Processing query..." in log_text
+    assert "Done!" in log_text
 
 
 def test_run_tool_task_timeout(fake_redis, mock_compute):
@@ -253,6 +230,8 @@ def test_run_tool_task_timeout(fake_redis, mock_compute):
     job_data = fake_redis.hgetall("job:job-timeout")
     assert job_data["status"] == JobStatus.TIMEOUT.value
     assert "exceeded" in job_data["error"].lower()
+    # The log is offloaded even on timeout — Redis keeps no log body.
+    assert "output_log" not in job_data
 
 
 # ── Session set TTL refresh ───────────────────────────────────────────────────
@@ -286,3 +265,123 @@ def test_run_tool_task_refreshes_session_set_ttl(fake_redis, mock_compute):
     # to the full JOB_TTL_SECONDS (86 400 in the mock_compute fixture).
     ttl = fake_redis.ttl(session_key)
     assert ttl > 10, f"session set TTL must be refreshed (got {ttl}s, expected ~86400)"
+
+
+# ── celery_beat_sweep_orphaned_outputs ──────────────────────────────────────
+# celery_beat_sweep_orphaned_outputs reclaims disk by deleting result
+# directories whose Redis ``job:<id>`` key has already expired.
+
+
+@pytest.fixture()
+def sweep_env(fake_redis, tmp_path):
+    """Patch Redis and config for the orphan-sweep tests.
+
+    Yields the ``job_outputs`` directory path (a ``Path``) so each test can
+    build result directories inside it.  Patches only ``JOB_OUTPUTS_PATH`` on
+    the real config (not the whole module) so the sweep's real, validating
+    ``job_output_paths`` helper stays in play.
+    """
+    outputs_dir = tmp_path / "job_outputs"
+    with (
+        mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
+        mock.patch.object(config, "JOB_OUTPUTS_PATH", str(outputs_dir)),
+    ):
+        yield outputs_dir
+
+
+def _make_output_dir(outputs_dir, job_id):
+    """Create ``<outputs_dir>/<job_id>/JOB_RESULT_FILENAME`` for the sweep tests."""
+    job_dir = outputs_dir / job_id
+    job_dir.mkdir(parents=True)
+    (job_dir / config.JOB_RESULT_FILENAME).write_text("{}")
+    return job_dir
+
+
+def test_sweep_removes_orphan(sweep_env):
+    """A result dir with no live Redis key is deleted.
+
+    Why this matters: this is the whole point of the sweep — when a job's
+    Redis metadata has aged out (TTL reached) the leftover ``JOB_RESULT_FILENAME``
+    on the shared volume is dead weight and must be reclaimed.
+    """
+    job_dir = _make_output_dir(sweep_env, "orphan-1")
+    # No ``job:orphan-1`` key exists in fakeredis, simulating an expired job.
+
+    removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 1
+    assert not job_dir.exists()
+
+
+def test_sweep_keeps_dir_with_live_redis_key(sweep_env, fake_redis):
+    """A result dir whose ``job:<id>`` key still exists survives.
+
+    Why this matters: a live Redis key means the job is still within its
+    retention window and the user can still open its results.  Deleting the
+    file would break the results page even though the metadata is present.
+    """
+    job_dir = _make_output_dir(sweep_env, "live-1")
+    fake_redis.hset("job:live-1", mapping={"status": JobStatus.SUCCESS.value})
+
+    removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 0
+    assert job_dir.exists()
+
+
+def test_sweep_returns_zero_when_outputs_dir_missing(sweep_env):
+    """A missing ``JOB_OUTPUTS_PATH`` returns 0 without raising.
+
+    Why this matters: on a fresh deployment no job has ever run, so the
+    outputs directory may not exist yet.  The periodic sweep must handle
+    that gracefully rather than crashing the Celery beat schedule.
+    """
+    # ``sweep_env`` points JOB_OUTPUTS_PATH at a directory we never create.
+    assert not sweep_env.exists()
+
+    assert celery_beat_sweep_orphaned_outputs() == 0
+
+
+def test_sweep_does_not_count_failed_removal(sweep_env, caplog):
+    """A dir that fails to delete is skipped (not counted) and logged, not raised.
+
+    Why this matters: the return value is an operational signal of disk
+    reclaimed.  If ``rmtree`` fails (e.g. permissions, busy file), the count
+    must exclude that dir, the sweep must keep going, and the failure must
+    surface in the worker log rather than being silently swallowed.
+    """
+    job_dir = _make_output_dir(sweep_env, "stuck-1")
+
+    with (
+        mock.patch("enzyme_tk_app.app.backend.tasks.shutil.rmtree", side_effect=OSError("permission denied")),
+        caplog.at_level(logging.WARNING),
+    ):
+        removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 0
+    assert job_dir.exists()  # deletion failed, so the dir is still there
+    assert "failed to remove" in caplog.text
+
+
+def test_sweep_skips_dir_that_escapes_base(sweep_env, tmp_path, caplog):
+    """An entry whose realpath escapes JOB_OUTPUTS_PATH is skipped, never rmtree'd.
+
+    Why this matters: the sweep deletes directories chosen by name, so the one
+    validated helper (``config.job_output_paths``) must be the choke point that
+    refuses a symlinked entry resolving outside the base *before* any deletion —
+    otherwise a crafted entry could reclaim disk outside the outputs volume.
+    """
+    sweep_env.mkdir(parents=True)
+    # A symlink inside the outputs dir whose target lives outside the base.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("do not delete me")
+    (sweep_env / "escape").symlink_to(outside, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING):
+        removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 0
+    assert (outside / "keep.txt").exists()  # target untouched
+    assert (sweep_env / "escape").exists()  # symlink itself untouched
+    assert "escapes JOB_OUTPUTS_PATH" in caplog.text

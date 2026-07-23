@@ -6,6 +6,7 @@ Docker Compose or the orchestrator's secret/config mechanism.
 """
 
 import os
+from typing import NamedTuple
 
 # Redis connection URL used as both Celery broker and result backend.
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -16,20 +17,63 @@ REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 # Default: 24 hours.
 JOB_TTL_SECONDS: int = int(os.environ.get("JOB_TTL_SECONDS", "86400"))
 
+# How often the Celery beat orphan-sweep runs (seconds).  The sweep removes
+# job_outputs dirs whose Redis job:<id> key has expired.  Default: 24 hours.
+# Clamped to >= 1s: a 0/negative value fed to Celery beat makes it fire
+# continuously (or crash at startup), so we floor it to a sane minimum.
+CELERY_SWEEP_INTERVAL_SECONDS: int = max(1, int(os.environ.get("CELERY_SWEEP_INTERVAL_SECONDS", "86400")))
 
-# Directory for temporary job result files.  When a tool result exceeds
-# ``MAX_RESULT_BYTES`` the worker writes it here as JSON.  The web
-# container reads from the same path to serve results.  Cleaned up
-# when a job is deleted or ``admin_purge_all()`` is called.
-JOB_OUTPUTS_PATH: str = os.environ.get(
-    "JOB_OUTPUTS_PATH",
-    os.path.join(os.environ.get("SHARED_VOLUME_PATH", "/data"), "job_outputs"),
-)
 
-# Maximum result size (bytes) stored inline in Redis.  Results larger
-# than this are written to the shared volume and a reference is stored
-# in Redis instead.
-MAX_RESULT_BYTES: int = int(os.environ.get("MAX_RESULT_BYTES", str(512 * 1024)))
+# Directory for offloaded job files.  Every tool result and its captured log
+# are written here; Redis keeps only a pointer to the result.  The web
+# container reads from the same path to serve results.  Cleaned up when a job
+# is deleted, by the orphan sweep, or when ``admin_purge_all()`` is called.
+JOB_OUTPUTS_PATH: str = os.environ.get("JOB_OUTPUTS_PATH", "/job-outputs")
+
+# Filenames written under ``JOB_OUTPUTS_PATH/<job_id>/`` by the worker and read
+# back by the web container.  These literal values live ONLY here — the single
+# source of truth.  All other code (and docstrings) references the constants so
+# the writer (``tasks.py``) and reader (``task_scheduler_celery.py``) can never
+# drift out of sync.
+JOB_RESULT_FILENAME: str = "result.json"
+JOB_LOG_FILENAME: str = "output_log.txt"
+
+
+class JobPaths(NamedTuple):
+    """The on-disk paths for one job's offloaded output, all under ``directory``.
+
+    ``directory`` is ``JOB_OUTPUTS_PATH/<job_id>``;
+    ``result`` and ``log`` are the ``JOB_RESULT_FILENAME`` / ``JOB_LOG_FILENAME`` files inside it.
+    """
+
+    directory: str
+    result: str
+    log: str
+
+
+def job_output_paths(job_id: str) -> JobPaths:
+    """Return the validated on-disk paths for *job_id*'s offloaded output.
+
+    Single choke point for turning a ``job_id`` into filesystem paths, so the
+    containment check here protects every consumer — including the destructive
+    ``shutil.rmtree`` in ``_delete_job_outputs`` — against a ``job_id`` that
+    tries to escape ``JOB_OUTPUTS_PATH`` (e.g. ``".."`` or an absolute path).
+
+    Raises:
+        ValueError: if *job_id* does not resolve to a direct child of
+            ``JOB_OUTPUTS_PATH``.
+    """
+    output_dir = os.path.join(JOB_OUTPUTS_PATH, job_id)
+    base = os.path.realpath(JOB_OUTPUTS_PATH)
+    # realpath resolves ".." *and* symlinks;
+    # require a direct child of the base.
+    if os.path.dirname(os.path.realpath(output_dir)) != base:
+        raise ValueError(f"job_id {job_id!r} escapes JOB_OUTPUTS_PATH")
+    return JobPaths(
+        directory=output_dir,
+        result=os.path.join(output_dir, JOB_RESULT_FILENAME),
+        log=os.path.join(output_dir, JOB_LOG_FILENAME),
+    )
 
 
 # Shared secret that unlocks the hidden ``/admin`` dashboard.  Supplied

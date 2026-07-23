@@ -61,3 +61,13 @@ celery_app.conf.update(
 # know about our task and ``apply_async`` calls from the web process would fail
 # with a "Received unregistered task" error.
 celery_app.autodiscover_tasks(["enzyme_tk_app.app.backend"])
+
+# ── Beat schedule ────────────────────────────────────────────────────
+# Periodically reclaim disk from result dirs whose Redis job:<id> key has
+# expired.  Fired by a single ``celery beat`` process (see docker-compose).
+celery_app.conf.beat_schedule = {
+    "celery_beat_sweep_orphaned_outputs": {
+        "task": "celery_beat_sweep_orphaned_outputs",
+        "schedule": config.CELERY_SWEEP_INTERVAL_SECONDS,
+    },
+}

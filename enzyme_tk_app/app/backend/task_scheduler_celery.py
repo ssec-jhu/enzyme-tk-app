@@ -130,15 +130,20 @@ class CeleryTaskScheduler(TaskScheduler):
 
     @staticmethod
     def _delete_job_outputs(job_id: str) -> None:
-        """Remove any offloaded result files for *job_id* from the shared volume.
+        """Remove a job's offloaded result + log files from the shared volume.
 
-        ``tasks._store_result()`` writes large results to
-        ``JOB_OUTPUTS_PATH/<job_id>/``.  This helper deletes
-        that directory tree so disk space is reclaimed when a job is deleted.
+        The worker writes a job's ``JOB_RESULT_FILENAME`` and ``JOB_LOG_FILENAME`` under
+        ``JOB_OUTPUTS_PATH/<job_id>/``.  This helper deletes that directory tree
+        so disk space is reclaimed when a job is deleted.
         """
-        output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
-        if os.path.isdir(output_dir):
-            shutil.rmtree(output_dir, ignore_errors=True)
+        try:
+            paths = config.job_output_paths(job_id)
+        except ValueError:
+            # Fail-safe: a job_id that escapes JOB_OUTPUTS_PATH must never rmtree.
+            logger.warning("Refusing to delete outputs for suspicious job_id %r", job_id)
+            return
+        if os.path.isdir(paths.directory):
+            shutil.rmtree(paths.directory, ignore_errors=True)
 
     def _read_job(self, job_id: str) -> JobInfo | None:
         """Read a job hash from Redis and convert it into a ``JobInfo`` object.
@@ -184,7 +189,6 @@ class CeleryTaskScheduler(TaskScheduler):
             params=json.loads(data["params"]) if data.get("params") else {},
             result=json.loads(data["result"]) if data.get("result") else None,
             error=data.get("error"),
-            output_log=data.get("output_log", ""),
             ip_address=data.get("ip_address", ""),
         )
 
@@ -301,7 +305,6 @@ class CeleryTaskScheduler(TaskScheduler):
                 "session_id": session_id,
                 "submitted_at": submitted_at,
                 "params": json.dumps(params),
-                "output_log": "",
                 "ip_address": ip_address,
                 # Persist timeout thresholds so read-time stale-job
                 # detection can compute the deadline without consulting
@@ -400,14 +403,7 @@ class CeleryTaskScheduler(TaskScheduler):
     # ── Query ────────────────────────────────────────────────────────
 
     def get_job(self, job_id: str, session_id: str) -> JobInfo | None:
-        """Retrieve full job details, including the computation result.
-
-        When a tool produces a very large result (> 512 KB), the worker
-        saves the full JSON to a file on the shared volume and stores a
-        small ``{"_result_ref": "/data/job_outputs/..."}`` pointer in
-        Redis instead.  This method detects that pointer and loads the
-        full result from disk transparently, so callers always get the
-        complete data.
+        """Retrieve full job details, including the computation result and log.
 
         Returns:
             ``JobInfo`` if found and owned by *session_id*, else ``None``.
@@ -419,32 +415,46 @@ class CeleryTaskScheduler(TaskScheduler):
         if job is None:
             return None
 
-        # If the result was too large for Redis, load it from the shared
-        # volume (a Docker volume mounted at /data on both web and worker).
+        # Both the result and log files live under this job's directory on the
+        # shared volume (a Docker volume mounted at ``JOB_OUTPUTS_PATH`` on both
+        # web + worker).  ``job_output_paths`` validates that job_id can't escape
+        # that directory (defence-in-depth; ``_owns_job`` already gated us).
+        try:
+            paths = config.job_output_paths(job_id)
+        except ValueError:
+            logger.warning("Suspicious job_id %r; refusing to load its files", job_id)
+            return None
+
+        # Load the result from the shared volume if the Redis hash contains a
+        # ``_result_ref``.  That pointer is read back from Redis, so validate it
+        # resolves to exactly this job's result file before opening it — guards
+        # against a corrupted/tampered hash.  realpath resolves ".." *and*
+        # symlinks, so a symlink inside JOB_OUTPUTS_PATH can't redirect the read.
         if job.result and "_result_ref" in job.result:
             ref_path = job.result["_result_ref"]
-
-            # Validate the path resolves inside the expected output
-            # directory for this job.  This prevents an arbitrary file
-            # read if the Redis hash is ever corrupted or tampered with.
-            # We use realpath (not abspath) because it also resolves
-            # symlinks — abspath only normalises ".." segments, so a
-            # symlink inside JOB_OUTPUTS_PATH could still escape.
-            expected_dir = os.path.realpath(os.path.join(config.JOB_OUTPUTS_PATH, job_id))
-            real_ref = os.path.realpath(ref_path)
-            if not real_ref.startswith(expected_dir + os.sep) or os.path.basename(real_ref) != "result.json":
+            if os.path.realpath(ref_path) != os.path.realpath(paths.result):
                 logger.warning(
-                    "Suspicious _result_ref for job %s: %s (expected under %s/result.json)",
+                    "Suspicious _result_ref for job %s: %s (expected %s)",
                     job_id,
                     ref_path,
-                    expected_dir,
+                    paths.result,
                 )
             else:
                 try:
-                    with open(real_ref, encoding="utf-8") as fh:
+                    with open(paths.result, encoding="utf-8") as fh:
                         job.result = json.load(fh)
                 except (FileNotFoundError, json.JSONDecodeError):
                     logger.warning("Failed to load result from %s for job %s", ref_path, job_id)
+
+        # Load the captured log from the volume (path contained by the validated
+        # ``paths`` above).
+        try:
+            with open(paths.log, encoding="utf-8") as fh:
+                job.output_log = fh.read()
+        except OSError:
+            # No log file yet (job unfinished) or the best-effort write failed.
+            # Leave job.output_log at its "" default rather than raise.
+            pass
 
         return job
 
@@ -649,9 +659,9 @@ class CeleryTaskScheduler(TaskScheduler):
             self._redis.delete(key)
             sessions_cleared += 1
 
-        # Step 4: remove large result files from the job outputs directory.
-        # These are the files created by
-        # ``tasks._store_result()`` when a result exceeds 512 KB.
+        # Step 4: remove all result/log files from the job outputs directory.
+        # These are the files created by ``tasks._store_result()`` and
+        # ``tasks._store_log()`` for every job.
         volume_bytes_freed = 0
         volume_files_deleted = 0
         outputs_dir = config.JOB_OUTPUTS_PATH

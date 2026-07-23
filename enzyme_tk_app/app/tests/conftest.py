@@ -259,7 +259,6 @@ def write_job_into_fake_redis(fake_redis, job_id, session_id, status="PENDING", 
         "session_id": session_id,
         "submitted_at": "2025-01-01T00:00:00+00:00",
         "params": "{}",
-        "output_log": "",
         **extra,
     }
     fake_redis.hset(f"job:{job_id}", mapping=mapping)

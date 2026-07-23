@@ -8,8 +8,8 @@ The single ``run_tool_task`` task:
 4. Calls ``compute.run(params)`` and stores the result.
 5. On failure, stores the traceback and any partial captured output.
 
-Large results (> ``MAX_RESULT_BYTES``) are automatically offloaded to the
-shared volume and replaced with a reference dict in Redis.
+Every result is written to the shared volume as JSON and the captured log to
+a sibling text file; Redis keeps only a pointer (``_result_ref``) to the result.
 """
 
 from __future__ import annotations
@@ -20,6 +20,7 @@ import io
 import json
 import logging
 import os
+import shutil
 import traceback
 from datetime import datetime, timezone
 
@@ -50,57 +51,50 @@ def _get_redis() -> redis.Redis:
 
 
 def _store_result(job_id: str, result: dict) -> dict:
-    """Decide whether to store *result* inline or offload to volume.
+    """Offload *result* to the shared volume, returning a pointer dict.
+
+    Every result is written to ``JOB_OUTPUTS_PATH/<job_id>/JOB_RESULT_FILENAME`` on
+    the shared volume.  Redis keeps only the returned pointer dict
+    (``_result_ref`` + size), never the full result inline.
+
+    A filesystem error here (e.g. disk full / volume unmounted) raises
+    ``OSError``, which the ``run_tool_task`` handler catches and records as
+    a FAILURE — the write failed, so the job failed.
 
     Args:
         job_id: Used to build the output directory path.
         result: The dict returned by ``compute.run()``.
 
     Returns:
-        The dict to persist in Redis — either the original *result*
-        (if small enough) or a reference dict pointing to the volume file.
+        A reference dict pointing to the volume file.
     """
+    # Serialize once, then write that exact string — so _result_size_bytes
+    # matches the on-disk payload and we don't encode the result twice.
     serialized = json.dumps(result, ensure_ascii=False)
-
-    if len(serialized.encode("utf-8")) <= config.MAX_RESULT_BYTES:
-        return result
-
-    # Too large — write to shared volume.
-    output_dir = os.path.join(config.JOB_OUTPUTS_PATH, job_id)
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, "result.json")
-    with open(output_path, "w", encoding="utf-8") as fh:
-        json.dump(result, fh, ensure_ascii=False)
-
+    paths = config.job_output_paths(job_id)
+    os.makedirs(paths.directory, exist_ok=True)
+    with open(paths.result, "w", encoding="utf-8") as fh:
+        fh.write(serialized)
     return {
-        "_result_ref": output_path,
+        "_result_ref": paths.result,
         "_result_size_bytes": len(serialized.encode("utf-8")),
-        "preview": _make_preview(result),
     }
 
 
-def _make_preview(result: dict, max_items: int = 5) -> dict:
-    """Create a lightweight preview of *result* for the jobs list page.
+def _store_log(job_id: str, log_text: str) -> None:
+    """Write the captured job log to ``JOB_OUTPUTS_PATH/<job_id>/JOB_LOG_FILENAME``.
 
-    Args:
-        result: Full result dict.
-        max_items: Maximum number of top-level keys to include.
-
-    Returns:
-        A trimmed copy containing at most *max_items* keys.
+    Best-effort: logs are non-critical, so a filesystem error is logged and
+    swallowed rather than failing an otherwise-finished job.  ``get_job`` reads
+    this file back so the Redis hash keeps no log body.
     """
-    preview: dict = {}
-    for i, (key, value) in enumerate(result.items()):
-        if i >= max_items:
-            break
-        # Truncate large nested values to a summary string.
-        if isinstance(value, list) and len(value) > 3:
-            preview[key] = f"[{len(value)} items]"
-        elif isinstance(value, dict) and len(value) > 3:
-            preview[key] = f"{{{len(value)} keys}}"
-        else:
-            preview[key] = value
-    return preview
+    try:
+        paths = config.job_output_paths(job_id)
+        os.makedirs(paths.directory, exist_ok=True)
+        with open(paths.log, "w", encoding="utf-8") as fh:
+            fh.write(log_text)
+    except (OSError, ValueError):
+        logger.warning("Failed to write output log for job %s", job_id, exc_info=True)
 
 
 def _now_iso() -> str:
@@ -121,7 +115,7 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         2. Convert the tool slug to a Python module path and import it.
         3. Run the tool's ``compute.run(params)`` while capturing any
            ``print()`` output the algorithm produces.
-        4. Store the result back in Redis (or offload to disk if too big).
+        4. Offload the result to the shared volume and store a pointer in Redis.
         5. If anything crashes, store the full traceback so the user can
            see what went wrong.
 
@@ -179,20 +173,18 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
             result = compute_module.run(params)
 
         # Step 4: Persist the result.
-        # _store_result checks the size — if the result dict serialises to
-        # more than 512 KB of JSON, it writes the full data to a file on
-        # the shared Docker volume and returns a small pointer dict instead.
-        # This prevents Redis from running out of memory on large outputs.
+        # _store_result always writes the full result to a file on the shared
+        # Docker volume and returns a small pointer dict (ref + size).
+        # This keeps Redis lean regardless of result size.
         stored = _store_result(job_id, result)
 
-        # Write the final SUCCESS state + result + captured output to Redis.
+        # Write the final SUCCESS state + result pointer to Redis.
         r.hset(
             job_key,
             mapping={
                 "status": JobStatus.SUCCESS.value,
                 "completed_at": _now_iso(),
                 "result": json.dumps(stored),
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
@@ -207,25 +199,27 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
                 "status": JobStatus.TIMEOUT.value,
                 "completed_at": _now_iso(),
                 "error": "Job exceeded the maximum allowed duration and was stopped.",
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
     except Exception:
         # Step 5b: If the algorithm (or import) raised an exception, store
         # the full Python traceback so the user can diagnose the failure.
-        # Any partial stdout/stderr captured before the crash is also saved.
         r.hset(
             job_key,
             mapping={
                 "status": JobStatus.FAILURE.value,
                 "completed_at": _now_iso(),
                 "error": traceback.format_exc(),
-                "output_log": stdout_buf.getvalue() + stderr_buf.getvalue(),
             },
         )
 
     finally:
+        # Offload the captured log to the volume on every outcome (success,
+        # timeout, or crash) — the args are identical in all branches, so a
+        # single write here covers them and keeps no log body in Redis. Any
+        # partial stdout/stderr captured before a crash is preserved.
+        _store_log(job_id, stdout_buf.getvalue() + stderr_buf.getvalue())
         # Always refresh the TTL so the job metadata stays available for
         # the full lifecycle window regardless of outcome.
         r.expire(job_key, job_ttl)
@@ -234,3 +228,45 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
         # ownership checks and job listing even though the job still exists.
         session_key = f"session:{session_id}:jobs"
         r.expire(session_key, job_ttl)
+
+
+@celery_app.task(name="celery_beat_sweep_orphaned_outputs")
+def celery_beat_sweep_orphaned_outputs() -> int:
+    """Delete job_outputs dirs whose Redis ``job:<id>`` key has expired.
+
+    Runs periodically via Celery beat.  Reclaims disk for results whose
+    Redis metadata has aged out (TTL reached) but whose ``JOB_RESULT_FILENAME``
+    file still lingers on the shared volume.
+
+    Returns:
+        The number of orphaned directories removed.
+    """
+    outputs_dir = config.JOB_OUTPUTS_PATH
+    if not os.path.isdir(outputs_dir):
+        return 0
+
+    r = _get_redis()
+    removed = 0
+    # one EXISTS per dir, fine for a once-a-day background sweep.
+    # If dir counts get huge and sweep latency matters, pipeline the EXISTS.
+    with os.scandir(outputs_dir) as entries:
+        for entry in entries:
+            if entry.is_dir() and not r.exists(f"job:{entry.name}"):
+                try:
+                    # Funnel every per-job deletion through the one validated
+                    # helper, so a dir whose name escapes JOB_OUTPUTS_PATH
+                    # (e.g. a symlink out of the base) can never be rmtree'd.
+                    target = config.job_output_paths(entry.name).directory
+                except ValueError:
+                    logger.warning("Orphan sweep: skipping dir that escapes JOB_OUTPUTS_PATH: %r", entry.name)
+                    continue
+                try:
+                    shutil.rmtree(target)
+                    # Count only actual removals so the return value stays a
+                    # trustworthy signal of disk reclaimed.
+                    removed += 1
+                except OSError:
+                    logger.warning("Orphan sweep: failed to remove %s", target, exc_info=True)
+
+    logger.info("Orphan sweep: removed %d orphaned outputs", removed)
+    return removed
