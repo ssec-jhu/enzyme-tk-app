@@ -36,7 +36,7 @@ def mock_compute(fake_redis, tmp_path):
         mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
         mock.patch("enzyme_tk_app.app.backend.tasks.importlib") as mock_importlib,
         # Patch only JOB_OUTPUTS_PATH on the real config so the real
-        # ``job_output_dir`` helper and filename constants stay in play.
+        # ``job_output_paths`` helper and filename constants stay in play.
         mock.patch.object(config, "JOB_OUTPUTS_PATH", str(tmp_path / "job_outputs")),
         mock.patch(
             "enzyme_tk_app.app.backend.tasks.DEFAULT_MAX_DURATION",
@@ -277,14 +277,15 @@ def sweep_env(fake_redis, tmp_path):
     """Patch Redis and config for the orphan-sweep tests.
 
     Yields the ``job_outputs`` directory path (a ``Path``) so each test can
-    build result directories inside it.
+    build result directories inside it.  Patches only ``JOB_OUTPUTS_PATH`` on
+    the real config (not the whole module) so the sweep's real, validating
+    ``job_output_paths`` helper stays in play.
     """
     outputs_dir = tmp_path / "job_outputs"
     with (
         mock.patch("enzyme_tk_app.app.backend.tasks._get_redis", return_value=fake_redis),
-        mock.patch("enzyme_tk_app.app.backend.tasks.config") as cfg,
+        mock.patch.object(config, "JOB_OUTPUTS_PATH", str(outputs_dir)),
     ):
-        cfg.JOB_OUTPUTS_PATH = str(outputs_dir)
         yield outputs_dir
 
 
@@ -360,3 +361,27 @@ def test_sweep_does_not_count_failed_removal(sweep_env, caplog):
     assert removed == 0
     assert job_dir.exists()  # deletion failed, so the dir is still there
     assert "failed to remove" in caplog.text
+
+
+def test_sweep_skips_dir_that_escapes_base(sweep_env, tmp_path, caplog):
+    """An entry whose realpath escapes JOB_OUTPUTS_PATH is skipped, never rmtree'd.
+
+    Why this matters: the sweep deletes directories chosen by name, so the one
+    validated helper (``config.job_output_paths``) must be the choke point that
+    refuses a symlinked entry resolving outside the base *before* any deletion —
+    otherwise a crafted entry could reclaim disk outside the outputs volume.
+    """
+    sweep_env.mkdir(parents=True)
+    # A symlink inside the outputs dir whose target lives outside the base.
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("do not delete me")
+    (sweep_env / "escape").symlink_to(outside, target_is_directory=True)
+
+    with caplog.at_level(logging.WARNING):
+        removed = celery_beat_sweep_orphaned_outputs()
+
+    assert removed == 0
+    assert (outside / "keep.txt").exists()  # target untouched
+    assert (sweep_env / "escape").exists()  # symlink itself untouched
+    assert "escapes JOB_OUTPUTS_PATH" in caplog.text

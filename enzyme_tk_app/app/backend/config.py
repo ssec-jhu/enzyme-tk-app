@@ -6,6 +6,7 @@ Docker Compose or the orchestrator's secret/config mechanism.
 """
 
 import os
+from typing import NamedTuple
 
 # Redis connection URL used as both Celery broker and result backend.
 REDIS_URL: str = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
@@ -38,13 +39,41 @@ JOB_RESULT_FILENAME: str = "result.json"
 JOB_LOG_FILENAME: str = "output_log.txt"
 
 
-def job_output_dir(job_id: str) -> str:
-    """Return the shared-volume output directory ``JOB_OUTPUTS_PATH/<job_id>``.
+class JobPaths(NamedTuple):
+    """The on-disk paths for one job's offloaded output, all under ``directory``.
 
-    Both the result (``JOB_RESULT_FILENAME``) and log (``JOB_LOG_FILENAME``)
-    files for a job live inside this directory.
+    ``directory`` is ``JOB_OUTPUTS_PATH/<job_id>``;
+    ``result`` and ``log`` are the ``JOB_RESULT_FILENAME`` / ``JOB_LOG_FILENAME`` files inside it.
     """
-    return os.path.join(JOB_OUTPUTS_PATH, job_id)
+
+    directory: str
+    result: str
+    log: str
+
+
+def job_output_paths(job_id: str) -> JobPaths:
+    """Return the validated on-disk paths for *job_id*'s offloaded output.
+
+    Single choke point for turning a ``job_id`` into filesystem paths, so the
+    containment check here protects every consumer — including the destructive
+    ``shutil.rmtree`` in ``_delete_job_outputs`` — against a ``job_id`` that
+    tries to escape ``JOB_OUTPUTS_PATH`` (e.g. ``".."`` or an absolute path).
+
+    Raises:
+        ValueError: if *job_id* does not resolve to a direct child of
+            ``JOB_OUTPUTS_PATH``.
+    """
+    output_dir = os.path.join(JOB_OUTPUTS_PATH, job_id)
+    base = os.path.realpath(JOB_OUTPUTS_PATH)
+    # realpath resolves ".." *and* symlinks;
+    # require a direct child of the base.
+    if os.path.dirname(os.path.realpath(output_dir)) != base:
+        raise ValueError(f"job_id {job_id!r} escapes JOB_OUTPUTS_PATH")
+    return JobPaths(
+        directory=output_dir,
+        result=os.path.join(output_dir, JOB_RESULT_FILENAME),
+        log=os.path.join(output_dir, JOB_LOG_FILENAME),
+    )
 
 
 # Shared secret that unlocks the hidden ``/admin`` dashboard.  Supplied

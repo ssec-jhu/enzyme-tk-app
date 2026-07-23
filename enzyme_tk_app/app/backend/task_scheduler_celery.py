@@ -136,9 +136,14 @@ class CeleryTaskScheduler(TaskScheduler):
         ``JOB_OUTPUTS_PATH/<job_id>/``.  This helper deletes that directory tree
         so disk space is reclaimed when a job is deleted.
         """
-        output_dir = config.job_output_dir(job_id)
-        if os.path.isdir(output_dir):
-            shutil.rmtree(output_dir, ignore_errors=True)
+        try:
+            paths = config.job_output_paths(job_id)
+        except ValueError:
+            # Fail-safe: a job_id that escapes JOB_OUTPUTS_PATH must never rmtree.
+            logger.warning("Refusing to delete outputs for suspicious job_id %r", job_id)
+            return
+        if os.path.isdir(paths.directory):
+            shutil.rmtree(paths.directory, ignore_errors=True)
 
     def _read_job(self, job_id: str) -> JobInfo | None:
         """Read a job hash from Redis and convert it into a ``JobInfo`` object.
@@ -411,47 +416,40 @@ class CeleryTaskScheduler(TaskScheduler):
             return None
 
         # Both the result and log files live under this job's directory on the
-        # shared volume (a Docker volume mounted at `JOB_OUTPUTS_PATH``
-        # on both web + worker).
-        job_dir = config.job_output_dir(job_id)
+        # shared volume (a Docker volume mounted at ``JOB_OUTPUTS_PATH`` on both
+        # web + worker).  ``job_output_paths`` validates that job_id can't escape
+        # that directory (defence-in-depth; ``_owns_job`` already gated us).
+        try:
+            paths = config.job_output_paths(job_id)
+        except ValueError:
+            logger.warning("Suspicious job_id %r; refusing to load its files", job_id)
+            return None
 
-        # Load the result from the shared volume if the Redis hash
-        # contains a ``_result_ref``.
+        # Load the result from the shared volume if the Redis hash contains a
+        # ``_result_ref``.  That pointer is read back from Redis, so validate it
+        # resolves to exactly this job's result file before opening it — guards
+        # against a corrupted/tampered hash.  realpath resolves ".." *and*
+        # symlinks, so a symlink inside JOB_OUTPUTS_PATH can't redirect the read.
         if job.result and "_result_ref" in job.result:
             ref_path = job.result["_result_ref"]
-
-            # Validate the path resolves inside the expected output
-            # directory for this job.  This prevents an arbitrary file
-            # read if the Redis hash is ever corrupted or tampered with.
-            # We use realpath (not abspath) because it also resolves
-            # symlinks — abspath only normalises ".." segments, so a
-            # symlink inside JOB_OUTPUTS_PATH could still escape.
-            expected_dir = os.path.realpath(job_dir)
-            real_ref = os.path.realpath(ref_path)
-            if (
-                not real_ref.startswith(expected_dir + os.sep)
-                or os.path.basename(real_ref) != config.JOB_RESULT_FILENAME
-            ):
+            if os.path.realpath(ref_path) != os.path.realpath(paths.result):
                 logger.warning(
-                    "Suspicious _result_ref for job %s: %s (expected under %s/%s)",
+                    "Suspicious _result_ref for job %s: %s (expected %s)",
                     job_id,
                     ref_path,
-                    expected_dir,
-                    config.JOB_RESULT_FILENAME,
+                    paths.result,
                 )
             else:
                 try:
-                    with open(real_ref, encoding="utf-8") as fh:
+                    with open(paths.result, encoding="utf-8") as fh:
                         job.result = json.load(fh)
                 except (FileNotFoundError, json.JSONDecodeError):
                     logger.warning("Failed to load result from %s for job %s", ref_path, job_id)
 
-        # Load the captured log from the volume.  The path is built from the
-        # server-generated UUID job_id (never from Redis), so no traversal
-        # validation is needed.
-        log_path = os.path.join(job_dir, config.JOB_LOG_FILENAME)
+        # Load the captured log from the volume (path contained by the validated
+        # ``paths`` above).
         try:
-            with open(log_path, encoding="utf-8") as fh:
+            with open(paths.log, encoding="utf-8") as fh:
                 job.output_log = fh.read()
         except OSError:
             # No log file yet (job unfinished) or the best-effort write failed.

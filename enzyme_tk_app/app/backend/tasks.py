@@ -71,16 +71,12 @@ def _store_result(job_id: str, result: dict) -> dict:
     # Serialize once, then write that exact string — so _result_size_bytes
     # matches the on-disk payload and we don't encode the result twice.
     serialized = json.dumps(result, ensure_ascii=False)
-    output_dir = config.job_output_dir(job_id)
-    os.makedirs(output_dir, exist_ok=True)
-    # get the job-specific output directory and ensure
-    # it exists before writing the result file.
-    output_path = os.path.join(output_dir, config.JOB_RESULT_FILENAME)
-    with open(output_path, "w", encoding="utf-8") as fh:
-        # Write the serialized JSON to the file.
+    paths = config.job_output_paths(job_id)
+    os.makedirs(paths.directory, exist_ok=True)
+    with open(paths.result, "w", encoding="utf-8") as fh:
         fh.write(serialized)
     return {
-        "_result_ref": output_path,
+        "_result_ref": paths.result,
         "_result_size_bytes": len(serialized.encode("utf-8")),
     }
 
@@ -93,11 +89,11 @@ def _store_log(job_id: str, log_text: str) -> None:
     this file back so the Redis hash keeps no log body.
     """
     try:
-        output_dir = config.job_output_dir(job_id)
-        os.makedirs(output_dir, exist_ok=True)
-        with open(os.path.join(output_dir, config.JOB_LOG_FILENAME), "w", encoding="utf-8") as fh:
+        paths = config.job_output_paths(job_id)
+        os.makedirs(paths.directory, exist_ok=True)
+        with open(paths.log, "w", encoding="utf-8") as fh:
             fh.write(log_text)
-    except OSError:
+    except (OSError, ValueError):
         logger.warning("Failed to write output log for job %s", job_id, exc_info=True)
 
 
@@ -257,12 +253,20 @@ def celery_beat_sweep_orphaned_outputs() -> int:
         for entry in entries:
             if entry.is_dir() and not r.exists(f"job:{entry.name}"):
                 try:
-                    shutil.rmtree(entry.path)
+                    # Funnel every per-job deletion through the one validated
+                    # helper, so a dir whose name escapes JOB_OUTPUTS_PATH
+                    # (e.g. a symlink out of the base) can never be rmtree'd.
+                    target = config.job_output_paths(entry.name).directory
+                except ValueError:
+                    logger.warning("Orphan sweep: skipping dir that escapes JOB_OUTPUTS_PATH: %r", entry.name)
+                    continue
+                try:
+                    shutil.rmtree(target)
                     # Count only actual removals so the return value stays a
                     # trustworthy signal of disk reclaimed.
                     removed += 1
                 except OSError:
-                    logger.warning("Orphan sweep: failed to remove %s", entry.path, exc_info=True)
+                    logger.warning("Orphan sweep: failed to remove %s", target, exc_info=True)
 
     logger.info("Orphan sweep: removed %d orphaned outputs", removed)
     return removed
