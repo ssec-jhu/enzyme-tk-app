@@ -167,5 +167,17 @@ cython_debug/
 
 # File system
 .DS_Store
-/enzyme_tk_app/app/data/foldseek_db/
-/enzyme_tk_app/app/data/foldseek_models/
+
+# Standalone foldseek DB builder: generated DB + downloaded ProstT5 weights
+/scripts/foldseek_db_build/output/
+# App data: large downloaded/generated sets — ignore all except the sample structures/
+/enzyme_tk_app/app/data/*
+!/enzyme_tk_app/app/data/structures/
+
+# .claude/ is local tooling (GSD, settings, worktrees); track only the project agent sources
+/.claude/*
+!/.claude/agents/
+/.claude/agents/gsd-*.md
+
+# .planning/ is GSD's local working directory (roadmaps, codebase maps, reviews) — regenerated, not shared
+/.planning/

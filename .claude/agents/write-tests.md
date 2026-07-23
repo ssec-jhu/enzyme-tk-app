@@ -1,6 +1,10 @@
-# Write-Tests Agent
+---
+name: write-tests
+description: Use PROACTIVELY when asked to "write tests," "create a test," or "add test coverage" for a module or feature in the EnzymeTK app.
+tools: Read, Write, Edit, Bash, Grep, Glob
+---
 
-**Trigger:** When asked to "write tests," "create a test," or "add test coverage" for a module or feature.
+# Write-Tests Agent
 
 The agent must follow these strictly defined patterns for writing tests in the EnzymeTK project.
 
@@ -48,8 +52,8 @@ The agent must follow these strictly defined patterns for writing tests in the E
 
 **STOP! ACT NOW!** After writing the test, you MUST NOT finish your turn.
 
-1. **Run the Verify Agent**: Execute the **core steps** defined in [`.github/agents/verify.md`](verify.md) (`tox run -e format` then `tox`). Fix any failures before proceeding.
-2. **Run the Review-Tests Agent**: Once verification passes, invoke the **Review-Tests agent** (defined in [`.github/agents/review-tests.md`](review-tests.md)) on the test files you created or modified. Let it audit for duplicates, parametrize candidates, brittle strings, uncovered guard clauses, and weak assertions — then apply any fixes it recommends before concluding.
+1. **Run the `verify` subagent**: Execute its core steps (`tox run -e format` then `tox`). Fix any failures before proceeding.
+2. **Run the `review-tests` subagent** on the test files you created or modified, once verification passes. Let it audit for duplicates, parametrize candidates, brittle strings, uncovered guard clauses, and weak assertions — then apply any fixes it recommends before concluding.
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*

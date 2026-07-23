@@ -1,0 +1,25 @@
+---
+name: backend-agent
+description: Use PROACTIVELY when asked to modify or interact with the backend task scheduler, Redis configuration, or job processing logic in the EnzymeTK app.
+tools: Read, Write, Edit, Grep, Glob, Bash
+---
+
+# Backend Agent
+
+This agent defines the mandatory patterns and architectural invariants for backend code in the EnzymeTK project.
+
+## Backend Architecture
+- The backend task scheduling system lives in `enzyme_tk_app/app/backend/`.
+- All Dash UI code programs against the `TaskScheduler` ABC — never import Celery, Redis, or backend internals in UI code.
+- Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
+- Session management uses anonymous UUID cookies (`etk_session_id`). Access the session ID via `flask.g.session_id`.
+- Each tool that does computation adds `compute.py` exporting `def run(params: dict) -> dict`. The `params` dict matches the form fields from the modal. The returned dict must be JSON-serialisable. The result and log are written to disk using the shared constants from `config.py`.
+- **Result + log offload:** *Every* job's result and captured log are written to the shared volume, never stored inline in Redis. `tasks._store_result` writes `config.JOB_RESULT_FILENAME` (Redis keeps only a `{"_result_ref": ...}` pointer) and `tasks._store_log` writes `config.JOB_LOG_FILENAME` (Redis keeps *no* log body — `_read_job` defaults the field to `""` and `get_job` overlays the file from disk). Tool authors just return a plain dict. There is **no size threshold** — do not reintroduce one.
+- **Single source of truth for output paths:** call `config.job_output_paths(job_id)` — the one validated choke point that turns a `job_id` into filesystem paths. It returns a `JobPaths(directory, result, log)` NamedTuple (the job dir plus the `JOB_RESULT_FILENAME` / `JOB_LOG_FILENAME` files inside it) and **raises `ValueError` if the `job_id` would escape `JOB_OUTPUTS_PATH`** (`..`, absolute, or nested), so every consumer — including the destructive `shutil.rmtree` in `_delete_job_outputs`, which catches it and refuses to delete — is guarded against path traversal. Use the tuple's `.directory` / `.result` / `.log` fields; never hardcode `os.path.join(JOB_OUTPUTS_PATH, job_id)`, never re-join the filename constants yourself, and never bypass this helper — the writer (`tasks.py`) and reader (`task_scheduler_celery.py`) must not drift.
+- **Don't persist redundant/placeholder fields in Redis.** If a reader already defaults a missing hash field, do not write an empty value for it (keep the hash minimal). Collapse per-branch cleanup that is identical across success/timeout/failure into the single `finally` block rather than repeating it.
+- The orphan sweep (`tasks.celery_beat_sweep_orphaned_outputs`, fired by Celery `beat` every `CELERY_SWEEP_INTERVAL_SECONDS`) deletes any `JOB_OUTPUTS_PATH/<job_id>` dir whose `job:<id>` key has expired; `_delete_job_outputs` / `clear_jobs` / `admin_purge_all` remove them on explicit delete.
+- Jobs are stored in Redis with a TTL (default 24h).
+- **Redis TTL invariant — dual-key sync:** Every job has two Redis keys: a *hash* (`job:<job_id>`) and a membership entry in a *session set* (`session:<session_id>:jobs`). Whenever code refreshes, sets, or resets the TTL on the job hash it **must also refresh the TTL on the session set** (and vice-versa). If only one key's TTL is extended, the other can expire first — breaking ownership checks (`_owns_job`), job listing (`list_jobs`), or leaving orphan data. Audit both keys any time you add or modify a method that calls `expire`, `hset` on a status transition, or `delete` on either key.
+- **Session-set TTL is extend-only:** the session set is shared across every job the session has ever submitted, so its TTL must only ever be *extended*, never shortened — use Redis's native `expire(key, ttl, gt=True)` at every touch point that refreshes it after job submission. Without `gt=True`, a short-lived job's TTL refresh can overwrite (shorten) the session set's TTL even while a sibling long-running job is still alive, causing the session set to expire early. The one documented exception is `submit_job`'s very first `expire()` on a brand-new session set, which may still be a persistent/no-TTL key — Redis treats "no TTL" as infinite for `GT` comparison, so `gt=True` there would silently no-op and the key would never get a TTL at all.
+- The `docker-compose.yml` orchestrates four services — `web`, `redis`, `worker`, and a single-replica `beat` (the orphan-sweep scheduler) — with a `job-outputs` volume shared between `web` and `worker`. `beat` only schedules, so it needs no volume.
+- Shared constants like `TERMINAL_STATUSES` live in `models.py` — import from there, never duplicate.

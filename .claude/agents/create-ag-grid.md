@@ -1,6 +1,10 @@
-# AG Grid Table Agent
+---
+name: create-ag-grid
+description: Use PROACTIVELY when creating, modifying, or adding columns to an AG Grid results table (e.g. results.py) in the EnzymeTK app.
+tools: Read, Write, Edit, Bash, Grep, Glob
+---
 
-**Trigger:** When creating, modifying, or adding columns to an AG Grid results table (e.g., `results.py`).
+# AG Grid Table Agent
 
 This agent defines the rules for building AG Grid tables in the app. All grids use the **Balham** theme (`ag-theme-balham`) and are constructed via the shared `build_ag_grid()` helper. The CSS overrides in `09-ag-grid.css` map the grid surfaces to the app's design tokens from `00-variables.css`.
 
@@ -216,8 +220,8 @@ dashGridOptions={
 ## MANDATORY AFTER-CREATION WORKFLOW
 
 After creating or modifying AG Grid table code, you **MUST** execute the
-**Verify Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
-(`tox run -e format` then `tox`). Fix any failures before concluding.
+**`verify` subagent's** core steps (`tox run -e format` then `tox`). Fix any
+failures before concluding.
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*

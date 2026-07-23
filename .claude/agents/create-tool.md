@@ -1,6 +1,10 @@
-# Create Tool Agent
+---
+name: create-tool
+description: Use PROACTIVELY when asked to "create a new tool", "add a new algorithm", or "generate a tool scaffold" in the EnzymeTK app.
+tools: Read, Write, Edit, Bash, Grep, Glob
+---
 
-**Trigger:** When asked to "create a new tool", "add a new algorithm", or "generate a tool scaffold".
+# Create Tool Agent
 
 This agent follows the architectural guidelines for tool discovery, single-source slug invariants, and module structure in the EnzymeTK project.
 
@@ -46,9 +50,9 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 
 ## 3. UI & Modal Delegation
 > [!IMPORTANT]
-> If the task involves creating or modifying a `modal.py` file, you **MUST** trigger the [**Modal Creation Agent**](create-modal.md) and follow its strict layout and styling rules.
+> If the task involves creating or modifying a `modal.py` file, you **MUST** trigger the **`create-modal` subagent** and follow its strict layout and styling rules.
 >
-> If the task involves creating or modifying any CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style), you **MUST** follow the [**Write-CSS Agent**](write-css.md) for banner/section-comment style and indentation.
+> If the task involves creating or modifying any CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style), you **MUST** follow the **`write-css` subagent** for banner/section-comment style and indentation.
 
 ### Modal dropdowns, inputs, and form controls
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.
@@ -62,18 +66,18 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
   - `_params_exclude` — list of param keys to hide from the auto-rendered input parameters table.
   - `dataframe` — tabular results (`{"columns": [...], "data": [...]}`).
   - Any tool-specific computed values that `results.py` explicitly reads from `job.result`.
-- For callback implementation patterns (guard clauses, decorator syntax, naming), follow the [Write-Callback Agent](write-callback.md) and examine existing tools.
+- For callback implementation patterns (guard clauses, decorator syntax, naming), follow the **`write-callback` subagent** and examine existing tools.
 
 ## 5. Reference Material
-Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, follow the [Write-Callback Agent](write-callback.md) and examine existing tools like `substrate_product_similarity`.
+Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, follow the **`write-callback` subagent** and examine existing tools like `substrate_product_similarity`.
 
 ---
 
 ## MANDATORY AFTER-CREATION WORKFLOW
 
-After creating or modifying tool files, you **MUST** execute the **Verify
-Agent** core steps defined in [`.github/agents/verify.md`](verify.md)
-(`tox run -e format` then `tox`). Fix any failures before concluding.
+After creating or modifying tool files, you **MUST** execute the **`verify`
+subagent's** core steps (`tox run -e format` then `tox`). Fix any failures
+before concluding.
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*
