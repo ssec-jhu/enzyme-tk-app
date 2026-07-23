@@ -98,7 +98,7 @@ in `.github/agents/<name>.agent.md` and are **symlinks** to the `.claude/agents/
 sources — edit the source; the link needs no regeneration. Agents cannot invoke each other; the
 main assistant chains them when a flow needs several in sequence:
 
-- **`create-tool`** — architectural guidelines and module structure for adding a new tool (algorithm). For any modal UI it creates, it MUST delegate to `create-modal`; for callback code, follow `write-callback`.
+- **`create-tool`** — architectural guidelines and module structure for adding a new tool (algorithm). For any modal UI it creates, it reads and applies `create-modal`'s conventions; for callback code, `write-callback`'s.
 - **`backend-agent`** — backend task scheduler modifications and Redis TTL invariants.
 - **`write-callback`** — detailed callback authoring patterns (guard clauses vs. intentional DOM writes, decorator syntax, naming).
 - **`write-css`** — CSS formatting rules (banners, comments, indentation) for `enzyme_tk_app/app/assets/`.

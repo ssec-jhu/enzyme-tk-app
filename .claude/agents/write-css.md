@@ -85,7 +85,8 @@ Rules:
 
 ## 5. Final Step — Verify
 
-After writing or editing CSS, run the **`verify` subagent**. `ruff` does not
+After writing or editing CSS, execute the **`verify` subagent's** core steps
+(`tox run -e format` then `tox`). `ruff` does not
 format CSS, so these conventions are enforced by this agent, not the
 formatter — re-read the changed block and confirm banner/separator style,
 4-space indent, and ~79-col padding before finishing.

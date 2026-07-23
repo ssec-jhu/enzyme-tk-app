@@ -52,8 +52,8 @@ The agent must follow these strictly defined patterns for writing tests in the E
 
 **STOP! ACT NOW!** After writing the test, you MUST NOT finish your turn.
 
-1. **Run the `verify` subagent**: Execute its core steps (`tox run -e format` then `tox`). Fix any failures before proceeding.
-2. **Run the `review-tests` subagent** on the test files you created or modified, once verification passes. Let it audit for duplicates, parametrize candidates, brittle strings, uncovered guard clauses, and weak assertions — then apply any fixes it recommends before concluding.
+1. **Run `verify`**: Execute the `verify` subagent's core steps (`tox run -e format` then `tox`). Fix any failures before proceeding.
+2. **Review the tests inline**: once verification passes, read `.claude/agents/review-tests.md` and apply its checks to the test files you created or modified — audit for duplicates, parametrize candidates, brittle strings, uncovered guard clauses, and weak assertions, and apply any fixes before concluding. (You cannot spawn the `review-tests` subagent; perform its review yourself.)
 
 *Do not rely on the user to run these commands.*
 *Do not just summarize what to do.*

@@ -48,11 +48,12 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 - Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a new constant there if a needed path is missing.
 - Keep checks cheap and side-effect-free (existence/non-empty checks): `check_data()` runs at home-page render time. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
 
-## 3. UI & Modal Delegation
+## 3. UI & Modal Conventions
 > [!IMPORTANT]
-> If the task involves creating or modifying a `modal.py` file, you **MUST** trigger the **`create-modal` subagent** and follow its strict layout and styling rules.
+> You cannot spawn other subagents — consult the convention files below by **reading them** (you have the `Read` tool) and applying their rules inline. Ignore each file's trailing "run verify" / after-* workflow step; run `verify` once at the end via this agent's own MANDATORY AFTER-CREATION WORKFLOW.
 >
-> If the task involves creating or modifying any CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style), you **MUST** follow the **`write-css` subagent** for banner/section-comment style and indentation.
+> - Creating or modifying a `modal.py` file? You **MUST** read `.claude/agents/create-modal.md` and apply its layout/styling rules (§1–10 — module docstring, section headers, `themed-control` inputs, footer, results placeholder).
+> - Creating or modifying CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style)? You **MUST** read `.claude/agents/write-css.md` and apply its banner/section-comment and 4-space-indent conventions.
 
 ### Modal dropdowns, inputs, and form controls
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.
@@ -66,10 +67,10 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
   - `_params_exclude` — list of param keys to hide from the auto-rendered input parameters table.
   - `dataframe` — tabular results (`{"columns": [...], "data": [...]}`).
   - Any tool-specific computed values that `results.py` explicitly reads from `job.result`.
-- For callback implementation patterns (guard clauses, decorator syntax, naming), follow the **`write-callback` subagent** and examine existing tools.
+- For callback implementation patterns (guard clauses, decorator syntax, naming), read and follow `.claude/agents/write-callback.md`, and examine existing tools.
 
 ## 5. Reference Material
-Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, follow the **`write-callback` subagent** and examine existing tools like `substrate_product_similarity`.
+Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, read and follow `.claude/agents/write-callback.md`, and examine existing tools like `substrate_product_similarity`.
 
 ---
 

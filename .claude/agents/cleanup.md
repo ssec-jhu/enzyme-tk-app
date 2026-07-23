@@ -303,4 +303,4 @@ Then:
 - `server = app.server` in `app.py` is used by gunicorn — never flag it.
 - Test files (`test_*.py`) are consumers, not candidates for cleanup.
   Do not flag symbols that are only used in tests as "unused".
-- After cleanup, always run the `verify` subagent to keep the codebase green.
+- After cleanup, always run the `verify` subagent's core steps (`tox run -e format` then `tox`) to keep the codebase green.
