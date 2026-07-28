@@ -79,6 +79,13 @@ to change**. Common offenders:
 - `assert col_def["headerName"] == col_def["field"]` — comparing a header to its
   own field is an invariant, not UI copy (Func-E's grid guarantees it; see
   `test_tools_funce.py`). Only a hard-coded label literal is brittle.
+- A spelled-out list of **dataframe / column field names** compared as a whole
+  (e.g. `EXPECTED_FIELDS` in `test_tools_funce.py`, asserted against
+  `_get_column_defs()`). Field names are a library's output contract, not prose,
+  and `create-ag-grid` §2.6 requires them written out one per line rather than
+  generated. Do **not** propose replacing such a list with a loop/comprehension,
+  or with an import of the very constant the module under test uses — either
+  change makes the test agree with the code instead of pinning it.
 
 ### 4. Uncovered Early Returns & Guard Clauses
 

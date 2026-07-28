@@ -135,7 +135,32 @@ Pick the treatment from the **data**, not by habit: check the actual value range
 
 Do **not** inline `{"function": "params.value != null ? params.value.toFixed(N) : ''"}` at a call site — that string existed in two files before this helper and drifted.
 
-### 2.6 — Header labels (`headerName`) — optional, and Func-E opts out
+### 2.6 — Write every column out in full
+
+`_get_column_defs()` is the **one place a developer can see what the table contains**. Give every column its own visible line with its field name spelled out literally. Group them with banner comments (`# ── Identity ───`, `# ── BLAST score columns ───`) — see `tools/sequence_similarity/results.py` for the reference shape.
+
+**Never synthesise a field name.** No loop, comprehension, or f-string that builds `field` from some other list:
+
+```python
+# WRONG — 26 columns invisible at the call site, and PREDICTED_FEATURES is a
+# hand-copy of a library constant that will drift from the actual data.
+for feature in PREDICTED_FEATURES:
+    defs.append(numeric_col_def(f"{PREFIX}_{feature}_mean", decimals=4))
+
+# RIGHT — one line per column, name as it arrives in the dataframe.
+numeric_col_def("Funce_substrates_MolWt_mean", decimals=4),
+numeric_col_def("Funce_substrates_MolWt_std", decimals=4),
+```
+
+A generated name hides the column *and* silently drops it: `build_ag_grid()` renders only fields that have a def, so a column the generating list fails to name never appears — no error, no log. Repetition here is the feature; it is what makes the drift visible in review.
+
+This is a rule about generating **names**, not about sharing **rules**. Reuse is still expected everywhere it applies: `numeric_col_def`, `sequence_col_def`, `shared_col_defs()`, `col.COL_*` constants from `utils/columns.py`, and a shared `cellClass` for a recurring column type. Factor out styling and behaviour; spell out identity.
+
+Use `col.COL_*` for any column shared across tools (`col.COL_ENTRY`, `col.COL_DATABASE`, `col.COL_SEQUENCE`). Use a bare literal only when the name is one specific library's output contract — Func-E's `Funce_*` columns are named by `enzymetk`, not by this app, so writing them literally is what keeps them traceable.
+
+A module constant holding **one** whole column name is fine and is not synthesis — `funce/results.py` uses `PRED_COL` (`"Funce_prediction"`, imported from `compute.py`) because `compute.py` sorts on the same column and the two must not drift. The line still names exactly one column. What §2.6 forbids is a constant that a loop expands into *many* names.
+
+### 2.7 — Header labels (`headerName`) — optional, and Func-E opts out
 
 `headerName` is **optional**. Omit it and AG Grid humanises the field
 (`camelCaseToHumanText`); the `header=` argument of `numeric_col_def` /
@@ -148,10 +173,16 @@ enzymetk column name (`Funce_prediction`, `Funce_substrates_MolWt_mean`, `databa
 Two reasons: a scientist must be able to trace a number back to the exact enzymetk
 column, and AG Grid's humanisation *misreports* these names
 (`Funce_substrates_MolWt_mean` → "Funce_substrates Mol Wt_mean").
+
+`results_layout()` there also appends a bare `{"field": c, "headerName": c}` for any
+payload column the list does not name, so a column added by a newer `enzymetk` shows up
+unstyled rather than vanishing. That fallback is the safety net for §2.6's explicit list —
+if you extend the list, leave it in place.
+
 Do not "fix" those headers, do not propagate the pattern to other tools, and keep the
 guard tests in `enzyme_tk_app/app/tests/test_tools_funce.py` if you touch that function.
 
-### 2.7 — Column ordering convention
+### 2.8 — Column ordering convention
 
 Tool-specific columns come **first**, then append `shared_col_defs()`:
 

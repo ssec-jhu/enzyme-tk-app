@@ -95,8 +95,9 @@ a new tool that diverges is a bug, not a style choice.
    `Database` card holding a filename.
 7. **Show the origin in the results grid:** `{"field": col.COL_DATABASE, "headerName":
    "Database", "width": 140}`. The *column* is the contract; its label is not. Func-E
-   (`tools/funce/results.py`) deliberately sets every `headerName` to its own `field`, so
-   its origin column reads `database` — a user-requested exception, not a bug to fix.
+   (`tools/funce/results.py`) uses `col.COL_DATABASE` like every other tool — only its
+   **header** differs: it sets every `headerName` to its own `field`, so the origin column
+   is labelled `database`. A user-requested labelling exception, not a bug to fix.
 8. **Dependent dropdowns take the union.** Anything derived from the selection (EC-number
    filter, cofactor filter) is rebuilt as the union across the selected files and clears its
    own value when the selection changes, so a stale filter is never carried over.

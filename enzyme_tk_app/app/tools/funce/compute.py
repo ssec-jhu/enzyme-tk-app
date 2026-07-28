@@ -21,22 +21,58 @@ import pandas as pd
 from enzyme_tk_app.app.paths import FUNCE_DB_DIR, FUNCE_MODELS_DIR
 from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES
 
-# Reaction-side embedding columns the Funce step consumes.
+# Reaction-side embedding columns the Funce step reads — enzymetk's own
+# defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_encode_reaction``
+# fills them in; the protein side comes from the database pickle.
 RXN_COLS = ["rxnfp", "substrate_unimol_repr", "product_unimol_repr"]
 
-# Protein-side embedding column, supplied by the database pickle.
-PROTEIN_EMB_COL = "esm3_mean"
+# The step's activity score.  enzymetk prefixes its output columns with its
+# ``name`` argument, which defaults to "Funce" — we leave that default alone.
+PRED_COL = "Funce_prediction"
 
-# Every embedding column — dropped before the result is serialised to JSON.
-EMBED_COLS = [PROTEIN_EMB_COL, *RXN_COLS]
-
-# Columns every database pickle must carry to be scorable.
-REQUIRED_DB_COLS = ("Entry", "Sequence", PROTEIN_EMB_COL)
-
-# Prefix for the columns Funce appends.  Fixed (rather than derived from the
-# task name) so the results grid can declare its columns up front.
-PREDICTION_NAME = "Funce"
-PRED_COL = f"{PREDICTION_NAME}_prediction"
+# ── The only columns removed from the result ────────────────────────────────
+# Everything else the Funce step returns reaches the results grid untouched.
+# Delete a name from this list to keep that column; a name that the installed
+# enzymetk no longer emits is ignored rather than an error.
+DROPPED_COLS = [
+    # Embeddings.  Every cell holds an ndarray, which ``json.dumps`` cannot
+    # encode — keeping one of these breaks the result payload.
+    "esm3_mean",
+    "rxnfp",
+    "substrate_unimol_repr",
+    "product_unimol_repr",
+    # enzymetk's per-model scratch columns.  ``retransform_scaled_predictions``
+    # rewrites them once per ensemble model, so only the last model's values
+    # survive — the ensemble answer is the ``Funce_*_mean`` / ``_std`` pair
+    # instead.  These are plain floats, so keeping one is safe, just misleading.
+    "pred_Activity",
+    "pred_Length",
+    "inverse_transformed_pred_Length",
+    "pred_Mass",
+    "inverse_transformed_pred_Mass",
+    "pred_Polarity",
+    "inverse_transformed_pred_Polarity",
+    "pred_temperature",
+    "inverse_transformed_pred_temperature",
+    "pred_substrates_MolWt",
+    "inverse_transformed_pred_substrates_MolWt",
+    "pred_substrates_MolLogP",
+    "inverse_transformed_pred_substrates_MolLogP",
+    "pred_substrates_MaxPartialCharge",
+    "inverse_transformed_pred_substrates_MaxPartialCharge",
+    "pred_substrates_MinPartialCharge",
+    "inverse_transformed_pred_substrates_MinPartialCharge",
+    "pred_products_MolWt",
+    "inverse_transformed_pred_products_MolWt",
+    "pred_products_TPSA",
+    "inverse_transformed_pred_products_TPSA",
+    "pred_products_MolLogP",
+    "inverse_transformed_pred_products_MolLogP",
+    "pred_products_MaxPartialCharge",
+    "inverse_transformed_pred_products_MaxPartialCharge",
+    "pred_products_MinPartialCharge",
+    "inverse_transformed_pred_products_MinPartialCharge",
+]
 
 
 def _resolve_database(database: str):
@@ -82,6 +118,10 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
     if not databases:
         raise ValueError("At least one protein database must be selected.")
 
+    # Minimum a pickle must carry to be scorable: an identifier, the sequence,
+    # and the protein embedding (enzymetk's ``protein_emb_col`` default).
+    required_cols = ("Entry", "Sequence", "esm3_mean")
+
     frames = []
     skipped: list[str] = []
     for name in databases:
@@ -94,7 +134,7 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
             skipped.append(name)
             continue
 
-        if any(c not in frame.columns for c in REQUIRED_DB_COLS) or frame.empty:
+        if any(c not in frame.columns for c in required_cols) or frame.empty:
             skipped.append(name)
             continue
 
@@ -197,18 +237,16 @@ def run(params: dict) -> dict:
         db_df[col] = [vector] * candidate_count
 
     # Initialize the Funce step for scoring the reaction against the protein database.
-    step = Funce("Entry", name=PREDICTION_NAME, model_dir=str(FUNCE_MODELS_DIR))
+    step = Funce("Entry", model_dir=str(FUNCE_MODELS_DIR))
     scored = step.execute(db_df)
 
     # The step leaves ranking to the caller.
     ranked = scored.sort_values(PRED_COL, ascending=False).head(top_n).reset_index(drop=True)
 
-    # Drop the embeddings and the per-model intermediates that
-    # ``retransform_scaled_predictions`` leaves on the frame — they hold raw
-    # ndarrays/tensors that would bloat and break the JSON result payload.
-    drop_cols = [c for c in EMBED_COLS if c in ranked.columns]
-    drop_cols += [c for c in ranked.columns if c.startswith(("pred_", "inverse_transformed_"))]
-    ranked = ranked.drop(columns=drop_cols)
+    # Everything the step returned is kept except the columns named at the top
+    # of this module — see ``DROPPED_COLS``.  A column enzymetk adds later is
+    # kept and shown rather than silently discarded.
+    ranked = ranked.drop(columns=DROPPED_COLS, errors="ignore")
 
     run_time = round(time.monotonic() - run_time_start, 3)
 
