@@ -135,7 +135,23 @@ Pick the treatment from the **data**, not by habit: check the actual value range
 
 Do **not** inline `{"function": "params.value != null ? params.value.toFixed(N) : ''"}` at a call site — that string existed in two files before this helper and drifted.
 
-### 2.6 — Column ordering convention
+### 2.6 — Header labels (`headerName`) — optional, and Func-E opts out
+
+`headerName` is **optional**. Omit it and AG Grid humanises the field
+(`camelCaseToHumanText`); the `header=` argument of `numeric_col_def` /
+`sequence_col_def` just sets it. Most tools pass a friendly label
+(`"Alignment Length"`, `"Frac. Identity"`) — keep doing that for new tools.
+
+**`tools/funce/results.py` is a deliberate exception**: `_get_column_defs()` ends with
+`[d | {"headerName": d["field"]} for d in defs]`, so every Func-E header is the raw
+enzymetk column name (`Funce_prediction`, `Funce_substrates_MolWt_mean`, `database`).
+Two reasons: a scientist must be able to trace a number back to the exact enzymetk
+column, and AG Grid's humanisation *misreports* these names
+(`Funce_substrates_MolWt_mean` → "Funce_substrates Mol Wt_mean").
+Do not "fix" those headers, do not propagate the pattern to other tools, and keep the
+guard tests in `enzyme_tk_app/app/tests/test_tools_funce.py` if you touch that function.
+
+### 2.7 — Column ordering convention
 
 Tool-specific columns come **first**, then append `shared_col_defs()`:
 

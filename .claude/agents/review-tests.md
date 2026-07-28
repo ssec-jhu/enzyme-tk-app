@@ -76,6 +76,9 @@ to change**. Common offenders:
 - Asserting on **enum values** or constants imported from the source.
 - Pattern-based assertions (`re.search`, `in`, substring) that test for
   the *presence* of a key term rather than an exact match.
+- `assert col_def["headerName"] == col_def["field"]` — comparing a header to its
+  own field is an invariant, not UI copy (Func-E's grid guarantees it; see
+  `test_tools_funce.py`). Only a hard-coded label literal is brittle.
 
 ### 4. Uncovered Early Returns & Guard Clauses
 

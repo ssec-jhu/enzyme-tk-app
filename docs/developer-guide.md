@@ -269,7 +269,7 @@ Every tool that reads reference databases from the data directory follows the sa
 | `compute.py` | `params["databases"]` is a `list[str]`. Load each one, tag its rows with the `database` column (`COL_DATABASE`), and `pd.concat` them into **one** reference set so ranking is global rather than per-database. |
 | `compute.py` | An unreadable database is **skipped**, not fatal — collect its name and keep going. Raise only when *every* selection failed; an empty grid would otherwise be indistinguishable from a legitimate "no hits found". |
 | `compute.py` | Report the outcome in `_stat_cards`: a **Databases Searched** count, plus a **Databases Skipped** card naming the failures when there are any. Never a single `Database` card holding a filename. |
-| `results.py` | Include the `database` column in the grid so a hit's origin is visible: `{"field": col.COL_DATABASE, "headerName": "Database", "width": 140}`. |
+| `results.py` | Include the `database` column in the grid so a hit's origin is visible: `{"field": col.COL_DATABASE, "headerName": "Database", "width": 140}`. The column is required; the label is not — Func-E shows raw field names instead (see §4.2, *Header labels*). |
 | Dependent dropdowns | Anything derived from the selection (e.g. the EC-number filter) offers the **union** across the selected files and clears its own value when the selection changes. |
 
 `validate_db_names(names, suffix=None)` is the single validator for all of them — names arrive from the browser and become filesystem paths, so they are checked at that trust boundary even though the UI only ever offers legitimate options. It **verifies without modifying**: an invalid name is rejected, never repaired. Following `validate_top_n`, it returns an error message (or `None` when valid) for an empty selection or a name that is not a bare `[0-9A-Za-z_-]+` plus the optional suffix (`".csv"`, `".pkl"`, or `None` for directory-style FoldSeek databases) — return that message straight into the modal's submission-results div. It *raises* `TypeError` if handed a bare string instead of a list, since that is a programming error (a `multi=False` dropdown) rather than bad user input.
@@ -320,6 +320,8 @@ Your `results_layout(job: JobInfo) -> html.Div` function receives the completed 
 | Long text (wrap) | `True` | `True` | `True` | Add `cellClass: "cell-wrap-dash-ag-grid"` |
 
 **Performance note:** Only enable `autoHeight` on columns that truly need it. Fixed-height rows render significantly faster.
+
+**Header labels:** `headerName` is optional — omit it and AG Grid humanises the field name; the `header=` argument of `numeric_col_def` / `sequence_col_def` sets it. Most tools pass a friendly label (`"Alignment Length"`), and new tools should. **Func-E is a deliberate exception:** `tools/funce/results.py` sets every `headerName` to its own `field`, so its headers are the raw enzymetk column names (`Funce_prediction`, `Funce_substrates_MolWt_mean`, `database`) — a number must be traceable to the exact enzymetk column, and humanisation misreports these names (`Funce_substrates_MolWt_mean` → "Funce_substrates Mol Wt_mean"). `enzyme_tk_app/app/tests/test_tools_funce.py` guards it; do not copy the pattern to other tools.
 
 ### 4.3 Result page layout schematic
 

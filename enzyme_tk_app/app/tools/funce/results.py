@@ -47,14 +47,17 @@ def _get_column_defs() -> list[dict]:
     generated rather than hand-written so they cannot drift from the
     feature list the ensemble actually emits.
 
+    Every header is the raw dataframe column name — no column is relabelled,
+    so a header always traces back to what enzymetk actually returned.
+
     Returns:
         List of AG Grid ``columnDef`` dicts in display order.
     """
     defs: list[dict] = [
         {"field": "Entry", "pinned": "left", "width": 180},
-        numeric_col_def(PRED_COL, "Activity Probability", decimals=_DECIMALS) | {"sort": "desc", "pinned": "left"},
-        numeric_col_def(f"{PREDICTION_NAME}_std_preds", "Prediction Std", decimals=_DECIMALS),
-        {"field": "database", "headerName": "Database", "width": 140},
+        numeric_col_def(PRED_COL, decimals=_DECIMALS) | {"sort": "desc", "pinned": "left"},
+        numeric_col_def(f"{PREDICTION_NAME}_std_preds", decimals=_DECIMALS),
+        {"field": "database", "width": 140},
         sequence_col_def("Sequence", width=400),
     ]
     # ``{name}_epistemic`` is omitted on purpose: enzymetk hardcodes it to True on
@@ -64,7 +67,10 @@ def _get_column_defs() -> list[dict]:
         defs.append(numeric_col_def(f"{PREDICTION_NAME}_{feature}_mean", decimals=_DECIMALS))
         defs.append(numeric_col_def(f"{PREDICTION_NAME}_{feature}_std", decimals=_DECIMALS))
 
-    return defs
+    # Pin every header to its own field.  Without an explicit headerName AG Grid
+    # humanises the field (``Funce_substrates_MolWt_mean`` renders as
+    # "Funce_substrates Mol Wt_mean"), which misreports the column name.
+    return [d | {"headerName": d["field"]} for d in defs]
 
 
 def results_layout(job: JobInfo) -> html.Div:
