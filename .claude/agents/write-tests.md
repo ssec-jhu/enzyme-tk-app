@@ -44,7 +44,12 @@ The agent must follow these strictly defined patterns for writing tests in the E
     - For functions that `raise PreventUpdate`, assert with `pytest.raises(PreventUpdate)`.
     - For functions that `raise ValueError`, use `pytest.raises(ValueError, match=...)` to verify the message.
 
-7.  **File Placement**
+7.  **Database-Backed Tools**
+    - `params["databases"]` is a `list[str]` — never a bare string. Point the tool's data-dir constant at `tmp_path` and write the CSVs/pickles the test needs rather than relying on whatever the real data directory happens to hold.
+    - Cover **both halves** of the skip policy: one unreadable database among several is skipped (job succeeds, its name appears in the `Databases Skipped` stat card) while *all* selections unreadable raises `ValueError`.
+    - Multi-database behaviour needs **at least two** databases in the fixture — with one, a merged search is indistinguishable from a single-database one.
+
+8.  **File Placement**
     - Prefer adding tests to an **existing** test file when the module is already under test, rather than creating a new file.
     - Only create a new test file when no existing file covers the module.
 

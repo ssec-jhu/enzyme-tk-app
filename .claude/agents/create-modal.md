@@ -164,6 +164,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 ## 7. Required vs Default Sections
 - **Section 1: Input Data:** Place *Task Name*, required identifiers (like SMILES or file uploads), and Demo Examples here.
 - **Section 2: Tool Configurations:** Place optional tuning parameters, Algorithm selections, external Database selections, and Limits (Top-N) here in a single vertical tracking stack (avoid multi-column grids unless absolutely constrained for space).
+- **Database selection is always multi-select:** label it "Databases", give the dropdown `multi=True` with the id `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (plural), and pre-select **every** option (`value=[opt["value"] for opt in db_options]`) — the broadest search is the default. Even a directory holding one file gets a multi-select. See `.claude/agents/create-tool.md` §3b for the rest of the contract (validation, merging, skipped-database stat cards).
 
 ## 8. Footer
 Use `create_modal_footer(TOOL_DEF["slug"])` to generate the standard `dbc.ModalFooter` with Close (secondary outline) and Run (primary) buttons.

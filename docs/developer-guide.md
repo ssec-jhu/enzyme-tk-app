@@ -258,6 +258,22 @@ Callbacks wire the modal to the backend. Most tools need four callbacks:
 
 See [reaction_similarity/callbacks.py](../enzyme_tk_app/app/tools/reaction_similarity/callbacks.py) for the implementation.
 
+### 3.4 Database-backed tools — the shared contract
+
+Every tool that reads reference databases from the data directory follows the same contract. Do not invent a per-tool variant.
+
+| Layer | Rule |
+|-------|------|
+| `modal.py` | One `dcc.Dropdown` with `multi=True`, id `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (plural), **every option pre-selected** — the broadest search is the default. |
+| `callbacks.py` | The submit callback validates the selection with `validate_db_names(names, suffix)` from `enzyme_tk_app.app.utils.data_loading` before it reaches `params`. |
+| `compute.py` | `params["databases"]` is a `list[str]`. Load each one, tag its rows with the `database` column (`COL_DATABASE`), and `pd.concat` them into **one** reference set so ranking is global rather than per-database. |
+| `compute.py` | An unreadable database is **skipped**, not fatal — collect its name and keep going. Raise only when *every* selection failed; an empty grid would otherwise be indistinguishable from a legitimate "no hits found". |
+| `compute.py` | Report the outcome in `_stat_cards`: a **Databases Searched** count, plus a **Databases Skipped** card naming the failures when there are any. Never a single `Database` card holding a filename. |
+| `results.py` | Include the `database` column in the grid so a hit's origin is visible: `{"field": col.COL_DATABASE, "headerName": "Database", "width": 140}`. |
+| Dependent dropdowns | Anything derived from the selection (e.g. the EC-number filter) offers the **union** across the selected files and clears its own value when the selection changes. |
+
+`validate_db_names(names, suffix=None)` is the single validator for all of them — names arrive from the browser and become filesystem paths, so they are checked at that trust boundary even though the UI only ever offers legitimate options. It **verifies without modifying**: an invalid name is rejected, never repaired. Following `validate_top_n`, it returns an error message (or `None` when valid) for an empty selection or a name that is not a bare `[0-9A-Za-z_-]+` plus the optional suffix (`".csv"`, `".pkl"`, or `None` for directory-style FoldSeek databases) — return that message straight into the modal's submission-results div. It *raises* `TypeError` if handed a bare string instead of a list, since that is a programming error (a `multi=False` dropdown) rather than bad user input.
+
 
 ### 4. Results Page — `results.py`
 
@@ -289,6 +305,8 @@ Your `results_layout(job: JobInfo) -> html.Div` function receives the completed 
 | Helper | What it provides |
 |--------|-----------------|
 | `shared_col_defs()` | 25+ pre-defined column definitions for similarity scores, database metadata, and molecular descriptors. Only columns present in your data are displayed. |
+| `sequence_col_def(field, width=300, header=None)` | The column def for an amino-acid sequence column — truncated to one line with the full sequence on hover. Always use it instead of hand-rolling a `cellStyle`. |
+| `numeric_col_def(field, header=None, width=None, decimals=None, exponential=False)` | The column def for a numeric column. Always applies `agNumberColumnFilter`; formatting is opt-in — omit `decimals` for integers, `decimals=4` for fractions, `decimals=2` for percentages, `exponential=True` for e-values. Pick from the data, not by habit. |
 | `build_ag_grid(column_defs, df_payload)` | Standardized AG Grid with pagination (20 rows/page), Balham theme, tooltips, copy/paste, and column filtering. |
 | `build_result_stat_cards(job)` | Renders stat cards from `_stat_cards` in your compute result. Called by the framework, not by your code. |
 | `build_result_input_params(job)` | Auto-renders submitted parameters. Called by the framework, not by your code. |

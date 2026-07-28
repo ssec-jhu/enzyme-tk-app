@@ -59,6 +59,46 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.
 - For all form controls (Dropdowns, Inputs, Textareas, Checkboxes, RadioItems), always add the CSS class `themed-control`.
 
+## 3b. Database-Backed Tools — Mandatory Contract
+Applies to every tool that reads reference databases out of a data directory (`sequences/`,
+`reactions/`, `foldseek_db/`, `funce_db/`, …). All existing database-backed tools follow it;
+a new tool that diverges is a bug, not a style choice.
+
+1. **The dropdown is multi-select.** `dcc.Dropdown(..., multi=True)`, id
+   `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (**plural**), with **every option
+   pre-selected** — the broadest search is the default. There is no single-database tool;
+   a directory that happens to hold one file still gets a multi-select.
+2. **Validate with the shared validator, never a hand-rolled regex.** In the submit
+   callback:
+   ```python
+   from enzyme_tk_app.app.utils.data_loading import validate_db_names
+
+   error = validate_db_names(databases, ".csv")   # ".pkl", or None for FoldSeek dirs
+   if error:
+       return error
+   ```
+   It returns a message for an empty selection or any name that is not a bare
+   `[0-9A-Za-z_-]+` plus the optional suffix — same contract as `validate_top_n`. It
+   *raises* `TypeError` on a bare string (a single-select leftover), because that is a
+   programming error rather than bad user input.
+   Names come from the browser and become filesystem paths — this is the trust boundary.
+3. **`params["databases"]` is a `list[str]`.** Never a `"database"` string key.
+4. **Merge, do not loop-and-append per database.** Load each selection, tag its rows with
+   the `database` column (`COL_DATABASE` from `utils.columns`, value
+   `csv_path.stem.replace("_", " ").title()`), and `pd.concat` into one reference set so
+   the ranking/top-N is global across the union, not per file.
+5. **Bad database → skip, name it, continue. All bad → raise.** A single unreadable file
+   must not fail the job; collect its name. But if *nothing* loaded, `raise ValueError(...)`
+   — an empty grid would be indistinguishable from a legitimate "no hits found".
+6. **Say so in the stat cards:** a `Databases Searched` **count**, plus a
+   `Databases Skipped` card listing the failures only when there are any. Never a single
+   `Database` card holding a filename.
+7. **Show the origin in the results grid:** `{"field": col.COL_DATABASE, "headerName":
+   "Database", "width": 140}`.
+8. **Dependent dropdowns take the union.** Anything derived from the selection (EC-number
+   filter, cofactor filter) is rebuilt as the union across the selected files and clears its
+   own value when the selection changes, so a stale filter is never carried over.
+
 ## 4. Backend & Callbacks
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
 - `compute.py` must export `def run(params: dict) -> dict`.

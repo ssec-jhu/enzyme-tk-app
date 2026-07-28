@@ -86,7 +86,56 @@ The `cell-wrap-dash-ag-grid` CSS class is defined in `09-ag-grid.css`:
 }
 ```
 
-### 2.4 — Column ordering convention
+Note the `font-size: 10px` — this class is tuned for dense chemical strings (SMILES), **not** for prose or biological sequences. Do not reach for it just because a column is long; see 2.4.
+
+### 2.4 — Protein / amino-acid sequence columns
+
+Sequence columns are **never** hand-styled. Always use the shared helper so every tool renders sequences identically:
+
+```python
+from enzyme_tk_app.app.components.results_helpers import sequence_col_def
+
+sequence_col_def(col.COL_SEQUENCE)              # default width 300
+sequence_col_def("Sequence", width=400)         # or override
+sequence_col_def("Sequence", header="Target Sequence")
+```
+
+It applies the `ag-cell-sequence` class (`09-ag-grid.css`): monospace, `0.8rem`, single line with an ellipsis. Sequences run to hundreds of residues, so they are truncated rather than wrapped — this keeps row heights uniform, and `build_ag_grid()` already sets a `tooltipField` so the full sequence appears on hover (and stays selectable via `enableCellTextSelection`).
+
+Do **not**:
+- inline a `cellStyle` dict with `fontSize` / `whiteSpace` / `textOverflow` — that is what this helper replaced;
+- use `cell-wrap-dash-ag-grid` on a sequence — its `font-size: 10px !important` is too small to read;
+- set `autoHeight: True` on a sequence column — one long protein will blow up the row height for the whole table.
+
+If a genuinely new kind of long-text column appears, add a class + helper rather than styling it at the call site.
+
+### 2.5 — Numeric columns
+
+Use the shared helper rather than hand-writing the filter and formatter:
+
+```python
+from enzyme_tk_app.app.components.results_helpers import numeric_col_def
+
+numeric_col_def("alnlen", "Alignment Length", width=150)              # integer — no formatter
+numeric_col_def("fident", "Frac. Identity", width=140, decimals=4)    # fraction  -> 0.8734
+numeric_col_def("bits", "Bit Score", width=120, decimals=1)           # score     -> 445.0
+numeric_col_def("evalue", "E-value", width=120, exponential=True)     # e-value   -> 3.09e-163
+```
+
+It always sets `agNumberColumnFilter`; formatting is **opt-in** because the app renders three distinct kinds of number and one rule does not fit them:
+
+| Kind | Example values | Setting |
+|---|---|---|
+| Integers — counts, positions, lengths, masses | `269`, `10856` | **omit `decimals`** — formatting renders `269` as `269.0000` |
+| Fractions | `0.1666666666666666` | `decimals=4` |
+| Percentages | `100`, `87.5` | `decimals=2` — 4 dp is noise on a percentage |
+| E-values | `3.09e-163` | `exponential=True` |
+
+Pick the treatment from the **data**, not by habit: check the actual value range before choosing. `Polarity` is a fraction (needs 4 dp) while `temperature` next to it is a whole number 4–99 (needs none), and diamond's identity column is a percentage, not a fraction.
+
+Do **not** inline `{"function": "params.value != null ? params.value.toFixed(N) : ''"}` at a call site — that string existed in two files before this helper and drifted.
+
+### 2.6 — Column ordering convention
 
 Tool-specific columns come **first**, then append `shared_col_defs()`:
 

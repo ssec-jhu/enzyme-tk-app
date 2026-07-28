@@ -23,6 +23,11 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
 
 ## Scope — what a change touches → what to update
 
+> **`docs/deployment/` does not exist yet.** Until it is created, everything the table below
+> routes there lives in **`README.md` → Configuration** (Environment Variables, Data
+> Directories, GPU, Shared Volume). Update that section instead of creating a stub, and say
+> so in your report.
+
 | Changed | Update |
 |---------|--------|
 | `enzyme_tk_app/app/backend/config.py` (env var added/removed/default changed) | `docs/deployment/environment-variables.md` — the variable row, the "Source files" table, and the "Production checklist" if it needs a prod value |

@@ -60,6 +60,18 @@ services:
     command: celery -A enzyme_tk_app.app.backend.celery_app worker -l info
     deploy:
       replicas: 3
+      # ── GPU (opt-in) ────────────────────────────────────────────
+      # Func-E picks its device with torch.cuda.is_available(), so it
+      # uses a GPU automatically once the container is given one — no
+      # code or requirements change.  Uncomment on a linux/amd64 host
+      # with the NVIDIA driver + nvidia-container-toolkit installed.
+      # (PyPI ships no CUDA torch for arm64, so this is a no-op there.)
+      # resources:
+      #   reservations:
+      #     devices:
+      #       - driver: nvidia
+      #         count: 1
+      #         capabilities: [gpu]
     environment:
       - REDIS_URL=redis://redis:6379/0
       # Must match the web service so both containers resolve the same path.
