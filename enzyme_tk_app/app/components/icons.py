@@ -12,6 +12,7 @@ ICON_TOOL_REACTION = "fa-solid fa-flask-vial"
 ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
 ICON_TOOL_STRUCTURE = "fa-solid fa-cube"
 ICON_TOOL_TIMER = "fa-solid fa-hourglass-half"
+ICON_TOOL_ACTIVITY = "fa-solid fa-bolt"
 ICON_DATA_WARNING = "fa-solid fa-triangle-exclamation"
 
 # --- Footer: Social Links ---

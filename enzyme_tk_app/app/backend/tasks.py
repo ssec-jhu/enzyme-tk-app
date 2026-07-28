@@ -3,7 +3,8 @@
 The single ``run_tool_task`` task:
 
 1. Updates the Redis job hash to ``STARTED`` with a timestamp.
-2. Captures stdout/stderr via ``contextlib.redirect_stdout``.
+2. Captures stdout/stderr via ``contextlib.redirect_stdout`` plus ``logging``
+   records via a temporary root-logger handler.
 3. Dynamically imports ``enzyme_tk_app.app.tools.<folder>.compute``.
 4. Calls ``compute.run(params)`` and stores the result.
 5. On failure, stores the traceback and any partial captured output.
@@ -102,6 +103,45 @@ def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).isoformat()
 
 
+@contextlib.contextmanager
+def _capture_library_logging(buf: io.StringIO):
+    """Tee ``logging`` records into *buf* for the duration of the block.
+
+    ``contextlib.redirect_stderr`` only rebinds ``sys.stderr``; a
+    ``logging.StreamHandler`` created earlier (Celery installs its handlers at
+    worker startup, before any task runs) holds a direct reference to the
+    *original* stream and writes straight past the rebind.  So library output
+    sent through ``logging`` never lands in the job log unless we also attach a
+    handler.  Adding it to the **root** logger picks up records propagated from
+    every library the tool calls.
+
+    The level is set on the *handler*, not on the root logger:
+    ``Logger.callHandlers`` walks the ancestor chain and checks each handler's
+    level (not the ancestor logger's), so gating here captures INFO without
+    globally changing worker verbosity as a side effect.  Whether a record is
+    emitted at all still depends on the originating logger's effective level,
+    which the Celery worker sets to its ``--loglevel`` at startup.
+
+    Assumes one task at a time per process (Celery's default prefork model):
+    the root logger is process-global, so a threaded worker pool would
+    interleave logs from concurrent jobs into each other's buffers.
+    """
+    handler = logging.StreamHandler(buf)
+    handler.setLevel(logging.INFO)
+    # Include level + logger name so the UI log distinguishes library logging
+    # from the tool's plain print() output.
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    root = logging.getLogger()
+    root.addHandler(handler)
+    try:
+        yield
+    finally:
+        # The worker process is long-lived and reused across tasks — a leaked
+        # handler means duplicated output and log bleed between jobs.
+        root.removeHandler(handler)
+        handler.close()
+
+
 @celery_app.task(name="run_tool_task")
 def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) -> None:
     """Execute a tool's ``compute.run()`` inside the Celery worker.
@@ -113,8 +153,9 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
     The flow:
         1. Mark the job as STARTED in Redis so the UI can show progress.
         2. Convert the tool slug to a Python module path and import it.
-        3. Run the tool's ``compute.run(params)`` while capturing any
-           ``print()`` output the algorithm produces.
+        3. Run the tool's ``compute.run(params)`` while capturing both the
+           ``print()`` output the algorithm produces and any ``logging``
+           records it (or the libraries it calls) emit.
         4. Offload the result to the shared volume and store a pointer in Redis.
         5. If anything crashes, store the full traceback so the user can
            see what went wrong.
@@ -168,8 +209,14 @@ def run_tool_task(tool_slug: str, params: dict, session_id: str, job_id: str) ->
 
         # Step 3: Run the tool's algorithm.
         # redirect_stdout/stderr captures any print() calls the algorithm
-        # makes during execution (e.g., progress updates, debug info).
-        with contextlib.redirect_stdout(stdout_buf), contextlib.redirect_stderr(stderr_buf):
+        # makes during execution (e.g., progress updates, debug info), and
+        # _capture_library_logging catches what libraries send through the
+        # logging module — which bypasses the redirects entirely.
+        with (
+            contextlib.redirect_stdout(stdout_buf),
+            contextlib.redirect_stderr(stderr_buf),
+            _capture_library_logging(stderr_buf),
+        ):
             result = compute_module.run(params)
 
         # Step 4: Persist the result.

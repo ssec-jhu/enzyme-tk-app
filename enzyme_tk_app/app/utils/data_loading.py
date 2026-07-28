@@ -1,12 +1,15 @@
-"""Data file discovery and dropdown-option builders.
+"""Data file discovery, dropdown-option builders, and name validation.
 
 These helpers scan the ``data/`` directories and return option lists
-suitable for Dash dropdown components.
+suitable for Dash dropdown components, plus the shared validator every
+tool uses on the database names that come back from those dropdowns.
 """
+
+import re
 
 import pandas as pd
 
-from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, FUNCE_DB_DIR, REACTIONS_DIR, SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_EC_NUMBER,
     COL_ENTRY,
@@ -29,6 +32,60 @@ _EXCLUDE_COLS = EXCLUDE_COLS
 _COL_EC_NUMBER = COL_EC_NUMBER
 _COL_SEQUENCE = COL_SEQUENCE
 _COL_ENTRY = COL_ENTRY
+
+
+# Database names become path components, so they are checked against an
+# allowlist rather than merely joined.  Deliberately excludes "." so a name
+# cannot smuggle in a traversal or a second extension.
+_DB_STEM_RE = re.compile(r"^[0-9A-Za-z_-]+$")
+
+
+def validate_db_names(names: list[str] | None, suffix: str | None = None) -> str | None:
+    """Validate database names selected in a tool modal.
+
+    Every tool calls this in its submit callback on the values coming back
+    from a database dropdown.  Those values originate in the browser and are
+    used to build a filesystem path, so they are checked at this trust
+    boundary even though the UI only ever offers legitimate options.
+
+    Mirrors :func:`enzyme_tk_app.app.utils.formatting.validate_top_n` — the
+    caller returns the message straight into the modal's results div.  Nothing
+    is modified: an invalid name is rejected, never repaired.
+
+    Args:
+        names: Selected database names, as sent by the dropdown.
+        suffix: Required file extension including the dot (e.g. ``".csv"``),
+            or ``None`` for directory-style names such as FoldSeek's.
+
+    Returns:
+        An error message string if validation fails, or ``None`` when every
+        name is a bare identifier (optionally plus *suffix*).
+
+    Raises:
+        TypeError: If *names* is a string rather than a list of them.  That is
+            a programming error (a ``multi=False`` dropdown returns a string),
+            not bad user input, so it is raised rather than reported.
+    """
+    # A bare string is iterable, so without this it would be validated one
+    # character at a time and silently pass.  A single-select dropdown returns
+    # a string, so this is a live foot-gun, not a theoretical one.
+    if isinstance(names, str):
+        raise TypeError(f"Expected a list of database names, got a string: {names!r}")
+
+    if not names:
+        return "At least one database must be selected."
+
+    # Validate each name against the allowlist and optional suffix.
+    for name in names:
+        stem = name
+        if suffix:
+            if not name.endswith(suffix):
+                return f"Invalid database name (must end in {suffix}): {name}"
+            stem = name[: -len(suffix)]
+        if not _DB_STEM_RE.match(stem):
+            return f"Invalid database name: {name}"
+
+    return None
 
 
 def get_foldseek_database_options():
@@ -96,6 +153,24 @@ def get_sequence_database_options():
     options = []
     if sequences_dir.exists():
         for f in sorted(sequences_dir.glob("*.csv")):
+            label = f.stem.replace("_", " ").title()
+            options.append({"label": label, "value": f.name})
+    return options
+
+
+def get_funce_database_options():
+    """Scan the data/funce_db directory and return dropdown options.
+
+    Each pickle is a pre-encoded protein database (``Entry``, ``Sequence``
+    and the embedding columns the Func-E step needs).
+
+    Returns:
+        List of dicts with label/value for each pickle file found.
+        Each dict has 'label' (human-readable) and 'value' (filename).
+    """
+    options = []
+    if FUNCE_DB_DIR.exists():
+        for f in sorted(FUNCE_DB_DIR.glob("*.pkl")):
             label = f.stem.replace("_", " ").title()
             options.append({"label": label, "value": f.name})
     return options

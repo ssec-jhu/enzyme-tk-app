@@ -18,9 +18,16 @@ A web application for protein engineering workflows, built with [Dash](https://d
 |------|-------------|---------------|
 | **Reaction Similarity** | Reaction similarity search using RDKit structural reaction fingerprints | `rdkit` |
 | **Substrate/Product Similarity** | Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring | `rdkit` |
-| **Sequence Similarity** | High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms | `diamond-blastp` |
+| **Sequence Similarity** | Protein sequence similarity search using DIAMOND BLASTp. Searches one or more reference sequence databases, merged into a single index so hits are ranked globally | `diamond-blastp` |
 | **Sequence and Structure-Based Similarity** | FoldSeek-powered similarity search using protein sequences (ProstT5) or structures (CIF/PDB). Searches across multiple databases including PDB and AlphaFold/Swiss-Prot | `foldseek`, `prostt5` |
+| **Func-E Activity Prediction** | Scores (enzyme, reaction) pairs with an ensemble of four attention models — one per EC level — and ranks a pre-encoded protein database by predicted activity | `torch` |
 | **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
+
+> **Func-E is prediction-only today.** The reaction-to-fingerprint encoder is not wired up
+> yet, so only the pre-encoded **DEHP → MEHP** example reaction can be scored; any other
+> reaction SMILES fails with an explanatory error. `compute._encode_reaction()` in
+> `enzyme_tk_app/app/tools/funce/` is the single seam to replace when RxnFP + UniMol
+> encoding lands.
 
 ![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
 
@@ -70,6 +77,42 @@ All configuration is via environment variables, set in `docker-compose.yml` for 
 | `JOB_TTL_SECONDS` | `86400` (24 h) | How long job metadata is retained in Redis |
 | `JOB_OUTPUTS_PATH` | `/job-outputs` | Directory for offloaded result + log files (shared volume between web + worker) |
 | `CELERY_SWEEP_INTERVAL_SECONDS` | `86400` (24 h) | How often Celery beat sweeps orphaned output dirs (clamped to ≥ 1) |
+| `ETK_DATA_DIR` | `enzyme_tk_app/app/data` (compose sets `/app-data`) | Root of the read-only tool data mount; every data directory below derives from it (`enzyme_tk_app/app/paths.py`) |
+
+### Data Directories
+
+`docker-compose.yml` bind-mounts `./enzyme_tk_app/app/data` read-only at `/app-data`
+(`ETK_DATA_DIR`) for both `web` and `worker`. The large sets are **gitignored** — download
+or generate them on the host before starting the stack. A tool whose directory is missing
+still loads: its card shows a **"Missing data"** badge instead, and the app does not crash.
+
+| Directory | Used by | Contents |
+|-----------|---------|----------|
+| `sequences/`, `reactions/`, `structures/` | similarity tools | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown |
+| `foldseek_db/` | Sequence and Structure-Based Similarity | One subdirectory per FoldSeek database (PDB, AFDB/Swiss-Prot, …) |
+| `foldseek_models/weights/` | Sequence and Structure-Based Similarity | ProstT5 weights for sequence-to-structure prediction |
+| `funce_db/` | Func-E Activity Prediction | Pre-encoded protein database pickles — at least one `.pkl` |
+| `funce_models/` | Func-E Activity Prediction | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
+
+A Func-E job needs ~1.1 GB RSS in the worker; the four checkpoints load in ~0.2 s warm and the job times out after 1800 s.
+
+Every database-backed tool selects **multiple** databases at once (all of them by default)
+and merges the selections into one search, so a directory holding a single file makes the
+multi-select indistinguishable from a single-select. Keeping a couple of small slices
+beside the full sets — e.g. 20-row slices of `sequences/protein.csv` and of the
+`reactions/` EnzymeMap CSV — is the cheapest way to exercise multi-database behaviour
+locally without loading the 100 MB+ originals. A database that cannot be read is skipped
+and named in a **Databases Skipped** stat card; the job only fails if *every* selection is
+unreadable.
+
+### GPU (optional)
+
+Func-E selects its device with `torch.cuda.is_available()`, so it uses a GPU automatically
+once the worker container is given one — no code or requirements change. Uncomment the
+device reservation under the `worker` service's `deploy:` key in `docker-compose.yml` on a
+`linux/amd64` host with the NVIDIA driver and `nvidia-container-toolkit` installed. PyPI
+ships no CUDA build of torch for arm64, so this is a no-op on Apple Silicon (jobs run on
+CPU, reported in the job's **Device** stat card).
 
 ### Shared Volume
 

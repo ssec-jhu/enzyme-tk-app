@@ -123,6 +123,7 @@ main assistant chains them when a flow needs several in sequence:
 
 ## Adding a New Tool (Algorithm)
 - **All new tools MUST follow the architectural guidelines and module structure defined by the `create-tool` agent.**
+- **Database-backed tools share one contract** (`create-tool` §3b): a `multi=True` "Databases" dropdown with every option pre-selected, `validate_db_names()` from `utils/data_loading.py` as the only name validator, `params["databases"]` as a `list[str]`, all selections merged into one reference set tagged with a `database` column, and an unreadable database skipped and named in a **Databases Skipped** stat card — failing only when *every* selection is unreadable.
 
 ## Backend Architecture
 - **All backend task scheduler modifications and Redis TTL invariants MUST follow the `backend-agent` agent.**
@@ -190,5 +191,5 @@ main assistant chains them when a flow needs several in sequence:
 - After writing tests, the `write-tests` agent's workflow automatically runs `verify` and then `review-tests`.
 
 ## Deployment Documentation
-- All deployment configuration is documented in `docs/deployment/`.
-- **Any change that adds, removes, or modifies an environment variable, `config.py` setting, `docker-compose.yml` service, or Celery configuration MUST also update the corresponding deployment docs** — the `sync-docs` agent handles this.
+- Deployment configuration is documented in **`README.md` → Configuration** (env vars, data directories, GPU opt-in, shared volume). `docs/deployment/` is referenced in places but does not exist yet — do not link to it until it does.
+- **Any change that adds, removes, or modifies an environment variable, `config.py` setting, `docker-compose.yml` service, data directory, or Celery configuration MUST also update the corresponding deployment docs** — the `sync-docs` agent handles this.

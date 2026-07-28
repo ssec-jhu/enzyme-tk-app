@@ -121,3 +121,19 @@
     /*padding: 10 !important;*/
     font-size: 10px !important;
 }
+
+/* ---- Sequence cells ----------------------------------------- */
+
+/* Shared class for protein/amino-acid sequence columns, so every tool
+   renders sequences identically. Sequences can be hundreds of residues,
+   so they are truncated to a single line to keep row heights uniform;
+   build_ag_grid sets a tooltipField on every column, so the full sequence
+   shows on hover, and enableCellTextSelection keeps it copy-pasteable. */
+.ag-cell-sequence {
+    font-family: monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

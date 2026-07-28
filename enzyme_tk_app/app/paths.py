@@ -38,3 +38,9 @@ FOLDSEEK_MODELS_DIR: Path = DATA_DIR / "foldseek_models"
 
 # ProstT5 model weights used by FoldSeek for sequence-to-structure prediction.
 FOLDSEEK_WEIGHTS_DIR: Path = FOLDSEEK_MODELS_DIR / "weights"
+
+# Pre-encoded Func-E protein databases (one ``.pkl`` per database).
+FUNCE_DB_DIR: Path = DATA_DIR / "funce_db"
+
+# Func-E ensemble checkpoints — one model per EC level (~1.5 GB total).
+FUNCE_MODELS_DIR: Path = DATA_DIR / "funce_models"

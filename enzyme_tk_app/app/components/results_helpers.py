@@ -320,6 +320,71 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
 # ---------------------------------------------------------------------------
 
 
+def numeric_col_def(
+    field: str,
+    header: str | None = None,
+    width: int | None = None,
+    decimals: int | None = None,
+    exponential: bool = False,
+) -> dict:
+    """Return the column def for a numeric column.
+
+    Always sets ``agNumberColumnFilter`` so the column filters as a number
+    rather than a string.  Formatting is opt-in because the app renders three
+    different kinds of number: integers (counts, positions, masses) that must
+    stay unformatted, fractions and percentages that need fixed decimals, and
+    e-values that only read sensibly in exponential form.
+
+    Args:
+        field: The dataframe column name.
+        header: Optional display name; defaults to AG Grid's own.
+        width: Optional column width in pixels.
+        decimals: Decimal places for a fixed-point float.  Leave ``None`` for
+            integers — formatting them renders ``269`` as ``269.0000``.
+        exponential: Render in exponential notation with *decimals* places
+            (default 2), for values like an e-value of ``3.09e-163``.
+
+    Returns:
+        An AG Grid ``columnDef`` dict.
+    """
+    col_def: dict = {"field": field, "filter": "agNumberColumnFilter"}
+    if header:
+        col_def["headerName"] = header
+    if width:
+        col_def["width"] = width
+
+    if exponential:
+        fn = f"params.value != null ? params.value.toExponential({decimals if decimals is not None else 2}) : ''"
+        col_def["valueFormatter"] = {"function": fn}
+    elif decimals is not None:
+        col_def["valueFormatter"] = {"function": f"params.value != null ? params.value.toFixed({decimals}) : ''"}
+
+    return col_def
+
+
+def sequence_col_def(field: str, width: int = 300, header: str | None = None) -> dict:
+    """Return the column def for an amino-acid sequence column.
+
+    Every tool that shows protein sequences must use this so they render
+    identically.  Sequences are truncated to one line (see the
+    ``ag-cell-sequence`` class in ``09-ag-grid.css``) to keep row heights
+    uniform; ``build_ag_grid`` adds a ``tooltipField`` so the full sequence
+    shows on hover, and cell text selection keeps it copy-pasteable.
+
+    Args:
+        field: The dataframe column holding the sequence.
+        width: Column width in pixels.
+        header: Optional display name; defaults to AG Grid's own.
+
+    Returns:
+        An AG Grid ``columnDef`` dict.
+    """
+    col_def = {"field": field, "width": width, "cellClass": "ag-cell-sequence"}
+    if header:
+        col_def["headerName"] = header
+    return col_def
+
+
 def shared_col_defs() -> list[dict]:
     """Return column definitions shared across AG Grid result tables.
 
