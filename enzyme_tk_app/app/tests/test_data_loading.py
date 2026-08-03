@@ -1,6 +1,12 @@
 """Tests for data loading utilities."""
 
-from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options, load_sequence_data
+import pytest
+
+from enzyme_tk_app.app.utils.data_loading import (
+    get_foldseek_database_options,
+    load_sequence_data,
+    validate_db_names,
+)
 
 
 def test_load_sequence_data_filters_correctly(sequence_csv):
@@ -59,3 +65,87 @@ def test_get_foldseek_database_options_empty_when_dir_missing(tmp_path, monkeypa
     # The function should handle the missing directory gracefully and return an empty list,
     # not raise an error. Function will trigger downloads  in the code
     assert get_foldseek_database_options() == []
+
+
+# ── validate_db_names ─────────────────────────────────────────────────────────
+# Database names cross a trust boundary: they arrive from the browser and become
+# filesystem paths, so every rejection below is load-bearing.
+
+
+@pytest.mark.parametrize(
+    ("names", "suffix"),
+    [
+        (["protein.csv"], ".csv"),
+        (["Funce_pairs.pkl"], ".pkl"),
+        (["AFDB_SWISSPROT", "PDB"], None),  # FoldSeek databases are directories
+        (["a-b_C9.csv"], ".csv"),
+    ],
+    ids=["csv", "pkl", "foldseek-dirs", "punctuation-in-allowlist"],
+)
+def test_validate_db_names_accepts_valid(names, suffix):
+    """A bare identifier plus the expected suffix passes."""
+    assert validate_db_names(names, suffix) is None
+
+
+@pytest.mark.parametrize(
+    ("names", "suffix"),
+    [
+        ([], ".csv"),
+        (None, ".csv"),
+        (["../reactions/x.csv"], ".csv"),
+        (["a/b.csv"], ".csv"),
+        (["..csv"], ".csv"),
+        (["x.pkl.csv"], ".csv"),
+        (["bad;.csv"], ".csv"),
+        (["ok.csv", "bad;.csv"], ".csv"),
+        (["x.csv"], ".pkl"),
+    ],
+    ids=[
+        "empty",
+        "none",
+        "traversal",
+        "subdir",
+        "dot-dot",
+        "double-ext",
+        "shell-char",
+        "one-bad-in-list",
+        "wrong-suffix",
+    ],
+)
+def test_validate_db_names_rejects_invalid(names, suffix):
+    """Invalid selections return a message rather than raising."""
+    assert isinstance(validate_db_names(names, suffix), str)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [123, None, True, 3.14, {"a": 1}, ["nested"]],
+    ids=["int", "none-item", "bool", "float", "dict", "list"],
+)
+def test_validate_db_names_rejects_non_string_items(name):
+    """A crafted request can put anything in the list.
+
+    Without an ``isinstance`` check these blow up on ``.endswith()`` or the
+    regex and surface as a 500 instead of a validation message.  Checked with
+    and without a suffix, since the two take different code paths.
+    """
+    assert isinstance(validate_db_names([name], ".csv"), str)
+    assert isinstance(validate_db_names([name], None), str)
+
+
+def test_validate_db_names_raises_on_bare_string():
+    """A string instead of a list is a programming error, not bad user input.
+
+    A ``multi=False`` dropdown returns a string; iterating it would validate one
+    character at a time and silently pass, so this must surface loudly rather
+    than become a user-facing message.
+    """
+    with pytest.raises(TypeError):
+        validate_db_names("protein.csv", ".csv")
+
+
+def test_validate_db_names_does_not_modify_input():
+    """It verifies without repairing — nothing is stripped, cased, or coerced."""
+    names = ["  padded.csv  "]
+    assert isinstance(validate_db_names(names, ".csv"), str)
+    assert names == ["  padded.csv  "]

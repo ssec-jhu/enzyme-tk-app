@@ -77,6 +77,12 @@ def validate_db_names(names: list[str] | None, suffix: str | None = None) -> str
 
     # Validate each name against the allowlist and optional suffix.
     for name in names:
+        # A crafted request can put anything in the list — an int or null would
+        # otherwise blow up on .endswith()/slicing below and surface as a 500
+        # instead of a validation message.
+        if not isinstance(name, str):
+            return f"Invalid database name: {name!r}"
+
         stem = name
         if suffix:
             if not name.endswith(suffix):
