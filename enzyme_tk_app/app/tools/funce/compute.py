@@ -20,6 +20,7 @@ import pandas as pd
 
 from enzyme_tk_app.app.paths import FUNCE_DB_DIR, FUNCE_MODELS_DIR
 from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES
+from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
 
 # Reaction-side embedding columns the Funce step reads — enzymetk's own
 # defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_encode_reaction``
@@ -120,7 +121,7 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
 
     # Minimum a pickle must carry to be scorable: an identifier, the sequence,
     # and the protein embedding (enzymetk's ``protein_emb_col`` default).
-    required_cols = ("Entry", "Sequence", "esm3_mean")
+    required_cols = (COL_ENTRY, COL_SEQUENCE, "esm3_mean")
 
     frames = []
     skipped: list[str] = []
@@ -134,11 +135,20 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
             skipped.append(name)
             continue
 
+        # A pickle can hold any object.  Check the type before touching
+        # ``.columns`` / ``.empty``, or a dict — or even a legitimate Series —
+        # raises AttributeError and fails the whole job instead of skipping
+        # the one bad database.
+        if not isinstance(frame, pd.DataFrame):
+            skipped.append(name)
+            continue
+
         if any(c not in frame.columns for c in required_cols) or frame.empty:
             skipped.append(name)
             continue
 
-        frame["database"] = db_path.stem
+        # Human-readable, matching every other tool: "Funce_pairs" -> "Funce Pairs".
+        frame[COL_DATABASE] = db_path.stem.replace("_", " ").title()
         frames.append(frame)
 
     if not frames:
@@ -237,7 +247,7 @@ def run(params: dict) -> dict:
         db_df[col] = [vector] * candidate_count
 
     # Initialize the Funce step for scoring the reaction against the protein database.
-    step = Funce("Entry", model_dir=str(FUNCE_MODELS_DIR))
+    step = Funce(COL_ENTRY, model_dir=str(FUNCE_MODELS_DIR))
     scored = step.execute(db_df)
 
     # The step leaves ranking to the caller.
