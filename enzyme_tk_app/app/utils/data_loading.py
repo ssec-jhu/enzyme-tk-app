@@ -3,6 +3,14 @@
 These helpers scan the ``data/`` directories and return option lists
 suitable for Dash dropdown components, plus the shared validator every
 tool uses on the database names that come back from those dropdowns.
+
+**A database is named on screen exactly as it is named in ``data/``** —
+extension included: ``Funce_pairs.pkl`` shows as ``Funce_pairs.pkl``, and the
+FoldSeek folder ``AFDB_SWISSPROT`` as ``AFDB_SWISSPROT`` (a directory, so it has
+no extension to show).  Every option ``label`` here, every ``database`` column
+value, every "Databases Skipped" card, and the Input Parameters row use that one
+spelling, so a scientist can match what the app shows against what is on disk.
+Do not prettify it and do not strip the suffix.
 """
 
 import re
@@ -60,17 +68,15 @@ def validate_db_names(names: list[str] | None, suffix: str | None = None) -> str
     Returns:
         An error message string if validation fails, or ``None`` when every
         name is a bare identifier (optionally plus *suffix*).
-
-    Raises:
-        TypeError: If *names* is a string rather than a list of them.  That is
-            a programming error (a ``multi=False`` dropdown returns a string),
-            not bad user input, so it is raised rather than reported.
     """
     # A bare string is iterable, so without this it would be validated one
     # character at a time and silently pass.  A single-select dropdown returns
-    # a string, so this is a live foot-gun, not a theoretical one.
+    # a string, so this is a live foot-gun, not a theoretical one — but the
+    # value comes from the browser, so it is reported like any other bad input.
+    # Raising here would surface as an HTTP 500 on /_dash-update-component,
+    # since the app installs no Dash ``on_error`` handler.
     if isinstance(names, str):
-        raise TypeError(f"Expected a list of database names, got a string: {names!r}")
+        return f"Expected a list of database names, got a single name: {names}"
 
     if not names:
         return "At least one database must be selected."
@@ -102,8 +108,8 @@ def get_foldseek_database_options():
     are excluded.
 
     Returns:
-        List of dicts with ``label`` (human-readable) and ``value``
-        (exact folder name, used for FoldSeekDatabase enum mapping).
+        List of dicts whose ``label`` and ``value`` are both the exact folder
+        name (the value is also what maps to the FoldSeekDatabase enum).
     """
     db_dir = FOLDSEEK_DB_DIR
     options = []
@@ -120,12 +126,8 @@ def get_foldseek_database_options():
             if name.startswith(".") or name == "tmp":
                 continue
 
-            # Convert folder name to a more readable label (e.g. "alpha_fold" -> "Alpha Fold")
-            # these are known foldseekdb names with underscores
-            label = name.replace("_", " ").title()
-
-            # Append the option dict to the list.
-            options.append({"label": label, "value": name})
+            # The folder name is shown as-is — see the module docstring.
+            options.append({"label": name, "value": name})
     return options
 
 
@@ -133,16 +135,13 @@ def get_reaction_database_options():
     """Scan the data/reactions directory and return dropdown options.
 
     Returns:
-        List of dicts with label/value for each CSV file found.
-        Each dict has 'label' (human-readable) and 'value' (filename).
+        List of dicts whose 'label' and 'value' are both the full filename.
     """
     reactions_dir = REACTIONS_DIR
     options = []
     if reactions_dir.exists():
         for f in sorted(reactions_dir.glob("*.csv")):
-            # Use filename without extension as label, full filename as value
-            label = f.stem.replace("_", " ").title()
-            options.append({"label": label, "value": f.name})
+            options.append({"label": f.name, "value": f.name})
     return options
 
 
@@ -152,15 +151,13 @@ def get_sequence_database_options():
     Looks for CSV files containing protein sequence data.
 
     Returns:
-        List of dicts with label/value for each CSV file found.
-        Each dict has 'label' (human-readable) and 'value' (filename).
+        List of dicts whose 'label' and 'value' are both the full filename.
     """
     sequences_dir = SEQUENCES_DIR
     options = []
     if sequences_dir.exists():
         for f in sorted(sequences_dir.glob("*.csv")):
-            label = f.stem.replace("_", " ").title()
-            options.append({"label": label, "value": f.name})
+            options.append({"label": f.name, "value": f.name})
     return options
 
 
@@ -171,14 +168,12 @@ def get_funce_database_options():
     and the embedding columns the Func-E step needs).
 
     Returns:
-        List of dicts with label/value for each pickle file found.
-        Each dict has 'label' (human-readable) and 'value' (filename).
+        List of dicts whose 'label' and 'value' are both the full filename.
     """
     options = []
     if FUNCE_DB_DIR.exists():
         for f in sorted(FUNCE_DB_DIR.glob("*.pkl")):
-            label = f.stem.replace("_", " ").title()
-            options.append({"label": label, "value": f.name})
+            options.append({"label": f.name, "value": f.name})
     return options
 
 
