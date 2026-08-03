@@ -145,7 +145,9 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
         tool_slug=TOOL_DEF["slug"],
-        # Pass the validated parameters to the job submission.
+        # Pass the validated parameters to the job submission.  Key order mirrors
+        # the modal's field order — the results page renders the Input Parameters
+        # rows in this order.
         params={
             "task_name": task_name.strip(),
             # Keyed "smiles" so the results page renders the reaction diagram

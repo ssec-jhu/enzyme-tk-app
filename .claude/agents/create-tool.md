@@ -120,10 +120,9 @@ before touching any of this.
   `get_*_database_options()` builders, `entry.name` in the FoldSeek one), the `COL_DATABASE`
   column value (`csv_path.name` / `db_path.name`), every name appended to `databases_skipped`
   (`safe_name`) and therefore the **Databases Skipped** card and the "None of the selected
-  databases could be read" message, and the Input Parameters row
-  (`results_helpers._DATABASE_PARAM_KEYS` renders `databases` as
-  `", ".join(str(v) for v in value)` — so it reads `protein.csv, Funce_pairs.pkl`, extensions
-  kept, brackets and quotes dropped).
+  databases could be read" message, and the Input Parameters row (`build_result_input_params`
+  stringifies the list as-is, so it reads `['protein.csv', 'Funce_pairs.pkl']` — brackets and
+  quotes like every other multi-select param, filenames verbatim inside them).
 - **`label` and `value` are identical** in the file-based builders (`{"label": f.name,
   "value": f.name}`), and in FoldSeek's too (`{"label": name, "value": name}`) — there is no
   label-vs-value distinction to reason about. The `value` has to keep its extension because it
@@ -141,6 +140,9 @@ before touching any of this.
 ## 4. Backend & Callbacks
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
 - `compute.py` must export `def run(params: dict) -> dict`.
+- **The `params` dict literal is the Input Parameters row order** — `build_result_input_params`
+  renders `job.params` in insertion order, so list the keys in the same order the fields appear
+  in `modal.py`. A key added out of order shows up out of order on the results page.
 - **Do NOT echo input parameters back in the return dict.** The system stores `params` separately from `result` at submission time. The shared `build_result_input_params(job)` helper auto-renders all `job.params` on the results page. Only return keys that are **computed outputs** or **display metadata**:
   - `_stat_cards` — summary stat cards for the results header.
   - `_params_exclude` — list of param keys to hide from the auto-rendered input parameters table.
