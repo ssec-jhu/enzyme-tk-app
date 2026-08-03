@@ -163,6 +163,29 @@ def test_build_input_params_non_string_values_are_stringified():
     assert "['a', 'b']" in text
 
 
+@pytest.mark.parametrize(
+    ("databases", "expected_cell_text"),
+    [
+        (["protein_20_slice_1.csv", "Funce_pairs.pkl"], "protein_20_slice_1.csv, Funce_pairs.pkl"),
+        ("protein_20_slice_1.csv", "protein_20_slice_1.csv"),
+    ],
+    ids=["list-of-filenames", "non-list-falls-back-to-str"],
+)
+def test_build_input_params_databases_render_as_plain_filenames(databases, expected_cell_text):
+    """The ``databases`` row names each database exactly as it is named on disk.
+
+    A list is joined into a plain comma-separated list of filenames, extensions
+    included, so the row reads "protein_20_slice_1.csv, Funce_pairs.pkl" rather
+    than a Python list repr with brackets and quotes.  A non-list value (a stray
+    single-select dropdown value) must still stringify rather than raise.
+    """
+    component = build_result_input_params(make_job(params={"databases": databases}))
+
+    assert component is not None
+    value_cells = [td for td in find_components(component, html.Td) if td.className == "jobs-params-value"]
+    assert [get_text(td) for td in value_cells] == [expected_cell_text]
+
+
 # ---------------------------------------------------------------------------
 # _pretty_label — internal helper
 # ---------------------------------------------------------------------------

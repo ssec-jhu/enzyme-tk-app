@@ -47,6 +47,7 @@ The agent must follow these strictly defined patterns for writing tests in the E
 7.  **Database-Backed Tools**
     - `params["databases"]` is a `list[str]` — never a bare string. Point the tool's data-dir constant at `tmp_path` and write the CSVs/pickles the test needs rather than relying on whatever the real data directory happens to hold.
     - Cover **both halves** of the skip policy: one unreadable database among several is skipped (job succeeds, its name appears in the `Databases Skipped` stat card) while *all* selections unreadable raises `ValueError`.
+    - Names shown to the user are the **full filename, extension included** — the same string that is in `params["databases"]`: it holds `"protein.csv"`, and the `database` column, the `Databases Skipped` card, and the all-failed error message all read `protein.csv` too (`create-tool` §3c). Assert the filename; asserting a bare stem such as `"protein"` appears in output is the wrong expectation.
     - Multi-database behaviour needs **at least two** databases in the fixture — with one, a merged search is indistinguishable from a single-database one.
 
 8.  **File Placement**

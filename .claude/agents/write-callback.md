@@ -94,8 +94,10 @@ if error:
 ```
 
 It returns a message rather than raising, exactly like `validate_top_n` — so the two
-validations read identically and sit next to each other. (`TypeError` on a bare string is
-the one exception: that is a programming error, not user input, and should surface loudly.)
+validations read identically and sit next to each other. That includes a bare string instead
+of a list (a `multi=False` leftover): the value is a browser-controlled `State`, so raising
+would surface as an HTTP 500 on `/_dash-update-component` rather than as a message in the
+modal, since the app installs no Dash `on_error` handler.
 
 `validate_db_names` already reports an empty selection, so do not also test `not databases`
 in the `PreventUpdate` guard above — that would swallow the message the user should see.

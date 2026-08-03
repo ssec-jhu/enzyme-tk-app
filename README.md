@@ -88,8 +88,8 @@ still loads: its card shows a **"Missing data"** badge instead, and the app does
 
 | Directory | Used by | Contents |
 |-----------|---------|----------|
-| `sequences/`, `reactions/`, `structures/` | similarity tools | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown |
-| `foldseek_db/` | Sequence and Structure-Based Similarity | One subdirectory per FoldSeek database (PDB, AFDB/Swiss-Prot, …) |
+| `sequences/`, `reactions/`, `structures/` | similarity tools | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown, shown by its exact filename, extension included |
+| `foldseek_db/` | Sequence and Structure-Based Similarity | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | ProstT5 weights for sequence-to-structure prediction |
 | `funce_db/` | Func-E Activity Prediction | Pre-encoded protein database pickles — at least one `.pkl` |
 | `funce_models/` | Func-E Activity Prediction | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |

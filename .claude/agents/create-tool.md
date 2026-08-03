@@ -77,22 +77,24 @@ a new tool that diverges is a bug, not a style choice.
    if error:
        return error
    ```
-   It returns a message for an empty selection or any name that is not a bare
-   `[0-9A-Za-z_-]+` plus the optional suffix — same contract as `validate_top_n`. It
-   *raises* `TypeError` on a bare string (a single-select leftover), because that is a
-   programming error rather than bad user input.
+   It returns a message for an empty selection, a bare string instead of a list (a
+   single-select leftover), or any name that is not a bare `[0-9A-Za-z_-]+` plus the
+   optional suffix — same contract as `validate_top_n`, it never raises. The value is a
+   browser-controlled `State`, so raising would surface as an HTTP 500 on
+   `/_dash-update-component` (the app installs no Dash `on_error` handler).
    Names come from the browser and become filesystem paths — this is the trust boundary.
 3. **`params["databases"]` is a `list[str]`.** Never a `"database"` string key.
 4. **Merge, do not loop-and-append per database.** Load each selection, tag its rows with
-   the `database` column (`COL_DATABASE` from `utils.columns`, value
-   `csv_path.stem.replace("_", " ").title()`), and `pd.concat` into one reference set so
-   the ranking/top-N is global across the union, not per file.
+   the `database` column (`COL_DATABASE` from `utils.columns`, value `csv_path.name` —
+   see §3c, full filename, no prettifying), and `pd.concat` into one reference set so the ranking/top-N is
+   global across the union, not per file.
 5. **Bad database → skip, name it, continue. All bad → raise.** A single unreadable file
    must not fail the job; collect its name. But if *nothing* loaded, `raise ValueError(...)`
    — an empty grid would be indistinguishable from a legitimate "no hits found".
 6. **Say so in the stat cards:** a `Databases Searched` **count**, plus a
-   `Databases Skipped` card listing the failures only when there are any. Never a single
-   `Database` card holding a filename.
+   `Databases Skipped` card listing the failures only when there are any (append the
+   sanitised `safe_name`, i.e. `Path(name).name` — the full filename, not the raw selection —
+   §3c). Never a single `Database` card holding a filename.
 7. **Show the origin in the results grid:** `{"field": col.COL_DATABASE, "headerName":
    "Database", "width": 140}`. The *column* is the contract; its label is not. Func-E
    (`tools/funce/results.py`) uses `col.COL_DATABASE` like every other tool — only its
@@ -101,6 +103,40 @@ a new tool that diverges is a bug, not a style choice.
 8. **Dependent dropdowns take the union.** Anything derived from the selection (EC-number
    filter, cofactor filter) is rebuilt as the union across the selected files and clears its
    own value when the selection changes, so a stale filter is never carried over.
+
+## 3c. Database Naming — One Spelling Everywhere
+**A database is named on screen exactly as it is named in `data/`, extension included.**
+`Funce_pairs.pkl` shows as `Funce_pairs.pkl`; the FoldSeek folder `AFDB_SWISSPROT` shows as
+`AFDB_SWISSPROT` (a directory, so it has no extension to show). The canonical statement of
+this rule is the module docstring of `enzyme_tk_app/app/utils/data_loading.py` — read it
+before touching any of this.
+
+- **Do not prettify and do not strip the suffix.** No `.replace("_", " ").title()`, no casing
+  fixes, no abbreviation expansion, no `.stem`. A scientist must be able to match what the app
+  shows against what is on disk. No database name is put through either transform anywhere in
+  `enzyme_tk_app/`; adding one back is a regression. (`results_helpers._pretty_label` does
+  title-case *parameter keys* — that is the row label, never the database name in its value.)
+- **Where the rule applies:** the dropdown option `label` (`f.name` in the three file-based
+  `get_*_database_options()` builders, `entry.name` in the FoldSeek one), the `COL_DATABASE`
+  column value (`csv_path.name` / `db_path.name`), every name appended to `databases_skipped`
+  (`safe_name`) and therefore the **Databases Skipped** card and the "None of the selected
+  databases could be read" message, and the Input Parameters row
+  (`results_helpers._DATABASE_PARAM_KEYS` renders `databases` as
+  `", ".join(str(v) for v in value)` — so it reads `protein.csv, Funce_pairs.pkl`, extensions
+  kept, brackets and quotes dropped).
+- **`label` and `value` are identical** in the file-based builders (`{"label": f.name,
+  "value": f.name}`), and in FoldSeek's too (`{"label": name, "value": name}`) — there is no
+  label-vs-value distinction to reason about. The `value` has to keep its extension because it
+  is what `validate_db_names(names, ".csv")` checks and what becomes a file path; that is the
+  reason the suffix is never stripped anywhere.
+- **One deliberate exception — the FoldSeek results grid.** In
+  `tools/sequence_structure_similarity`, the `database` column of the results grid is
+  produced by the `enzymetk` library, not by this app. `FoldSeekDatabase` is a `str, Enum`
+  whose values must match the names foldseek itself uses, and
+  `AFDB_SWISSPROT = "Alphafold/Swiss-Prot"`. So that one folder reads `Alphafold/Swiss-Prot`
+  in that one grid column, while `PDB` / `CUSTOM` / `CUSTOM2` read as their folder names. Its
+  dropdown label, stat cards, and Input Parameters row all follow the rule above. **Do not
+  "fix" this by rewriting library output** — the enum value is foldseek's contract.
 
 ## 4. Backend & Callbacks
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.

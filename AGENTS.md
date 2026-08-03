@@ -124,6 +124,7 @@ main assistant chains them when a flow needs several in sequence:
 ## Adding a New Tool (Algorithm)
 - **All new tools MUST follow the architectural guidelines and module structure defined by the `create-tool` agent.**
 - **Database-backed tools share one contract** (`create-tool` §3b): a `multi=True` "Databases" dropdown with every option pre-selected, `validate_db_names()` from `utils/data_loading.py` as the only name validator, `params["databases"]` as a `list[str]`, all selections merged into one reference set tagged with a `database` column, and an unreadable database skipped and named in a **Databases Skipped** stat card — failing only when *every* selection is unreadable.
+- **A database is named on screen exactly as it is named in `data/`, extension included** — `Funce_pairs.pkl` shows as `Funce_pairs.pkl`, the FoldSeek folder `AFDB_SWISSPROT` as `AFDB_SWISSPROT` (a directory, so no extension to show). Never prettify (no `.replace("_", " ").title()`) and never strip the suffix (no `.stem`); this holds for dropdown labels, the `database` column, stat cards, and the input-parameters row alike, so the app and the disk always agree. The canonical statement, the reason the option *value* keeps its extension, and the one FoldSeek exception are in the `enzyme_tk_app/app/utils/data_loading.py` module docstring and `create-tool` §3c.
 
 ## Backend Architecture
 - **All backend task scheduler modifications and Redis TTL invariants MUST follow the `backend-agent` agent.**

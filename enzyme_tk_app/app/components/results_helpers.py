@@ -179,6 +179,11 @@ _INTERNAL_KEYS = frozenset({"_stat_cards", "_params_exclude"})
 # Parameter keys that contain SMILES strings eligible for a structure preview.
 _SMILES_PARAM_KEYS = frozenset({"smiles"})
 
+# Parameter keys holding a list of database filenames.  Joined so the row reads
+# "protein.csv, enzymes.csv" rather than "['protein.csv', 'enzymes.csv']" — the
+# filenames are what the dropdown and the results grid show, brackets are not.
+_DATABASE_PARAM_KEYS = frozenset({"databases"})
+
 
 def _pretty_label(key: str) -> str:
     """Convert a snake_case or kebab-case key to a human-friendly label.
@@ -274,7 +279,10 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
 
         # The value might be a complex object (e.g. list, dict) so we convert it
         # to a string here.
-        str_value = str(value)
+        if key in _DATABASE_PARAM_KEYS and isinstance(value, list):
+            str_value = ", ".join(str(v) for v in value)
+        else:
+            str_value = str(value)
         # The label is derived from the key by replacing underscores and hyphens
         # with spaces and title-casing it.
         label = _pretty_label(key)

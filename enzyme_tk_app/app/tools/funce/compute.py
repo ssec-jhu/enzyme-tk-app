@@ -15,6 +15,7 @@ activity.
 
 import pickle
 import time
+from pathlib import Path
 
 import pandas as pd
 
@@ -124,15 +125,18 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
     required_cols = (COL_ENTRY, COL_SEQUENCE, "esm3_mean")
 
     frames = []
+    # Skipped names carry the same spelling as every other surface: the filename
+    # exactly as it appears in data/funce_db/, extension included.
     skipped: list[str] = []
     for name in databases:
+        safe_name = Path(name).name
         try:
             db_path = _resolve_database(name)
             # nosec B301 — operator-supplied file: _resolve_database confines the path to
             # FUNCE_DB_DIR (a read-only mount), so this never deserialises user input.
             frame = pd.read_pickle(db_path)  # nosec B301
         except (ValueError, OSError, pickle.UnpicklingError, EOFError):
-            skipped.append(name)
+            skipped.append(safe_name)
             continue
 
         # A pickle can hold any object.  Check the type before touching
@@ -140,19 +144,20 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
         # raises AttributeError and fails the whole job instead of skipping
         # the one bad database.
         if not isinstance(frame, pd.DataFrame):
-            skipped.append(name)
+            skipped.append(safe_name)
             continue
 
         if any(c not in frame.columns for c in required_cols) or frame.empty:
-            skipped.append(name)
+            skipped.append(safe_name)
             continue
 
-        # Human-readable, matching every other tool: "Funce_pairs" -> "Funce Pairs".
-        frame[COL_DATABASE] = db_path.stem.replace("_", " ").title()
+        # Named exactly as the file is named in data/funce_db/, extension
+        # included — see the data_loading module docstring.
+        frame[COL_DATABASE] = db_path.name
         frames.append(frame)
 
     if not frames:
-        raise ValueError(f"None of the selected databases could be read: {', '.join(databases)}")
+        raise ValueError(f"None of the selected databases could be read: {', '.join(skipped)}")
 
     return pd.concat(frames, ignore_index=True), skipped
 
