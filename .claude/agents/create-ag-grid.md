@@ -39,8 +39,10 @@ tool results.py
 Use a **fixed row height** (Balham default ~28px). Do **not** set `autoHeight` or `wrapText`. Long content is truncated and accessible via hover tooltip (automatically set by `build_ag_grid()`).
 
 ```python
-{"field": "database", "width": 120},
-{"field": "TanimotoSimilarity", "width": 100, "filter": "agNumberColumnFilter"},
+column_defs = [
+    {"field": "database", "width": 120},
+    {"field": "TanimotoSimilarity", "width": 100, "filter": "agNumberColumnFilter"},
+]
 ```
 
 ### 2.2 — SVG / image columns
@@ -48,14 +50,16 @@ Use a **fixed row height** (Balham default ~28px). Do **not** set `autoHeight` o
 Image columns **must** set `autoHeight: True` so the row expands to fit the image. Also set `filter: False` and `sortable: False` — images are not filterable or sortable.
 
 ```python
-{
-    "field": "reaction_svg",
-    "cellRenderer": "SvgRenderer",
-    "width": 450,
-    "autoHeight": True,
-    "filter": False,
-    "sortable": False,
-},
+column_defs = [
+    {
+        "field": "reaction_svg",
+        "cellRenderer": "SvgRenderer",
+        "width": 450,
+        "autoHeight": True,
+        "filter": False,
+        "sortable": False,
+    },
+]
 ```
 
 The `SvgRenderer` is defined in `dashAgGridComponentFunctions.js`. It:
@@ -68,12 +72,14 @@ The `SvgRenderer` is defined in `dashAgGridComponentFunctions.js`. It:
 Only use `autoHeight: True` on columns where seeing the full text inline is essential (e.g., `unmapped` reaction SMILES). Pair it with a `cellClass` that enables wrapping:
 
 ```python
-{
-    "field": "unmapped",
-    "width": 350,
-    "cellClass": "cell-wrap-dash-ag-grid",
-    "autoHeight": True,
-},
+column_defs = [
+    {
+        "field": "unmapped",
+        "width": 350,
+        "cellClass": "cell-wrap-dash-ag-grid",
+        "autoHeight": True,
+    },
+]
 ```
 
 The `cell-wrap-dash-ag-grid` CSS class is defined in `09-ag-grid.css`:
@@ -95,8 +101,8 @@ Sequence columns are **never** hand-styled. Always use the shared helper so ever
 ```python
 from enzyme_tk_app.app.components.results_helpers import sequence_col_def
 
-sequence_col_def(col.COL_SEQUENCE)              # default width 300
-sequence_col_def("Sequence", width=400)         # or override
+sequence_col_def(col.COL_SEQUENCE)  # default width 300
+sequence_col_def("Sequence", width=400)  # or override
 sequence_col_def("Sequence", header="Target Sequence")
 ```
 
@@ -116,10 +122,10 @@ Use the shared helper rather than hand-writing the filter and formatter:
 ```python
 from enzyme_tk_app.app.components.results_helpers import numeric_col_def
 
-numeric_col_def("alnlen", "Alignment Length", width=150)              # integer — no formatter
-numeric_col_def("fident", "Frac. Identity", width=140, decimals=4)    # fraction  -> 0.8734
-numeric_col_def("bits", "Bit Score", width=120, decimals=1)           # score     -> 445.0
-numeric_col_def("evalue", "E-value", width=120, exponential=True)     # e-value   -> 3.09e-163
+numeric_col_def("alnlen", "Alignment Length", width=150)  # integer — no formatter
+numeric_col_def("fident", "Frac. Identity", width=140, decimals=4)  # fraction  -> 0.8734
+numeric_col_def("bits", "Bit Score", width=120, decimals=1)  # score     -> 445.0
+numeric_col_def("evalue", "E-value", width=120, exponential=True)  # e-value   -> 3.09e-163
 ```
 
 It always sets `agNumberColumnFilter`; formatting is **opt-in** because the app renders three distinct kinds of number and one rule does not fit them:
@@ -148,8 +154,10 @@ for feature in PREDICTED_FEATURES:
     defs.append(numeric_col_def(f"{PREFIX}_{feature}_mean", decimals=4))
 
 # RIGHT — one line per column, name as it arrives in the dataframe.
-numeric_col_def("Funce_substrates_MolWt_mean", decimals=4),
-numeric_col_def("Funce_substrates_MolWt_std", decimals=4),
+defs = [
+    numeric_col_def("Funce_substrates_MolWt_mean", decimals=4),
+    numeric_col_def("Funce_substrates_MolWt_std", decimals=4),
+]
 ```
 
 A generated name hides the column *and* silently drops it: `build_ag_grid()` renders only fields that have a def, so a column the generating list fails to name never appears — no error, no log. Repetition here is the feature; it is what makes the drift visible in review.
@@ -201,18 +209,20 @@ def _get_column_defs():
 The `build_ag_grid()` function sets these defaults. **Do not duplicate or override** them in individual column defs unless intentionally overriding a specific property:
 
 ```python
-defaultColDef={
-    "resizable": True,
-    "sortable": True,
-    "filter": True,
-    "wrapHeaderText": True,
-    "autoHeaderHeight": True,
-    "filterParams": {
-        "buttons": ["reset", "apply"],
-        "closeOnApply": True,
+dag.AgGrid(
+    defaultColDef={
+        "resizable": True,
+        "sortable": True,
+        "filter": True,
+        "wrapHeaderText": True,
+        "autoHeaderHeight": True,
+        "filterParams": {
+            "buttons": ["reset", "apply"],
+            "closeOnApply": True,
+        },
+        "cellStyle": {"lineHeight": "1.4"},
     },
-    "cellStyle": {"lineHeight": "1.4"},
-},
+)
 ```
 
 Key points:
@@ -269,14 +279,16 @@ Text is **left-aligned** by default (no `text-align: center` globally). If a spe
 Set by `build_ag_grid()`:
 
 ```python
-dashGridOptions={
-    "pagination": True,
-    "paginationPageSize": 20,
-    "paginationPageSizeSelector": True,
-    "domLayout": "autoHeight",
-    "enableCellTextSelection": True,
-    "ensureDomOrder": True,
-},
+dag.AgGrid(
+    dashGridOptions={
+        "pagination": True,
+        "paginationPageSize": 20,
+        "paginationPageSizeSelector": True,
+        "domLayout": "autoHeight",
+        "enableCellTextSelection": True,
+        "ensureDomOrder": True,
+    },
+)
 ```
 
 - `domLayout: "autoHeight"` — the grid's outer container grows to fit all visible rows (no internal scroll).

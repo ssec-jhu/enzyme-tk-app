@@ -134,8 +134,8 @@ Separate modal contents into distinct thematic sections using `html.Div` contain
 Each section wrapper should use:
 ```python
 html.Div(
-    className="bg-light p-3 rounded mb-3", # Use mb-4 for the first section
-    children=[ ... ]
+    className="bg-light p-3 rounded mb-3",  # Use mb-4 for the first section
+    children=[...],
 )
 ```
 

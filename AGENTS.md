@@ -186,6 +186,7 @@ main assistant chains them when a flow needs several in sequence:
 - All code must pass `tox run -e check-style` before being considered done (included in the `tox` default envlist).
 - No need for permission to run tox commands — they are part of the development workflow.
 - If an import is needed for its **side effect** (e.g., `from enzyme_tk_app.app.app import app` to satisfy `dash.register_page()`), add a `# noqa: F401` comment with a reason to prevent auto-removal.
+- **Python code blocks in markdown are formatted too.** ruff ≥ 0.16 formats ` ```python `, ` ```py `, and ` ```pycon ` blocks inside `.md` files (it was preview-only through 0.15.x, so the pin in `requirements/test.txt` decides whether the check bites). Keep every snippet a **valid statement** — a bare fragment like `{"field": "x"},` is parsed as a tuple and rewritten to `({"field": "x"},)`, so give it its real context (`column_defs = [...]`, `dag.AgGrid(...)`) instead. A **magic trailing comma** keeps a block expanded, and `<!-- fmt: off -->` / `<!-- fmt: on -->` skips one entirely. Markdown is only *formatted*, never linted — `ruff check` still ignores it. `docs/` is excluded via `[tool.ruff] exclude`; `.claude/agents/` and `.github/` are not.
 
 ## Writing Tests
 - **All new tests MUST follow the architectural guidelines and pytest patterns defined by the `write-tests` agent.**

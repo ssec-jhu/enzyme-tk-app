@@ -73,7 +73,7 @@ a new tool that diverges is a bug, not a style choice.
    ```python
    from enzyme_tk_app.app.utils.data_loading import validate_db_names
 
-   error = validate_db_names(databases, ".csv")   # ".pkl", or None for FoldSeek dirs
+   error = validate_db_names(databases, ".csv")  # ".pkl", or None for FoldSeek dirs
    if error:
        return error
    ```

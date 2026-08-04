@@ -41,9 +41,10 @@ This agent defines the mandatory patterns for all Dash callback code in the Enzy
 ```python
 from dash.exceptions import PreventUpdate
 
+
 def populate_example(example_value):
     if not example_value:
-        raise PreventUpdate         # ← no user action, skip update
+        raise PreventUpdate  # ← no user action, skip update
     return example_value
 ```
 
@@ -88,7 +89,7 @@ paths, so they go through the one shared validator — never a per-tool regex:
 from enzyme_tk_app.app.utils.data_loading import validate_db_names
 
 # Database names become file paths on the backend.
-error = validate_db_names(databases, ".csv")   # ".pkl", or None for FoldSeek dirs
+error = validate_db_names(databases, ".csv")  # ".pkl", or None for FoldSeek dirs
 if error:
     return error
 ```
