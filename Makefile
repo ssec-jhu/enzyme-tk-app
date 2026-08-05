@@ -38,3 +38,18 @@ clean:
 	find . -type f -name "*.py[cod]" -delete 2>/dev/null || true
 	find . -name ".DS_Store" -delete 2>/dev/null || true
 	@echo "✓ Cleanup complete"
+
+-include .env
+
+deploy-azure:
+	@echo "Deploying to Azure..."
+	az deployment group create \
+	-g enzyme-tk-rg \
+	-f main.bicep \
+	--parameters \
+	ghcrUsername=$(GH_USERNAME) \
+	ghcrPat=$(GH_PAT) \
+	adminToken=$(ETK_ADMIN_TOKEN) \
+	secretKey=$(ETK_SECRET_KEY)
+
+	@echo "Deployment complete."
