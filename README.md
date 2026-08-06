@@ -99,6 +99,12 @@ services:
 Both services **must** resolve `JOB_OUTPUTS_PATH` to the same path. Override via `.env` or the orchestrator's env config.
 
 
+## FAQ
+
+### How do I add a new FoldSeek database from my CSV file?
+
+Use the standalone builder in [`scripts/foldseek_db_build/`](scripts/foldseek_db_build/README.md). Your CSV needs `Entry` and `Sequence` columns; drop it in that folder, point `CSV_PATH` at it, and build — see that folder's [README](scripts/foldseek_db_build/README.md) for the full steps.
+
 ## Developers — Adding a New Tool
 
 Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`. Auto-discovery scans sub-packages at import time — **no central file to edit**. Create a new folder and the tool card appears on the home page automatically.
