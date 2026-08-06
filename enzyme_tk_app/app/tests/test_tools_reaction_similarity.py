@@ -14,7 +14,7 @@ from dash import html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server  # noqa: F401 — register pages
-from enzyme_tk_app.app.tests.conftest import find_components, make_job
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF, SimilarityAlgorithm, get_similarity_algorithms
 from enzyme_tk_app.app.tools.reaction_similarity.callbacks import (
     populate_example_reaction,
@@ -312,24 +312,37 @@ def test_run_known_query_top_scores_regression(query_smiles, expected_tanimoto, 
     ],
     ids=["nonexistent-file", "path-traversal", "empty-list"],
 )
-def test_run_invalid_databases_return_empty(databases, _patch_rxn_data_dir):
-    """Invalid or missing database inputs must produce empty results."""
+def test_run_invalid_databases_raise(databases, _patch_rxn_data_dir):
+    """Invalid or missing database inputs must raise, not return an empty grid.
+
+    An empty result would be indistinguishable from a legitimate
+    "no similar reactions found".
+    """
     from enzyme_tk_app.app.tools.reaction_similarity.compute import run
 
-    result = run(_default_params(databases=databases))
-    assert result["dataframe"]["data"] == []
+    with pytest.raises(ValueError, match="database"):
+        run(_default_params(databases=databases))
 
 
-def test_run_non_csv_databases_skipped(_patch_rxn_data_dir):
-    """Database filenames without .csv suffix should be skipped with stat card tracking."""
+def test_run_non_csv_databases_raise(_patch_rxn_data_dir):
+    """Every selection being non-.csv is a total wipeout, so it must raise."""
     from enzyme_tk_app.app.tools.reaction_similarity.compute import run
 
-    result = run(_default_params(databases=["bad1.txt", "bad2.exe"]))
+    # Named by its filename, like every other database the user sees.
+    with pytest.raises(ValueError, match="bad1.txt"):
+        run(_default_params(databases=["bad1.txt", "bad2.exe"]))
+
+
+def test_run_partial_database_failure_is_skipped_not_fatal(_patch_rxn_data_dir):
+    """A bad database alongside a good one is skipped and named, not fatal."""
+    from enzyme_tk_app.app.tools.reaction_similarity.compute import run
+
+    result = run(_default_params(databases=["test_reactions_20.csv", "bad.txt"]))
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
 
-    assert result["dataframe"]["data"] == []
-    assert "Databases Skipped" in stat_cards
-    assert stat_cards["Databases Searched"] == "0/2"
+    assert stat_cards["Databases Searched"] == "1/2"
+    # Skipped names keep their extension, matching the dropdown and the grid.
+    assert stat_cards["Databases Skipped"] == "bad.txt"
 
 
 # ── Column definitions ───────────────────────────────────────────────────────
@@ -511,6 +524,10 @@ def test_submit_returns_job_id():
             patch(
                 "enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_task_scheduler",
                 return_value=mock_scheduler,
+            ),
+            patch(
+                "enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_reaction_database_options",
+                return_value=offered_databases("db1.csv", "db2.csv"),
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"

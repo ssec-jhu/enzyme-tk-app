@@ -26,7 +26,7 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
-from enzyme_tk_app.app.tests.conftest import find_components, make_job
+from enzyme_tk_app.app.tests.conftest import TEST_SEQUENCES_CSV, find_components, make_job
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.callbacks import (
     populate_ec_options,
@@ -59,13 +59,16 @@ _skip_no_diamond = pytest.mark.skipif(
 
 
 # The 20-row test CSV fixture is automatically used in all tests via the
-# _patch_seq_data_dir fixture, which monkeypatches the SEQUENCES_DIR in both
+# _patch_seq_data_dir fixture, which monkeypatches SEQUENCES_DIR everywhere.
 @pytest.fixture(autouse=True)
 def _patch_seq_data_dir(sequences_dir, monkeypatch):
-    """Patch ``SEQUENCES_DIR`` in both compute and callbacks modules.
+    """Patch ``SEQUENCES_DIR`` in compute, callbacks, and data_loading.
 
     Autouse ensures every test in this module reads from the 20-row test
-    sequence fixture rather than production data.
+    sequence fixture rather than production data.  ``data_loading`` needs its
+    own copy patched because that is where database discovery and the
+    compliance check now live — ``scan_sequence_databases`` reads it, and the
+    dropdown options that ``validate_db_names`` checks against come from there.
     """
     patched_dir = sequences_dir / SEQUENCES_DIR.name
     monkeypatch.setattr(
@@ -76,6 +79,7 @@ def _patch_seq_data_dir(sequences_dir, monkeypatch):
         "enzyme_tk_app.app.tools.sequence_similarity.callbacks.SEQUENCES_DIR",
         patched_dir,
     )
+    monkeypatch.setattr("enzyme_tk_app.app.utils.data_loading.SEQUENCES_DIR", patched_dir)
 
 
 @pytest.fixture()
@@ -115,7 +119,7 @@ def _default_params(**overrides):
     """Return a valid ``run()`` params dict with sensible defaults."""
     defaults = {
         "task_name": "test-run",
-        "database": "test_sequences_20.csv",
+        "databases": ["test_sequences_20.csv"],
         "sequence": _SEQ_A0A009IHW8,
         "ec_filter": [],
         "cofactor_filter": [],
@@ -133,8 +137,61 @@ def test_run_nonexistent_database_raises():
     """run() must raise ValueError when the database file does not exist."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
-    with pytest.raises(ValueError, match="Database file not found"):
-        run(_default_params(database="nonexistent.csv"))
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(_default_params(databases=["nonexistent.csv"]))
+
+
+def test_run_non_compliant_database_raises(tmp_path):
+    """A file missing a required column is not a database, so it cannot be searched."""
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    # Real file, real .csv suffix, but no EC number column.
+    (tmp_path / SEQUENCES_DIR.name / "not_a_db.csv").write_text("Entry,Sequence\nE1,MKTAY\n")
+
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(_default_params(databases=["not_a_db.csv"]))
+
+
+def test_run_skips_the_bad_database_and_searches_the_good_one(tmp_path, mock_blast):
+    """One unusable selection among several is skipped and named, not fatal.
+
+    Two databases are needed for this to mean anything: with one, a partial
+    search is indistinguishable from a complete one.
+    """
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    (tmp_path / SEQUENCES_DIR.name / "not_a_db.csv").write_text("Entry,Sequence\nE1,MKTAY\n")
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    result = run(_default_params(databases=["test_sequences_20.csv", "not_a_db.csv"]))
+
+    cards = {card["label"]: card["value"] for card in result["_stat_cards"]}
+    assert cards["Databases Searched"] == "1"
+    # Named exactly as it is on disk, extension included.
+    assert cards["Databases Skipped"] == "not_a_db.csv"
+
+
+def test_run_reads_a_tsv_database(tmp_path, mock_blast):
+    """A TSV database must be parsed with tabs and searched like any other.
+
+    Without the separator following the extension a TSV parses as one giant
+    column and the merge below finds nothing.
+    """
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    # Same three rows as a CSV would hold, tab-separated, plus a metadata
+    # column that only exists in this file.
+    (tmp_path / SEQUENCES_DIR.name / "enzymes.tsv").write_text(
+        "Entry\tSequence\tEC number\tOrganism\nA0A009IHW8\tMKTAY\t3.2.2.-\tAcinetobacter\n"
+    )
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    result = run(_default_params(databases=["enzymes.tsv"]))
+
+    assert "Organism" in result["dataframe"]["columns"]
+    row = result["dataframe"]["data"][0]
+    assert row["Organism"] == "Acinetobacter"
+    assert row["database"] == "enzymes.tsv"
 
 
 def test_run_ec_filter_matches_nothing(empty_ec_result):
@@ -195,8 +252,8 @@ def test_run_rejects_non_csv_extension(filename):
     """run() must raise ValueError for database filenames that do not end with .csv."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
-    with pytest.raises(ValueError, match="must be .csv"):
-        run(_default_params(database=filename))
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(_default_params(databases=[filename]))
 
 
 def test_run_path_traversal_sanitized():
@@ -207,8 +264,8 @@ def test_run_path_traversal_sanitized():
     """
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
-    with pytest.raises(ValueError, match="Database file not found: secrets.csv"):
-        run(_default_params(database="../../etc/secrets.csv"))
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(_default_params(databases=["../../etc/secrets.csv"]))
 
 
 # ── CI-safe mocked BLAST tests (no diamond binary required) ──────────────────
@@ -318,8 +375,13 @@ def test_run_mocked_blast_truncates_to_top_n(mock_blast):
     assert bitscores == [500.0, 400.0]
 
 
-def test_run_mocked_blast_strips_internal_columns(mock_blast):
-    """Internal columns (query, Entry, Residue_0index) must not appear in consumer output."""
+def test_run_mocked_blast_strips_join_artifacts(mock_blast):
+    """The join artifacts (query, Entry) must not appear in consumer output.
+
+    Only these two are dropped: "query" is the literal string "query" in every
+    row, and "Entry" is an exact duplicate of "target", the merge key.  Anything
+    else in the database is metadata — see the companion test below.
+    """
     mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
 
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
@@ -327,8 +389,32 @@ def test_run_mocked_blast_strips_internal_columns(mock_blast):
     result = run(_default_params())
     output_columns = result["dataframe"]["columns"]
 
-    for col in [COL_QUERY, COL_ENTRY, COL_RESIDUE_0INDEX]:
-        assert col not in output_columns, f"Internal column '{col}' leaked into output"
+    for col in [COL_QUERY, COL_ENTRY]:
+        assert col not in output_columns, f"Join artifact '{col}' leaked into output"
+
+
+def test_run_mocked_blast_keeps_all_database_metadata(mock_blast):
+    """Every non-required column of the database must survive into the output.
+
+    A sequence database only has to provide Entry, Sequence and EC number; the
+    rest is metadata the app does not enumerate, so it must all come through.
+    Residue_0index is the regression case — it used to be dropped by name.
+    """
+    mock_blast.execute.return_value = _make_blast_result_df(["A0A009IHW8"])
+
+    from enzyme_tk_app.app.tools.sequence_similarity.compute import run
+
+    result = run(_default_params())
+    output_columns = result["dataframe"]["columns"]
+
+    # Read the database's own header rather than hard-coding the list, so a
+    # change to the fixture CSV cannot quietly narrow what this test checks.
+    database_columns = pd.read_csv(TEST_SEQUENCES_CSV, nrows=0).columns
+    metadata = [c for c in database_columns if c not in {COL_ENTRY, "Unnamed: 0"}]
+
+    assert COL_RESIDUE_0INDEX in metadata, "fixture no longer covers the regression case"
+    for column in metadata:
+        assert column in output_columns, f"Database metadata '{column}' was dropped"
 
 
 def test_run_mocked_blast_merges_db_metadata(mock_blast):
@@ -409,7 +495,7 @@ def test_run_mocked_stat_cards_labels_and_count(mock_blast):
 
     result = run(_default_params())
     stat_labels = {c["label"] for c in result["_stat_cards"]}
-    expected = {"Database", "Total Sequences", "After Filtering", "Results Returned", "Run Time"}
+    expected = {"Databases Searched", "Total Sequences", "After Filtering", "Results Returned", "Run Time"}
 
     assert expected.issubset(stat_labels), f"Missing labels: {expected - stat_labels}"
 
@@ -478,7 +564,7 @@ def test_run_cofactor_filter_applied_when_column_present(mock_blast, tmp_path):
     result = run(
         {
             "task_name": "cofactor-test",
-            "database": "cofactor_db.csv",
+            "databases": ["cofactor_db.csv"],
             "sequence": "MKTAYIAKQR",
             "ec_filter": [],
             "cofactor_filter": ["NAD"],
@@ -667,13 +753,13 @@ def test_run_stat_card_run_time_is_numeric():
 
 @_skip_no_diamond
 def test_run_stat_card_database_matches_input():
-    """The 'Database' stat card must match the requested filename."""
+    """The 'Databases Searched' stat card must count the databases loaded."""
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
     result = run(_default_params())
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
 
-    assert stat_cards["Database"] == "test_sequences_20.csv"
+    assert stat_cards["Databases Searched"] == "1"
 
 
 @_skip_no_diamond
@@ -897,6 +983,60 @@ def test_results_layout_renders_ag_grid_with_data():
     assert len(grids[0].rowData) == 2, "AgGrid should contain the two data rows"
 
 
+def test_results_layout_shows_metadata_columns_it_has_no_def_for():
+    """Every column in the payload must reach the grid, named or not.
+
+    A sequence database only has to provide Entry, Sequence and EC number, so
+    the curated def list cannot know what metadata a given database carries.
+    ``build_ag_grid`` renders only fields that have a def, so an unnamed column
+    would silently vanish — these four come from ``enzymes.tsv``.
+    """
+    import dash_ag_grid as dag
+
+    from enzyme_tk_app.app.tools.sequence_similarity.results import results_layout
+
+    unnamed_columns = ["Organism", "Protein names", "Catalytic activity", "Subunit structure"]
+    job = make_job(
+        result={
+            "dataframe": {
+                # One curated column and four the def list has never heard of.
+                "columns": ["target", *unnamed_columns],
+                "data": [dict.fromkeys(["target", *unnamed_columns], "x")],
+            },
+        },
+    )
+
+    grid = find_components(results_layout(job), dag.AgGrid)[0]
+    rendered_fields = [d["field"] for d in grid.columnDefs]
+
+    for column in unnamed_columns:
+        assert column in rendered_fields, f"Metadata column '{column}' was dropped from the grid"
+
+
+def test_results_layout_does_not_duplicate_a_curated_column():
+    """A column that already has a curated def must not also get a bare one appended."""
+    import dash_ag_grid as dag
+
+    from enzyme_tk_app.app.tools.sequence_similarity.results import results_layout
+
+    job = make_job(
+        result={
+            "dataframe": {
+                "columns": ["target", "bitscore", "Organism"],
+                "data": [{"target": "P12345", "bitscore": 200.0, "Organism": "E. coli"}],
+            },
+        },
+    )
+
+    grid = find_components(results_layout(job), dag.AgGrid)[0]
+    rendered_fields = [d["field"] for d in grid.columnDefs]
+
+    assert sorted(rendered_fields) == sorted(set(rendered_fields))
+    # The curated def is the one that survives, keeping its numeric filter.
+    bitscore_def = next(d for d in grid.columnDefs if d["field"] == "bitscore")
+    assert bitscore_def.get("filter") == "agNumberColumnFilter"
+
+
 def test_results_layout_shows_message_when_no_dataframe():
     """When dataframe payload is missing, a fallback message paragraph must be shown."""
     from enzyme_tk_app.app.tools.sequence_similarity.results import results_layout
@@ -1044,12 +1184,12 @@ def test_populate_ec_options_raises_for_empty_value():
 def test_validate_form_enabled_when_all_filled():
     """Submit must be enabled (not disabled) when all required fields are filled."""
     # Returns False = "not disabled" = enabled.
-    assert validate_sequence_form("My Task", "MKTAYIAKQR", "protein.csv") is False
+    assert validate_sequence_form("My Task", "MKTAYIAKQR", "test_sequences_20.csv") is False
 
 
 def test_validate_form_disabled_when_sequence_missing():
     """Submit must be disabled when the sequence is empty."""
-    assert validate_sequence_form("My Task", "", "protein.csv") is True
+    assert validate_sequence_form("My Task", "", "test_sequences_20.csv") is True
 
 
 def test_validate_form_disabled_when_database_missing():
@@ -1064,7 +1204,7 @@ def test_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_sequence_similarity_job(0, 1, "t", "db.csv", "MKTAY", None, None, 10, False)
+        result = submit_sequence_similarity_job(0, 1, "t", ["db.csv"], "MKTAY", None, None, 10, False)
 
     assert result == ""
     mock_sched.assert_not_called()
@@ -1087,7 +1227,9 @@ def test_submit_returns_job_id():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_sequence_similarity_job(1, 0, "My Task", "protein.csv", "MKTAYIAKQR", None, None, 10, False)
+            result = submit_sequence_similarity_job(
+                1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, 10, False
+            )
 
     assert "job-abc-123" in result
 
@@ -1104,7 +1246,9 @@ def test_submit_returns_error_when_top_n_invalid():
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_sequence_similarity_job(1, 0, "My Task", "protein.csv", "MKTAYIAKQR", None, None, None, False)
+        result = submit_sequence_similarity_job(
+            1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, None, False
+        )
 
     # validate_top_n returns an error string for None — no job should be submitted.
     assert "Invalid" in result
@@ -1131,7 +1275,7 @@ def test_submit_message_includes_ec_filter_count():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_sequence_similarity_job(
-                1, 0, "EC Task", "protein.csv", "MKTAYIAKQR", ec_filter, None, 10, False
+                1, 0, "EC Task", ["test_sequences_20.csv"], "MKTAYIAKQR", ec_filter, None, 10, False
             )
 
     # Must mention both the job ID and the filter summary.
@@ -1157,7 +1301,9 @@ def test_submit_message_without_filters_has_no_filtered_by():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_sequence_similarity_job(1, 0, "Task", "protein.csv", "MKTAY", None, None, 10, False)
+            result = submit_sequence_similarity_job(
+                1, 0, "Task", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False
+            )
 
     assert "job-no-filter" in result
     assert "filtered by" not in result
@@ -1170,11 +1316,23 @@ def test_submit_raises_prevent_update_when_fields_empty():
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         with pytest.raises(PreventUpdate):
-            submit_sequence_similarity_job(1, 0, "", "protein.csv", "MKTAY", None, None, 10, False)
+            submit_sequence_similarity_job(1, 0, "", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False)
 
 
-def test_submit_returns_error_for_non_csv_database():
-    """A non-.csv database filename must return an error message without scheduling a job."""
+@pytest.mark.parametrize(
+    "database",
+    ["malicious.txt", "../../etc/passwd", "protein.csv", "not_a_db.csv"],
+    ids=["wrong-extension", "path-traversal", "not-in-this-directory", "non-compliant"],
+)
+def test_submit_rejects_database_that_is_not_offered(tmp_path, database):
+    """Any name the dropdown does not currently offer must be refused, job unscheduled.
+
+    The submit callback validates by membership in the tool's own option list,
+    so a traversal attempt, a real-but-absent filename, and a file that exists
+    yet fails the column contract all fail the same way.
+    """
+    # Exists on disk, but has no Sequence column — so it is not a database.
+    (tmp_path / SEQUENCES_DIR.name / "not_a_db.csv").write_text("Entry,EC number\nE1,1.1.1.1\n")
     mock_scheduler = MagicMock()
 
     with (
@@ -1185,22 +1343,32 @@ def test_submit_returns_error_for_non_csv_database():
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_sequence_similarity_job(1, 0, "Task", "malicious.txt", "MKTAY", None, None, 10, False)
+        result = submit_sequence_similarity_job(1, 0, "Task", [database], "MKTAY", None, None, 10, False)
 
-    assert "Invalid" in result
+    assert "Unknown database" in result
     mock_scheduler.submit_job.assert_not_called()
 
 
 # ── populate_ec_options ──────────────────────────────────────────────────────
 
 
-def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
-    """A valid database CSV must produce dropdown options for each unique EC number."""
-    # Create a minimal CSV with an ec_number column.
-    csv_file = tmp_path / SEQUENCES_DIR.name / "test_db.csv"
-    csv_file.write_text("EC number\n3.2.2.-\n1.1.1.1\n3.2.2.-\n")
+def _write_sequence_db(tmp_path, filename, ec_cells):
+    """Write a minimal compliant sequence database and return its filename.
 
-    options, cleared = populate_ec_options("test_db.csv")
+    The EC dropdown only reads the EC column, but a file is only a database at
+    all once it has all three required columns — so the other two are filled in
+    with throwaway values rather than omitted.
+    """
+    rows = "\n".join(f"E{i},MKTAY,{cell}" for i, cell in enumerate(ec_cells))
+    (tmp_path / SEQUENCES_DIR.name / filename).write_text(f"Entry,Sequence,EC number\n{rows}\n")
+    return filename
+
+
+def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
+    """A valid database must produce dropdown options for each unique EC number."""
+    name = _write_sequence_db(tmp_path, "test_db.csv", ["3.2.2.-", "1.1.1.1", "3.2.2.-"])
+
+    options, cleared = populate_ec_options([name])
 
     # Should have two unique EC numbers, sorted.
     assert len(options) == 2
@@ -1211,18 +1379,18 @@ def test_populate_ec_options_returns_options_for_valid_database(tmp_path):
 
 def test_populate_ec_options_value_matches_label(tmp_path):
     """Each option's value must equal its label (used as the filter key)."""
-    csv_file = tmp_path / SEQUENCES_DIR.name / "db.csv"
-    csv_file.write_text("EC number\n1.2.3.4\n5.6.7.8\n")
+    name = _write_sequence_db(tmp_path, "db.csv", ["1.2.3.4", "5.6.7.8"])
 
-    options, _ = populate_ec_options("db.csv")
+    options, _ = populate_ec_options([name])
 
+    assert options, "no options produced — the rest of this test would vacuously pass"
     for opt in options:
         assert opt["label"] == opt["value"]
 
 
 def test_populate_ec_options_returns_empty_for_missing_file():
     """A non-existent database file must return an empty list (no crash)."""
-    options, cleared = populate_ec_options("no_such_file.csv")
+    options, cleared = populate_ec_options(["no_such_file.csv"])
 
     assert options == []
     assert cleared == []
@@ -1230,23 +1398,30 @@ def test_populate_ec_options_returns_empty_for_missing_file():
 
 def test_populate_ec_options_splits_semicolon_ec_numbers(tmp_path):
     """EC numbers separated by semicolons in a single cell must be split into separate options."""
-    csv_file = tmp_path / SEQUENCES_DIR.name / "multi_ec.csv"
-    csv_file.write_text("EC number\n3.2.2.-; 1.1.1.1\n2.7.1.1\n")
+    name = _write_sequence_db(tmp_path, "multi_ec.csv", ["3.2.2.-; 1.1.1.1", "2.7.1.1"])
 
-    options, _ = populate_ec_options("multi_ec.csv")
+    options, _ = populate_ec_options([name])
 
     labels = [o["label"] for o in options]
     assert labels == ["1.1.1.1", "2.7.1.1", "3.2.2.-"]
 
 
+def test_populate_ec_options_skips_non_compliant_database(tmp_path):
+    """A file missing a required column is not a database, so it contributes no EC numbers."""
+    # Has the EC column the dropdown reads, but no Entry and no Sequence.
+    (tmp_path / SEQUENCES_DIR.name / "not_a_db.csv").write_text("EC number\n1.1.1.1\n")
+
+    assert populate_ec_options(["not_a_db.csv"]) == ([], [])
+
+
 def test_populate_ec_options_returns_empty_for_non_csv_extension():
-    """A filename without a .csv suffix must return an empty list (path-traversal guard)."""
-    assert populate_ec_options("malicious.txt") == ([], [])
+    """A filename that is not an offered database must return an empty list."""
+    assert populate_ec_options(["malicious.txt"]) == ([], [])
 
 
 def test_populate_ec_options_strips_path_traversal_and_rejects_non_csv():
     """Path-traversal attempts with a non-.csv suffix must return an empty list."""
-    assert populate_ec_options("../../etc/passwd") == ([], [])
+    assert populate_ec_options(["../../etc/passwd"]) == ([], [])
 
 
 # ── compute.run() — path-traversal & cofactor guards ────────────────────────

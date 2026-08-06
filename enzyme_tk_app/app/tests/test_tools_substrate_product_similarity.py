@@ -17,7 +17,7 @@ from dash import html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df, offered_databases
 from enzyme_tk_app.app.tools.substrate_product_similarity import (
     TOOL_DEF,
     MoleculeRole,
@@ -242,8 +242,10 @@ def test_run_database_column_derived_from_filename(_patch_reactions_dir):
 
     for row in result["dataframe"]["data"]:
         assert "database" in row, "Missing 'database' column in result row"
-        # CSV is "test_reactions_20.csv" → stem "test_reactions_20" → title "Test Reactions 20"
-        assert row["database"] == "Test Reactions 20"
+        # Named exactly as the file is named in data/reactions/ — not prettified
+        # and not stripped, so the value matches the dropdown label and the file
+        # on disk.
+        assert row["database"] == "test_reactions_20.csv"
 
 
 def test_run_similarity_scores_rounded_to_4_decimals(_patch_reactions_dir):
@@ -346,16 +348,16 @@ def test_run_invalid_algorithm_raises_value_error(_patch_reactions_dir):
 # ── run() — edge cases ───────────────────────────────────────────────────────
 
 
-def test_run_nonexistent_database_returns_empty(_patch_reactions_dir):
-    """When the CSV file does not exist, run() returns empty results gracefully."""
-    params = _default_params(databases=["nonexistent_database.csv"])
-    result = run(params)
+def test_run_nonexistent_database_raises(_patch_reactions_dir):
+    """A missing CSV is the only selection, so it is a total wipeout and must raise.
 
-    assert result["dataframe"]["data"] == []
-    assert result["dataframe"]["columns"] == []
-    # Stat cards should show zero counts
-    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
-    assert stat_cards["Results Returned"] == "0"
+    Returning an empty grid would be indistinguishable from a legitimate
+    "no similar molecules found".
+    """
+    params = _default_params(databases=["nonexistent_database.csv"])
+
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(params)
 
 
 def test_run_data_rows_have_consistent_columns(_patch_reactions_dir):
@@ -374,16 +376,13 @@ def test_run_empty_algorithms_raises_value_error(_patch_reactions_dir):
         run(params)
 
 
-def test_run_non_csv_database_is_skipped(_patch_reactions_dir):
-    """A database filename without a .csv suffix must be skipped, not crash."""
+def test_run_non_csv_database_raises_when_it_is_the_only_selection(_patch_reactions_dir):
+    """A non-.csv filename is skipped; being the only selection makes that fatal."""
     params = _default_params(databases=["not_a_csv.txt"])
-    result = run(params)
 
-    assert result["dataframe"]["data"] == []
-    assert result["dataframe"]["columns"] == []
-    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
-    assert stat_cards["Databases Searched"] == "0/1"
-    assert stat_cards["Databases Skipped"] == "not_a_csv.txt"
+    # Named by its filename, like every other database the user sees.
+    with pytest.raises(ValueError, match="not_a_csv.txt"):
+        run(params)
 
 
 def test_run_skipped_databases_stat_card_in_success_path(_patch_reactions_dir):
@@ -395,6 +394,7 @@ def test_run_skipped_databases_stat_card_in_success_path(_patch_reactions_dir):
     assert len(result["dataframe"]["data"]) > 0
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
     assert stat_cards["Databases Searched"] == "1/2"
+    # Skipped names keep their extension, matching the dropdown and the grid.
     assert stat_cards["Databases Skipped"] == "bad.txt"
 
 
@@ -747,6 +747,10 @@ def test_subprod_submit_returns_error_when_top_n_invalid():
             "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
             return_value=mock_scheduler,
         ),
+        patch(
+            "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_reaction_database_options",
+            return_value=offered_databases("db.csv"),
+        ),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_substrate_product_similarity_job(
@@ -771,6 +775,10 @@ def test_subprod_submit_returns_job_id():
             patch(
                 "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
                 return_value=mock_scheduler,
+            ),
+            patch(
+                "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_reaction_database_options",
+                return_value=offered_databases("db.csv"),
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
