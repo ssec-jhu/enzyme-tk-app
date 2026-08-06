@@ -88,10 +88,11 @@ still loads: its card shows a **"Missing data"** badge instead, and the app does
 
 | Directory | Used by | Contents |
 |-----------|---------|----------|
-| `sequences/`, `reactions/`, `structures/` | similarity tools | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown, shown by its exact filename, extension included |
+| `sequences/` | Sequence Similarity | Reference protein tables — CSV or TSV, plain or gzipped (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`), each with an `Entry`, `Sequence`, and `EC number` column, and each shown by its exact filename, extension included. Any other column is metadata: the app never enumerates it and passes it straight through to the results grid. A file missing a required column is **not** offered in the dropdown — the tool card names it and the columns it lacks instead |
+| `reactions/`, `structures/` | the other similarity tools | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown, shown by its exact filename, extension included |
 | `foldseek_db/` | Sequence and Structure-Based Similarity | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | ProstT5 weights for sequence-to-structure prediction |
-| `funce_db/` | Func-E Activity Prediction | Pre-encoded protein database pickles — at least one `.pkl` |
+| `sequence_embeddings/` | Func-E Activity Prediction | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
 | `funce_models/` | Func-E Activity Prediction | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
 
 A Func-E job needs ~1.1 GB RSS in the worker; the four checkpoints load in ~0.2 s warm and the job times out after 1800 s.
