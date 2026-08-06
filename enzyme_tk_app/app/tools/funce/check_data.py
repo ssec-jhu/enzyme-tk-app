@@ -4,7 +4,7 @@ Returns a list of human-readable labels describing missing data items.
 An empty list means the tool's data prerequisites are satisfied.
 """
 
-from enzyme_tk_app.app.paths import FUNCE_DB_DIR, FUNCE_MODELS_DIR
+from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR
 
 # The ensemble loads one model per EC level; each needs a config + checkpoint pair.
 EC_LEVELS = (1, 2, 3, 4)
@@ -23,8 +23,8 @@ def check_data() -> list[str]:
     """
     missing: list[str] = []
 
-    if not FUNCE_DB_DIR.exists() or not any(FUNCE_DB_DIR.glob("*.pkl")):
-        missing.append("Pre-encoded protein databases (data/funce_db/*.pkl)")
+    if not SEQUENCE_EMBEDDINGS_DIR.exists() or not any(SEQUENCE_EMBEDDINGS_DIR.glob("*.pkl")):
+        missing.append("Pre-encoded protein databases (data/sequence_embeddings/*.pkl)")
 
     for ec in EC_LEVELS:
         stem = _CHECKPOINT_STEM.format(ec=ec)

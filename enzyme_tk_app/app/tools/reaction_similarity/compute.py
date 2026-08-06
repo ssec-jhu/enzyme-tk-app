@@ -67,6 +67,9 @@ def run(params: dict) -> dict:
     if not similarity_algorithms:
         raise ValueError("At least one similarity algorithm must be selected.")
 
+    if not databases:
+        raise ValueError("At least one database must be selected.")
+
     run_time_start = time.monotonic()
 
     all_results: list[pd.DataFrame] = []
@@ -78,12 +81,14 @@ def run(params: dict) -> dict:
         # Sanitise client-supplied filename: strip directory components
         # to prevent path-traversal and enforce a .csv suffix.
         safe_name = Path(db_filename).name
+        # Skipped names carry the same spelling as every other surface: the
+        # filename exactly as it appears in data/reactions/, extension included.
         if not safe_name.endswith(".csv"):
-            databases_skipped.append(db_filename)
+            databases_skipped.append(safe_name)
             continue
         csv_path = REACTIONS_DIR / safe_name
         if not csv_path.exists():
-            databases_skipped.append(db_filename)
+            databases_skipped.append(safe_name)
             continue
 
         databases_loaded += 1
@@ -98,9 +103,15 @@ def run(params: dict) -> dict:
         )
         result_df = rd.execute(db_df)
 
-        # Tag each row with its source database (human-readable stem)
-        result_df[COL_DATABASE] = csv_path.stem.replace("_", " ").title()
+        # Tag each row with its source database, named exactly as the file is
+        # named in data/reactions/ — see the data_loading module docstring.
+        result_df[COL_DATABASE] = csv_path.name
         all_results.append(result_df)
+
+    # A total wipeout is an error, not a result: an empty grid here would be
+    # indistinguishable from a legitimate "no similar reactions found".
+    if not databases_loaded:
+        raise ValueError(f"None of the selected databases could be read: {', '.join(databases_skipped)}")
 
     if not all_results:
         run_time = round(time.monotonic() - run_time_start, 3)

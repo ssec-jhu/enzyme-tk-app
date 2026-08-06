@@ -13,6 +13,7 @@ from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF
+from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
@@ -128,6 +129,16 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
         return ""
 
+    # Server-side validation — the client disables the submit button when
+    # fields are empty, but a crafted request could bypass that.
+    if not task_name or not task_name.strip() or not smiles or not smiles.strip() or not algorithms:
+        raise PreventUpdate
+
+    # Database names become file paths on the backend.
+    error = validate_db_names(databases, get_reaction_database_options())
+    if error:
+        return error
+
     # Validate top_n
     error = validate_top_n(top_n)
     if error:
@@ -137,10 +148,12 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
         tool_slug=TOOL_DEF["slug"],
+        # Key order mirrors the modal's field order — the results page renders
+        # the Input Parameters rows in this order.
         params={
             "task_name": task_name.strip(),
-            "databases": databases,
             "smiles": smiles.strip(),
+            "databases": databases,
             "algorithms": algorithms,
             "top_n": top_n,
         },

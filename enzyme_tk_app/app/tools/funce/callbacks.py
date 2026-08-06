@@ -13,7 +13,7 @@ from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.funce import TOOL_DEF
-from enzyme_tk_app.app.utils.data_loading import validate_db_names
+from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
@@ -129,9 +129,9 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
     if not task_name or not task_name.strip() or not smiles or not smiles.strip():
         raise PreventUpdate
 
-    # Reject any database name that is not a bare identifier ending in ".pkl" —
-    # the name becomes a file path under FUNCE_DB_DIR on the backend.
-    error = validate_db_names(databases, ".pkl")
+    # Reject any name the dropdown is not currently offering — it becomes a file
+    # path under SEQUENCE_EMBEDDINGS_DIR on the backend.
+    error = validate_db_names(databases, get_sequence_embedding_database_options())
     if error:
         return error
 

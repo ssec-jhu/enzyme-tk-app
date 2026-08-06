@@ -45,7 +45,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_submission_results,
 )
 from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
-from enzyme_tk_app.app.utils.data_loading import get_funce_database_options
+from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options
 
 
 def modal():
@@ -59,7 +59,7 @@ def modal():
         - Pre-encoded protein database selection
         - Top-N results limit
     """
-    db_options = get_funce_database_options()
+    db_options = get_sequence_embedding_database_options()
 
     # Preselect every database — hits from all of them are merged and ranked
     # together, so the default is the broadest search.

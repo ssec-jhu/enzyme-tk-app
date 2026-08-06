@@ -28,7 +28,7 @@ TOOL_DEF: ToolDef = {
     "max_duration": 1800,
 }
 
-# The only reaction currently pre-encoded in data/funce_db/*.pkl.  Until the
+# The only reaction currently pre-encoded in data/sequence_embeddings/*.pkl.  Until the
 # reaction-to-fingerprint encoder is wired up, this is the sole query that
 # ``compute._encode_reaction`` can resolve.
 DEHP_MEHP_SMILES = "CCCCC(CC)COC(=O)C1=CC=CC=C1C(=O)OCC(CC)CCCC>>CCCCC(CC)COC(=O)C1=CC=CC=C1C(=O)O"

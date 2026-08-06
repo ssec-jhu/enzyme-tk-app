@@ -9,7 +9,7 @@ activity.
    ``Funce`` is *prediction-only*.  It needs a DataFrame that already carries
    the protein embedding (``esm3_mean``) and the three reaction embeddings
    (``rxnfp``, ``substrate_unimol_repr``, ``product_unimol_repr``).  The
-   database pickles under ``data/funce_db/`` supply the protein side; the
+   database pickles under ``data/sequence_embeddings/`` supply the protein side; the
    reaction side comes from :func:`_encode_reaction`.
 """
 
@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from enzyme_tk_app.app.paths import FUNCE_DB_DIR, FUNCE_MODELS_DIR
+from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR
 from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
 
@@ -78,7 +78,7 @@ DROPPED_COLS = [
 
 
 def _resolve_database(database: str):
-    """Return the validated path to a database pickle inside ``FUNCE_DB_DIR``.
+    """Return the validated path to a database pickle inside ``SEQUENCE_EMBEDDINGS_DIR``.
 
     Args:
         database: The filename chosen in the modal.
@@ -87,10 +87,10 @@ def _resolve_database(database: str):
         The resolved ``Path`` to the pickle.
 
     Raises:
-        ValueError: If the name escapes ``FUNCE_DB_DIR`` or does not exist.
+        ValueError: If the name escapes ``SEQUENCE_EMBEDDINGS_DIR`` or does not exist.
     """
-    db_root = FUNCE_DB_DIR.resolve()
-    db_path = (FUNCE_DB_DIR / database).resolve()
+    db_root = SEQUENCE_EMBEDDINGS_DIR.resolve()
+    db_path = (SEQUENCE_EMBEDDINGS_DIR / database).resolve()
     if db_path.parent != db_root or not db_path.is_file():
         raise ValueError(f"Unknown protein database: {database}")
     return db_path
@@ -126,14 +126,14 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
 
     frames = []
     # Skipped names carry the same spelling as every other surface: the filename
-    # exactly as it appears in data/funce_db/, extension included.
+    # exactly as it appears in data/sequence_embeddings/, extension included.
     skipped: list[str] = []
     for name in databases:
         safe_name = Path(name).name
         try:
             db_path = _resolve_database(name)
             # nosec B301 — operator-supplied file: _resolve_database confines the path to
-            # FUNCE_DB_DIR (a read-only mount), so this never deserialises user input.
+            # SEQUENCE_EMBEDDINGS_DIR (a read-only mount), so this never deserialises user input.
             frame = pd.read_pickle(db_path)  # nosec B301
         except (ValueError, OSError, pickle.UnpicklingError, EOFError):
             skipped.append(safe_name)
@@ -151,7 +151,7 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
             skipped.append(safe_name)
             continue
 
-        # Named exactly as the file is named in data/funce_db/, extension
+        # Named exactly as the file is named in data/sequence_embeddings/, extension
         # included — see the data_loading module docstring.
         frame[COL_DATABASE] = db_path.name
         frames.append(frame)
@@ -220,7 +220,7 @@ def run(params: dict) -> dict:
         params: Dictionary with keys:
             - ``"task_name"`` (str): human-readable label for the job.
             - ``"smiles"`` (str): query reaction SMILES.
-            - ``"databases"`` (list[str]): pickle filenames in ``funce_db/``.
+            - ``"databases"`` (list[str]): pickle filenames in ``sequence_embeddings/``.
               All selected databases are merged and ranked together.
             - ``"top_n"`` (int): maximum number of ranked hits to return.
 
