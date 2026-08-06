@@ -181,3 +181,6 @@ cython_debug/
 
 # .planning/ is GSD's local working directory (roadmaps, codebase maps, reviews) — regenerated, not shared
 /.planning/
+
+# graphify's scratch output — the knowledge graph build copies from here into .planning/graphs/
+/graphify-out/
