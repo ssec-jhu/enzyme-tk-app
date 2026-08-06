@@ -14,7 +14,7 @@ from __future__ import annotations
 from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
-from enzyme_tk_app.app.components.results_helpers import build_ag_grid
+from enzyme_tk_app.app.components.results_helpers import build_ag_grid, numeric_col_def
 
 
 def _get_column_defs() -> list[dict]:
@@ -34,27 +34,9 @@ def _get_column_defs() -> list[dict]:
         {"field": "target", "headerName": "Target", "width": 180},
         {"field": "database", "headerName": "Database", "width": 140},
         # ── Alignment scores ─────────────────────────────────────────
-        {
-            "field": "fident",
-            "headerName": "Frac. Identity",
-            "width": 140,
-            "filter": "agNumberColumnFilter",
-            "valueFormatter": {"function": "params.value != null ? params.value.toFixed(4) : ''"},
-        },
-        {
-            "field": "bits",
-            "headerName": "Bit Score",
-            "width": 120,
-            "filter": "agNumberColumnFilter",
-            "valueFormatter": {"function": "params.value != null ? params.value.toFixed(1) : ''"},
-        },
-        {
-            "field": "evalue",
-            "headerName": "E-value",
-            "width": 120,
-            "filter": "agNumberColumnFilter",
-            "valueFormatter": {"function": "params.value != null ? params.value.toExponential(2) : ''"},
-        },
+        numeric_col_def("fident", "Frac. Identity", width=140, decimals=4),
+        numeric_col_def("bits", "Bit Score", width=120, decimals=1),
+        numeric_col_def("evalue", "E-value", width=120, exponential=True),
         # ── Alignment details ────────────────────────────────────────
         {
             "field": "alnlen",

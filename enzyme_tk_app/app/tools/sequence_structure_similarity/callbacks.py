@@ -9,7 +9,6 @@ This module defines callbacks that:
 """
 
 import base64
-import re
 from pathlib import Path
 
 from dash import Input, Output, State, callback, ctx, html, no_update
@@ -20,6 +19,7 @@ from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
+from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options, validate_db_names
 
 # Build lookup dict: example id -> entry.
 _EXAMPLES_BY_ID = {ex["value"]: ex for ex in _get_example_entries()}
@@ -208,21 +208,15 @@ def submit_structure_similarity_job(
     if not task_name or not task_name.strip() or not sequence or not sequence.strip() or not databases:
         raise PreventUpdate
 
-    # Validate database names — only allow alphanumeric, underscores, and hyphens.
-    # this should not happen if the dropdown options are properly generated from the filesystem,
-    # but we check again here to be safe since these values will be used in file paths on the backend.
-    sanitized_dbs = []
-    for db_name in databases:
-        # Strip whitespace
-        safe = str(db_name).strip()
-        # Reject any names that contain characters other than letters, numbers, underscores, or hyphens.
-        if not re.match(r"^[0-9A-Za-z_-]+$", safe):
-            return f"Invalid database name: {db_name}. Name must only contain numbers, letters, and _ or -"
-        sanitized_dbs.append(safe)
-
-    # sanity check: ensure we have at least one valid database after sanitization
-    if not sanitized_dbs:
-        return "No valid databases found in the selection. Check the database names and try again."
+    # Validate database names — they become file paths on the backend, so they
+    # are checked even though the dropdown only offers legitimate options.
+    # FoldSeek databases are directories, hence no suffix.  Names are passed
+    # through as-is: coercing with str() would turn a crafted 123 into the
+    # allowlist-passing "123", and stripping would silently retarget a
+    # directory whose real name has surrounding whitespace.
+    error = validate_db_names(databases, get_foldseek_database_options())
+    if error:
+        return error
 
     # Validate structure file extension if provided.
     if structure_filename:
@@ -237,12 +231,14 @@ def submit_structure_similarity_job(
     # Determine mode for the status message.
     mode = "structure" if structure_contents else "sequence"
 
+    # Key order mirrors the modal's field order — the results page renders the
+    # Input Parameters rows in this order.
     params = {
         "task_name": task_name.strip(),
         "sequence": sequence.strip(),
-        "databases": sanitized_dbs,
         "structure_content": structure_contents if structure_contents else None,
         "structure_filename": structure_filename if structure_contents else None,
+        "databases": databases,
     }
 
     # ready to submit the job to the backend scheduler
@@ -254,6 +250,6 @@ def submit_structure_similarity_job(
     )
 
     # common feedback to the user amongst all tools
-    db_list = ", ".join(sanitized_dbs)
+    db_list = ", ".join(databases)
     msg = f"Job submitted — ID: {job_id} ({mode} mode, databases: {db_list})"
     return msg
