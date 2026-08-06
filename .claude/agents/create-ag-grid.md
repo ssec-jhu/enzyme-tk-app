@@ -168,6 +168,16 @@ Use `col.COL_*` for any column shared across tools (`col.COL_ENTRY`, `col.COL_DA
 
 A module constant holding **one** whole column name is fine and is not synthesis — `funce/results.py` uses `PRED_COL` (`"Funce_prediction"`, imported from `compute.py`) because `compute.py` sorts on the same column and the two must not drift. The line still names exactly one column. What §2.6 forbids is a constant that a loop expands into *many* names.
 
+**When the payload can carry columns nobody can list up front, append the remainder — never loop over a guessed list.** `_get_column_defs()` is then the *styled* layer (widths, decimals, the sequence truncation class), and `results_layout()` adds a bare def for every payload column it does not name:
+
+```python
+defs = _get_column_defs()
+known = {d["field"] for d in defs}
+defs += [{"field": c, "headerName": c} for c in df_payload["columns"] if c not in known]
+```
+
+This is not synthesis: no name is invented, they are read off the payload — so an unexpected column is unstyled but never invisible. Two tools need it and both do it identically. `tools/funce/results.py`: a newer `enzymetk` may emit new `Funce_*` columns. `tools/sequence_similarity/results.py`: a sequence database only has to carry `Entry`, `Sequence` and `EC number` (`create-tool` §3b.9), every other column is metadata this app never enumerates, and a real `enzymes.tsv` search brings 17 of them (`Organism`, `Protein names`, `Catalytic activity`, `Cofactor`, …). Curated defs lead, the appended tail comes last; if you extend the curated list, leave the append in place.
+
 ### 2.7 — Header labels (`headerName`) — optional, and Func-E opts out
 
 `headerName` is **optional**. Omit it and AG Grid humanises the field
@@ -182,10 +192,9 @@ Two reasons: a scientist must be able to trace a number back to the exact enzyme
 column, and AG Grid's humanisation *misreports* these names
 (`Funce_substrates_MolWt_mean` → "Funce_substrates Mol Wt_mean").
 
-`results_layout()` there also appends a bare `{"field": c, "headerName": c}` for any
-payload column the list does not name, so a column added by a newer `enzymetk` shows up
-unstyled rather than vanishing. That fallback is the safety net for §2.6's explicit list —
-if you extend the list, leave it in place.
+The bare `{"field": c, "headerName": c}` its `results_layout()` appends for unnamed payload
+columns is the §2.6 remainder pattern, not part of this exception — `sequence_similarity`
+appends the same defs while keeping friendly headers on its curated ones.
 
 Do not "fix" those headers, do not propagate the pattern to other tools, and keep the
 guard tests in `enzyme_tk_app/app/tests/test_tools_funce.py` if you touch that function.

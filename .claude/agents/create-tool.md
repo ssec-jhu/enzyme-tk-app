@@ -43,10 +43,11 @@ To add a tool, create a folder with:
 ## 2b. Missing-Data Badge — `check_data.py`
 If a tool depends on bundled data (model weights, prebuilt databases, reference files), add an **optional** `check_data.py` exporting `check_data() -> list[str]`:
 - Return an **empty list** when all data prerequisites are satisfied.
-- Return a list of **human-readable labels** (one per missing item) when data is absent — these render as tooltip lines under a "Missing data" badge on the tool card.
+- Return a list of **human-readable labels** (one per item) when data is absent — these render as tooltip lines under a "Missing data" badge on the tool card.
+- **A file that is present but unusable is reported here too**, with the reason. `sequence_similarity/check_data.py` lists every `data/sequences/` file that fails the column contract (§3b.9) — `"badfile.csv — missing columns: Sequence, EC number"` — because such a file is filtered out of the dropdown, so this card is the only place the scientist who dropped it in learns why it vanished.
 - Auto-discovery in `tools/__init__.py` registers the callable into the `CHECK_DATA` dict keyed by `TOOL_DEF["slug"]`. Tools **without** this module are treated as having no data dependencies and never show a badge.
 - Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a new constant there if a needed path is missing.
-- Keep checks cheap and side-effect-free (existence/non-empty checks): `check_data()` runs at home-page render time. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
+- Keep checks cheap and side-effect-free: `check_data()` runs at home-page render time, on every render. Existence/non-empty checks are free; a check that must open a file reads only the header (`nrows=0`) and is cached on `(path, mtime, size)` so a re-dropped database is still picked up without an app restart — that is what `scan_sequence_databases()` does. Never read a full column here. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
 
 ## 3. UI & Modal Conventions
 > [!IMPORTANT]
@@ -61,36 +62,51 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 
 ## 3b. Database-Backed Tools — Mandatory Contract
 Applies to every tool that reads reference databases out of a data directory (`sequences/`,
-`reactions/`, `foldseek_db/`, `funce_db/`, …). All existing database-backed tools follow it;
-a new tool that diverges is a bug, not a style choice.
+`reactions/`, `sequence_embeddings/`, `foldseek_db/`, …). All existing database-backed tools
+follow it; a new tool that diverges is a bug, not a style choice.
+
+**Name the directory and its option builder for the data, not for your tool.** More than one
+tool can read a kind of reference data, so `data/sequence_embeddings/` +
+`get_sequence_embedding_database_options()` — never `funce_db/` + `get_funce_database_options()`,
+which is what that pair used to be called. A tool's name belongs on a directory only when the
+tool genuinely owns it: `foldseek_db/` and `foldseek_models/` (the folder names are foldseek's
+own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
 
 1. **The dropdown is multi-select.** `dcc.Dropdown(..., multi=True)`, id
    `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (**plural**), with **every option
    pre-selected** — the broadest search is the default. There is no single-database tool;
    a directory that happens to hold one file still gets a multi-select.
-2. **Validate with the shared validator, never a hand-rolled regex.** In the submit
-   callback:
+2. **Validate with the shared validator, never a hand-rolled regex.** Pass the tool's own
+   option list — the second argument is what the name is checked *against*:
    ```python
-   from enzyme_tk_app.app.utils.data_loading import validate_db_names
+   from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options, validate_db_names
 
-   error = validate_db_names(databases, ".csv")  # ".pkl", or None for FoldSeek dirs
+   # get_reaction_database_options / get_sequence_embedding_database_options /
+   # get_foldseek_database_options for the other tools.
+   error = validate_db_names(databases, get_sequence_database_options())
    if error:
        return error
    ```
-   It returns a message for an empty selection, a bare string instead of a list (a
-   single-select leftover), or any name that is not a bare `[0-9A-Za-z_-]+` plus the
-   optional suffix — same contract as `validate_top_n`, it never raises. The value is a
-   browser-controlled `State`, so raising would surface as an HTTP 500 on
-   `/_dash-update-component` (the app installs no Dash `on_error` handler).
+   The check is **membership in `options`** (only each dict's `value` is read), so the
+   allowlist is exactly what the dropdown just offered: nothing to traverse, no second
+   extension to smuggle, and a database the builder filtered out — a non-compliant
+   sequence file, say (§3b.9) — is rejected for free. It returns a message for an empty
+   selection, a bare string instead of a list (a single-select leftover), or any name the
+   tool does not currently offer (`Unknown database: 'x'`) — same contract as
+   `validate_top_n`, it never raises. The value is a browser-controlled `State`, so raising
+   would surface as an HTTP 500 on `/_dash-update-component` (the app installs no Dash
+   `on_error` handler).
    Names come from the browser and become filesystem paths — this is the trust boundary.
 3. **`params["databases"]` is a `list[str]`.** Never a `"database"` string key.
 4. **Merge, do not loop-and-append per database.** Load each selection, tag its rows with
    the `database` column (`COL_DATABASE` from `utils.columns`, value `csv_path.name` —
    see §3c, full filename, no prettifying), and `pd.concat` into one reference set so the ranking/top-N is
    global across the union, not per file.
-5. **Bad database → skip, name it, continue. All bad → raise.** A single unreadable file
-   must not fail the job; collect its name. But if *nothing* loaded, `raise ValueError(...)`
-   — an empty grid would be indistinguishable from a legitimate "no hits found".
+5. **Bad database → skip, name it, continue. All bad → raise.** A single unusable file —
+   missing, unreadable, or (for `data/sequences/`) no longer meeting the column contract in
+   item 9 — must not fail the job; collect its name. But if *nothing* loaded,
+   `raise ValueError(...)` — an empty grid would be indistinguishable from a legitimate
+   "no hits found".
 6. **Say so in the stat cards:** a `Databases Searched` **count**, plus a
    `Databases Skipped` card listing the failures only when there are any (append the
    sanitised `safe_name`, i.e. `Path(name).name` — the full filename, not the raw selection —
@@ -103,6 +119,27 @@ a new tool that diverges is a bug, not a style choice.
 8. **Dependent dropdowns take the union.** Anything derived from the selection (EC-number
    filter, cofactor filter) is rebuilt as the union across the selected files and clears its
    own value when the selection changes, so a stale filter is never carried over.
+9. **`data/sequences/` files declare their columns; a file that does not is not a database.**
+   A file there qualifies only when **both** hold: its extension is in
+   `SEQUENCE_DB_SUFFIXES` (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`) **and** its header carries
+   every one of `REQUIRED_SEQUENCE_COLUMNS` (`Entry`, `Sequence`, `EC number`). Everything
+   else in the file is **metadata the app never enumerates** — it rides through the search
+   into the results grid untouched (which is why that grid appends a def for whatever it was
+   not told about; see `create-ag-grid` §2.6). `scan_sequence_databases()` in
+   `utils/data_loading.py` is the single scan: `get_sequence_database_options()` takes its
+   names, `check_data()` takes its `problems` lines
+   (`"badfile.csv — missing columns: Sequence, EC number"`). A non-compliant file is
+   therefore **not offered at all** and is named on the home-page card instead — silently
+   omitting it would leave the scientist who dropped it in with no explanation. `compute.run()`
+   re-derives the usable set itself (the worker reads `params` from Redis, so it trusts no
+   submit-time check) and skips a name that is no longer in it, which is the same
+   skip-and-name / all-bad-raises policy as items 5 and 6. Use
+   `sequence_db_separator(path)` for the delimiter — the extension decides, and pandas
+   handles `.gz` itself. **This contract is `data/sequences/` only**; `reactions/`,
+   `sequence_embeddings/`, and `foldseek_db/` are unchanged. A pickle cannot be read
+   header-only, so `sequence_embeddings/` deliberately validates at run time
+   (item 5) rather than at discovery — checking there would deserialise every
+   embedding table on every page render.
 
 ## 3c. Database Naming — One Spelling Everywhere
 **A database is named on screen exactly as it is named in `data/`, extension included.**
@@ -126,8 +163,8 @@ before touching any of this.
 - **`label` and `value` are identical** in the file-based builders (`{"label": f.name,
   "value": f.name}`), and in FoldSeek's too (`{"label": name, "value": name}`) — there is no
   label-vs-value distinction to reason about. The `value` has to keep its extension because it
-  is what `validate_db_names(names, ".csv")` checks and what becomes a file path; that is the
-  reason the suffix is never stripped anywhere.
+  is the string `validate_db_names` matches against the option list and what becomes a file
+  path; that is the reason the suffix is never stripped anywhere.
 - **One deliberate exception — the FoldSeek results grid.** In
   `tools/sequence_structure_similarity`, the `database` column of the results grid is
   produced by the `enzymetk` library, not by this app. `FoldSeekDatabase` is a `str, Enum`

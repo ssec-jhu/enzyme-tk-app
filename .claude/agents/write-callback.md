@@ -83,16 +83,27 @@ A value that is present but *invalid* → `return` the error message string, so 
 it in the modal's submission-results div.
 
 **Database names are the canonical case.** They come from the browser and become filesystem
-paths, so they go through the one shared validator — never a per-tool regex:
+paths, so they go through the one shared validator — never a per-tool regex. The second
+argument is the tool's **own option list**, the same builder the modal calls:
 
 ```python
-from enzyme_tk_app.app.utils.data_loading import validate_db_names
+from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options, validate_db_names
 
-# Database names become file paths on the backend.
-error = validate_db_names(databases, ".csv")  # ".pkl", or None for FoldSeek dirs
+# Database names become file paths on the backend.  Checked against what the
+# dropdown currently offers — get_reaction_database_options /
+# get_sequence_embedding_database_options / get_foldseek_database_options
+# for the others.
+error = validate_db_names(databases, get_sequence_database_options())
 if error:
     return error
 ```
+
+Membership in that list is the whole check (only each option's `value` is read), which is
+why nothing else is needed: an exact allowlist has no traversal to match and no second
+extension to smuggle, and a name the builder filtered out — a `data/sequences/` file that
+fails the column contract, say — is rejected as `Unknown database: 'x'` for free. Build the
+options fresh in the callback rather than caching them at import time, so a database added
+or removed on disk is reflected immediately.
 
 It returns a message rather than raising, exactly like `validate_top_n` — so the two
 validations read identically and sit next to each other. That includes a bare string instead

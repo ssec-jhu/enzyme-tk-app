@@ -46,9 +46,13 @@ The agent must follow these strictly defined patterns for writing tests in the E
 
 7.  **Database-Backed Tools**
     - `params["databases"]` is a `list[str]` — never a bare string. Point the tool's data-dir constant at `tmp_path` and write the CSVs/pickles the test needs rather than relying on whatever the real data directory happens to hold.
-    - Cover **both halves** of the skip policy: one unreadable database among several is skipped (job succeeds, its name appears in the `Databases Skipped` stat card) while *all* selections unreadable raises `ValueError`.
+    - **Patch the data-dir constant in `utils.data_loading` too**, not just in the tool's `compute`/`callbacks` module. The `get_*_database_options()` builders live there, and `validate_db_names(names, options)` checks the submitted names against **membership in that list** — patch only the tool's copy and the validator is still offering production names, so every fixture name is rejected as `Unknown database`. See the `_patch_seq_data_dir` / `_patch_reactions_dir` fixtures.
+    - For a callback test that submits a name no dropdown offers, patch the tool's option builder with `conftest.offered_databases("a.csv", "b.csv")` — it builds the `{"label": …, "value": …}` list, i.e. "the dropdown is offering exactly these".
+    - Cover **both halves** of the skip policy: one unusable database among several is skipped (job succeeds, its name appears in the `Databases Skipped` stat card) while *all* selections unusable raises `ValueError`.
+    - A `data/sequences/` fixture file is only a database if it has `Entry`, `Sequence` and `EC number` (`create-tool` §3b.9) — one without them is not offered, is rejected on submit, and shows up in `check_data()`. That is the path to test for non-compliant files, alongside a file that cannot be read at all; `.tsv`, `.csv.gz` and `.tsv.gz` are equally valid extensions and worth one parametrized case.
     - Names shown to the user are the **full filename, extension included** — the same string that is in `params["databases"]`: it holds `"protein.csv"`, and the `database` column, the `Databases Skipped` card, and the all-failed error message all read `protein.csv` too (`create-tool` §3c). Assert the filename; asserting a bare stem such as `"protein"` appears in output is the wrong expectation.
     - Multi-database behaviour needs **at least two** databases in the fixture — with one, a merged search is indistinguishable from a single-database one.
+    - Header and EC-column reads are cached on `(path, mtime, size)`. A fresh `tmp_path` per test keeps that harmless, but rewriting **the same path** inside one test can hit a stale entry when the mtime does not move — write a distinct filename per case instead.
 
 8.  **File Placement**
     - Prefer adding tests to an **existing** test file when the module is already under test, rather than creating a new file.
