@@ -33,6 +33,20 @@ TEST_REACTIONS_CSV = TEST_DATA_DIR / "test_reactions_20.csv"
 TEST_SEQUENCES_CSV = TEST_DATA_DIR / "test_sequences_20.csv"
 
 
+# ── Database dropdown helpers ────────────────────────────────────────────────
+
+
+def offered_databases(*names):
+    """Build the dropdown option list a tool's ``get_*_database_options()`` would return.
+
+    ``validate_db_names`` checks the submitted names against exactly this list,
+    so a callback test that submits an invented database name patches its
+    tool's option builder with ``return_value=offered_databases(...)`` to say
+    "the dropdown is offering these".
+    """
+    return [{"label": name, "value": name} for name in names]
+
+
 # ── Reaction data helpers ────────────────────────────────────────────────────
 
 
@@ -48,11 +62,18 @@ def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
 
 @pytest.fixture()
 def _patch_reactions_dir(reactions_dir, monkeypatch):
-    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture."""
+    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture.
+
+    Both copies of the constant are patched: ``compute`` uses it to build the
+    file path, and ``data_loading`` uses it to build the dropdown options that
+    ``validate_db_names`` now checks membership against.
+    """
+    patched_dir = reactions_dir / REACTIONS_DIR.name
     monkeypatch.setattr(
         "enzyme_tk_app.app.tools.substrate_product_similarity.compute.REACTIONS_DIR",
-        reactions_dir / REACTIONS_DIR.name,
+        patched_dir,
     )
+    monkeypatch.setattr("enzyme_tk_app.app.utils.data_loading.REACTIONS_DIR", patched_dir)
 
 
 @pytest.fixture()
