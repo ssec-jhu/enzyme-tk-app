@@ -1,9 +1,9 @@
 celery[redis]==5.6.3
-dash==4.4.0
-dash-ag-grid==35.2.0
+dash==4.4.1
+dash-ag-grid==35.3.0
 dash-bootstrap-components==2.0.4
 # TODO: Pin the version of enzymetk once a stable release is available.
 enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@5f39736dadd9e6c7901ebf5bb86656ca1883c584
 gunicorn==26.0.0
-pandas==3.0.3
+pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
