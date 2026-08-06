@@ -112,8 +112,9 @@ def modal():
     """
     db_options = get_sequence_database_options()
 
-    # Default to the first database if available.
-    default_db = db_options[0]["value"] if db_options else None
+    # Pre-select every database — hits from all of them are merged and ranked
+    # together, so the default is the broadest search.
+    all_db_values = [opt["value"] for opt in db_options]
 
     return dbc.Modal(
         # Modal ID follows the convention: id-modal-<slug>
@@ -224,16 +225,16 @@ def modal():
                             dbc.Row(
                                 [
                                     dbc.Col(
-                                        dbc.Label("Database", className="col-form-label fw-bold"),
+                                        dbc.Label("Databases", className="col-form-label fw-bold"),
                                         width=3,
                                     ),
                                     dbc.Col(
                                         dcc.Dropdown(
-                                            id=f"id-dropdown-{TOOL_DEF['slug']}-database",
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
                                             options=db_options,
-                                            value=default_db,
-                                            multi=False,
-                                            placeholder="Select a sequence database...",
+                                            value=all_db_values,
+                                            multi=True,
+                                            placeholder="Select one or more sequence databases...",
                                             className="themed-control",
                                         ),
                                         width=9,

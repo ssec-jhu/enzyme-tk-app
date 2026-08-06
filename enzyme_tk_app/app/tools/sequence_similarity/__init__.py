@@ -9,7 +9,10 @@ from enzyme_tk_app.app.tools import ToolDef
 TOOL_DEF: ToolDef = {
     "slug": "sequence-similarity",
     "title": "Sequence Similarity",
-    "desc": ("High-performance pairwise and multiple sequence alignment using Smith-Waterman and BLAST algorithms."),
+    "desc": (
+        "Protein sequence similarity search using DIAMOND BLASTp. Searches one or more "
+        "reference databases, merged so hits are ranked globally."
+    ),
     "icon": ICON_TOOL_SEQUENCE,
     "order": 3,
     "libraries": ["diamond-blastp"],
