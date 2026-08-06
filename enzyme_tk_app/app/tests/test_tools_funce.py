@@ -13,10 +13,10 @@ Three things are pinned here:
 * **Compute** — which databases are loaded, which are skipped, which reactions
   are refused, and what the stat cards say about all of it.
 
-Nothing here touches ``data/funce_db/``.  That directory is git-ignored (the
+Nothing here touches ``data/sequence_embeddings/``.  That directory is git-ignored (the
 shipped pickle and the ~3 GB checkpoint ensemble are not in the repository), so
 every compute test writes the database pickles it needs into ``tmp_path`` and
-repoints ``FUNCE_DB_DIR`` at it — otherwise these tests would pass only on a
+repoints ``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
 machine that happens to have the real data.
 
 ``compute.py`` imports ``torch``/``enzymetk`` inside ``run()`` rather than at
@@ -276,16 +276,16 @@ def _make_funce_frame(entries: list[str]) -> pd.DataFrame:
 
 
 @pytest.fixture()
-def funce_db_dir(tmp_path, monkeypatch):
-    """Point ``FUNCE_DB_DIR`` at a tmp directory holding one valid database.
+def embeddings_db_dir(tmp_path, monkeypatch):
+    """Point ``SEQUENCE_EMBEDDINGS_DIR`` at a tmp directory holding one valid database.
 
     Returns the directory so a test can drop extra databases — good or
     deliberately broken — beside the good one.
     """
-    db_dir = tmp_path / "funce_db"
+    db_dir = tmp_path / "sequence_embeddings"
     db_dir.mkdir()
     _make_funce_frame(GOOD_DB_ENTRIES).to_pickle(db_dir / GOOD_DB)
-    monkeypatch.setattr("enzyme_tk_app.app.tools.funce.compute.FUNCE_DB_DIR", db_dir)
+    monkeypatch.setattr("enzyme_tk_app.app.tools.funce.compute.SEQUENCE_EMBEDDINGS_DIR", db_dir)
     return db_dir
 
 
@@ -369,7 +369,7 @@ def _write_empty_frame(path):
     [None, _write_corrupt_file, _write_pickled_dict, _write_frame_without_embedding, _write_empty_frame],
     ids=["file-absent", "corrupt-bytes", "not-a-dataframe", "no-protein-embedding", "no-rows"],
 )
-def test_load_databases_skips_the_unusable_one(funce_db_dir, write_bad_database):
+def test_load_databases_skips_the_unusable_one(embeddings_db_dir, write_bad_database):
     """One unusable database is skipped and named; the good one still loads.
 
     The four ways a database can be unusable are checked by separate branches
@@ -379,7 +379,7 @@ def test_load_databases_skips_the_unusable_one(funce_db_dir, write_bad_database)
     """
     # ``None`` means "leave the file absent", which is the fifth way.
     if write_bad_database is not None:
-        write_bad_database(funce_db_dir / BAD_DB)
+        write_bad_database(embeddings_db_dir / BAD_DB)
 
     frame, skipped = _load_databases([GOOD_DB, BAD_DB])
 
@@ -390,13 +390,13 @@ def test_load_databases_skips_the_unusable_one(funce_db_dir, write_bad_database)
     assert set(frame[COL_DATABASE]) == {GOOD_DB}
 
 
-def test_load_databases_merges_every_selection(funce_db_dir):
+def test_load_databases_merges_every_selection(embeddings_db_dir):
     """Two databases are searched as one, each row tagged with its own source.
 
     Provenance is the whole point of the ``database`` column: a hit found in
     two databases is listed twice, once per source, and must be traceable.
     """
-    _make_funce_frame(["Q00001"]).to_pickle(funce_db_dir / OTHER_DB)
+    _make_funce_frame(["Q00001"]).to_pickle(embeddings_db_dir / OTHER_DB)
 
     frame, skipped = _load_databases([GOOD_DB, OTHER_DB])
 
@@ -415,7 +415,7 @@ def test_load_databases_merges_every_selection(funce_db_dir):
     ],
     ids=["nothing-selected", "every-selection-unusable"],
 )
-def test_load_databases_raises_when_nothing_can_be_searched(funce_db_dir, databases, expected_fragment):
+def test_load_databases_raises_when_nothing_can_be_searched(embeddings_db_dir, databases, expected_fragment):
     """A run with no usable database must fail loudly, not return zero hits.
 
     An empty result would read as "no enzymes match this reaction", which is a
@@ -430,15 +430,15 @@ def test_load_databases_raises_when_nothing_can_be_searched(funce_db_dir, databa
     ["../outside.pkl", "no_such_database.pkl"],
     ids=["escapes-to-a-real-file-outside", "does-not-exist"],
 )
-def test_resolve_database_rejects_anything_but_a_file_inside_its_directory(funce_db_dir, database):
-    """A name arriving from the browser must resolve to a file, and to one inside ``FUNCE_DB_DIR``.
+def test_resolve_database_rejects_anything_but_a_file_inside_its_directory(embeddings_db_dir, database):
+    """A name arriving from the browser must resolve to a file, and to one inside ``SEQUENCE_EMBEDDINGS_DIR``.
 
     This is the trust boundary in front of ``read_pickle``: unpickling a file
     an attacker chose is arbitrary code execution.  The first case plants a
     genuinely readable pickle one level up, so only the parent-directory check
     can stop it.
     """
-    _make_funce_frame(["P00001"]).to_pickle(funce_db_dir.parent / "outside.pkl")
+    _make_funce_frame(["P00001"]).to_pickle(embeddings_db_dir.parent / "outside.pkl")
 
     with pytest.raises(ValueError, match="Unknown protein database"):
         _resolve_database(database)
@@ -517,7 +517,7 @@ def test_encode_reaction_refuses_what_it_cannot_encode(smiles, frame, expected_f
     ],
     ids=["clean-run-has-no-card", "one-skipped-is-named"],
 )
-def test_run_databases_skipped_stat_card(funce_db_dir, stub_funce_step, databases, expected_skipped):
+def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_funce_step, databases, expected_skipped):
     """The "Databases Skipped" card appears only when a database was skipped.
 
     It is spliced into the card list conditionally, so both halves matter: a
@@ -532,7 +532,7 @@ def test_run_databases_skipped_stat_card(funce_db_dir, stub_funce_step, database
     assert cards["Databases Searched"] == "1"
 
 
-def test_run_ranks_by_prediction_and_keeps_only_top_n(funce_db_dir, stub_funce_step):
+def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_funce_step):
     """Hits come back best-first and cut to ``top_n``; the Top Score card agrees."""
     result = run(_run_params(top_n=2))
 
@@ -546,7 +546,7 @@ def test_run_ranks_by_prediction_and_keeps_only_top_n(funce_db_dir, stub_funce_s
     assert cards["Candidates Scored"] == str(len(GOOD_DB_ENTRIES))
 
 
-def test_run_result_drops_embeddings_and_stays_json_serialisable(funce_db_dir, stub_funce_step):
+def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_dir, stub_funce_step):
     """Embeddings must not reach the payload — ``json.dumps`` cannot encode an ndarray.
 
     The backend stores the result as JSON, so an embedding left on the frame
