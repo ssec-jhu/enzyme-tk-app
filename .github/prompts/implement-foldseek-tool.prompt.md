@@ -45,9 +45,9 @@ step = FoldSeek(
     id_column_name="Entry",
     sequence_column_name="Sequence",
     prostt5_weights_path="/data/foldseek_models/weights",
-    databases=["PDB", "AFDB_SWISSPROT"],      # folder names
+    databases=["PDB", "AFDB_SWISSPROT"],  # folder names
     database_root_path="/data/foldseek_db",
-    structure_column_name="structure",          # None for seq-only mode
+    structure_column_name="structure",  # None for seq-only mode
 )
 result_df = step.execute(query_df)
 ```
@@ -74,11 +74,11 @@ result_df = step.execute(query_df)
 {
     "task_name": str,
     "sequence": str,
-    "databases": list[str],           # folder names in foldseek_db
-    "top_n": int,                     # default 1000
+    "databases": list[str],  # folder names in foldseek_db
+    "top_n": int,  # default 1000
     "structure_content": str | None,  # base64 data URI from dcc.Upload
-    "structure_filename": str | None, # original filename of upload
-    "structure_preloaded": str | None # filename in data/structures/
+    "structure_filename": str | None,  # original filename of upload
+    "structure_preloaded": str | None,  # filename in data/structures/
 }
 ```
 
@@ -93,8 +93,8 @@ result_df = step.execute(query_df)
     ],
     "dataframe": {
         "columns": ["query", "target", "fident", ...],
-        "data": [{...}, ...]
-    }
+        "data": [{...}, ...],
+    },
 }
 ```
 
