@@ -13,6 +13,7 @@ from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
+from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
 
@@ -152,16 +153,13 @@ def submit_substrate_product_similarity_job(
 
     # Server-side validation — the client disables the submit button
     # when fields are empty, but a crafted request could bypass that.
-    if (
-        not task_name
-        or not task_name.strip()
-        or not smiles
-        or not smiles.strip()
-        or not databases
-        or not algorithms
-        or not role
-    ):
+    if not task_name or not task_name.strip() or not smiles or not smiles.strip() or not algorithms or not role:
         raise PreventUpdate
+
+    # Database names become file paths on the backend.
+    error = validate_db_names(databases, get_reaction_database_options())
+    if error:
+        return error
 
     # Validate top_n
     error = validate_top_n(top_n)
@@ -175,14 +173,15 @@ def submit_substrate_product_similarity_job(
         tool_slug=TOOL_DEF["slug"],
         # The parameters dict will be passed to the backend job for processing.
         # We include all the relevant form inputs so the backend has everything it
-        # needs to run the similarity search.
+        # needs to run the similarity search.  Key order mirrors the modal's field
+        # order — the results page renders the Input Parameters rows in this order.
         params={
             "task_name": task_name.strip(),
-            "databases": databases,  # list of selected database filenames
+            "role": role,  # "substrate" or "product"
             "smiles": smiles.strip(),
+            "databases": databases,  # list of selected database filenames
             "algorithms": algorithms,  # list of selected algorithm values
             "top_n": top_n,
-            "role": role,  # "substrate" or "product"
         },
         # We also pass the session ID from Flask's `g` so the backend
         # can associate the job with the user's session if needed.
