@@ -69,7 +69,9 @@ follow it; a new tool that diverges is a bug, not a style choice.
 **Name the directory and its option builder for the data, not for your tool.** More than one
 tool can read a kind of reference data, so `data/sequence_embeddings/` +
 `get_sequence_embedding_database_options()` — never `funce_db/` + `get_funce_database_options()`,
-which is what that pair used to be called. A tool's name belongs on a directory only when the
+which is what that pair used to be called. Model weights follow the same rule and are named for
+the model: `unimol_weights/` holds the UniMol checkpoint Func-E's reaction encoder loads, not
+`funce_unimol/`. A tool's name belongs on a directory only when the
 tool genuinely owns it: `foldseek_db/` and `foldseek_models/` (the folder names are foldseek's
 own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
 

@@ -112,7 +112,16 @@ would surface as an HTTP 500 on `/_dash-update-component` rather than as a messa
 modal, since the app installs no Dash `on_error` handler.
 
 `validate_db_names` already reports an empty selection, so do not also test `not databases`
-in the `PreventUpdate` guard above — that would swallow the message the user should see.
+in the `PreventUpdate` guard above — that would swallow the message the user should see. This
+applies to every message-returning validator that handles its own empty case:
+`funce/callbacks.py` calls `validate_reaction_smiles(smiles)` the same way, so its
+`PreventUpdate` guard tests only the task name and deliberately leaves the SMILES alone.
+
+A validator may live in the tool's own `compute.py` when the rule is the tool's rather than
+shared — `validate_reaction_smiles` does, so the submit callback and `run()` cannot drift on
+what "valid" means. Importing it into `callbacks.py` at module scope is safe **only** because
+`compute.py` keeps its heavy imports (enzymetk, torch, rdkit) function-local; a module-level
+heavy import there would load them into the web process on every boot.
 
 ### 5. Naming & Placement
 

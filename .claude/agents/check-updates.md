@@ -31,6 +31,12 @@ currently pinned version.  Skip:
   unchanged)
 - lines that are comments or blank
 
+Then read the `Dockerfile` too: a package needing per-package pip flags cannot live in a
+requirements file, so it is pinned there instead and would otherwise be missed.  Today that
+is `rxnfp==0.1.0` (installed `--no-deps`) and `setuptools<81`.  Audit them like any other
+pin, but report them as Dockerfile pins — they are edited through the `edit-dockerfile`
+agent, not by writing `requirements_v2/`.
+
 ### Step 2 — Query Latest Versions
 
 For each pinned package, query PyPI for the latest stable version.

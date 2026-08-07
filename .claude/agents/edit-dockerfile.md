@@ -57,6 +57,7 @@ When a new external binary is needed, pick the **first** option that works:
 - [ ] Read the existing Dockerfile and follow its patterns before writing new install steps.
 - [ ] Every binary install section has a header comment: what it is, which tool needs it, which option (A–D) was chosen and why.
 - [ ] Combine related `RUN` steps. Clean up `/var/lib/apt/lists/*` and `/tmp/*`. Purge build-only deps in the same layer.
+- [ ] **Exception — do not merge or reorder the three Python install steps.** They run torch (CPU wheel, `ARG TORCH_INDEX_URL`) → `requirements.txt` → `rxnfp --no-deps`, and the order is load-bearing: torch must come first so that `enzymetk`'s unpinned `torch` dependency is already satisfied (otherwise pip resolves the CUDA build and adds ~2.9 GB of `nvidia-cu*` wheels on amd64), and `rxnfp` must stay separate because `--no-deps` cannot be expressed per-package inside a requirements file. Each has a comment block stating why; read it before editing.
 - [ ] Pin all versions — base image tags, binary releases, `COPY --from` image tags. No `latest` or floating tags.
 - [ ] `COPY --from` stage aliases go at the **top** of the Dockerfile, before the main `FROM` line.
 - [ ] Preserve `EXPOSE 8050`, `gunicorn` CMD, and `WORKDIR`. The `docker-compose.yml` worker service must still run Celery from the same image.
