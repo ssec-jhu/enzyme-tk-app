@@ -63,8 +63,12 @@ services:
       # ── GPU (opt-in) ────────────────────────────────────────────
       # Func-E picks its device with torch.cuda.is_available(), so it
       # uses a GPU automatically once the container is given one — no
-      # code or requirements change.  Uncomment on a linux/amd64 host
-      # with the NVIDIA driver + nvidia-container-toolkit installed.
+      # code change.  Two steps, both required:
+      #   1. Rebuild against the CUDA wheels; the image defaults to CPU:
+      #      docker compose build \
+      #        --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+      #   2. Uncomment the reservation below, on a linux/amd64 host with
+      #      the NVIDIA driver + nvidia-container-toolkit installed.
       # (PyPI ships no CUDA torch for arm64, so this is a no-op there.)
       # resources:
       #   reservations:
