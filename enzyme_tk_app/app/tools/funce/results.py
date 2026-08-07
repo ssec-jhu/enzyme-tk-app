@@ -3,9 +3,10 @@
 Renders the ranked protein hits as an interactive ``dag.AgGrid``.
 
 The query reaction diagram and the stat cards (database, candidates scored,
-top score, device, run time) are rendered automatically by the shared
-``build_result_input_params`` / ``build_result_stat_cards`` helpers in
-``my_tasks_view_results.py`` — this module only owns the grid.
+top score, device, run time) are rendered automatically by
+``build_result_input_params`` and the results-page header (which merges this
+tool's ``_stat_cards``) in ``my_tasks_view_results.py`` — this module only
+owns the grid.
 """
 
 from __future__ import annotations

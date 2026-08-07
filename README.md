@@ -169,6 +169,7 @@ Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`. Auto
 | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
 | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
 | `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
+| `check_data.py` | No | `check_data() → list[str]` | Reports missing (or present-but-unusable) bundled data; a non-empty list renders a "Missing data" badge on the tool card |
 
 ### Full guide
 

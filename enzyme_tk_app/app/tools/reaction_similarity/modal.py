@@ -38,6 +38,7 @@ from dash import dcc, html
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
 from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_config_section_header,
+    create_modal_databases_label,
     create_modal_footer,
     create_modal_header,
     create_modal_input_section_header,
@@ -214,9 +215,9 @@ def modal():
                             # Database Selection
                             dbc.Row(
                                 [
-                                    dbc.Col(
-                                        dbc.Label("Databases", className="col-form-label fw-bold"),
-                                        width=3,
+                                    create_modal_databases_label(
+                                        TOOL_DEF["slug"],
+                                        "Reaction SMILES (substrates>>products) with a reaction id.",
                                     ),
                                     dbc.Col(
                                         dcc.Dropdown(

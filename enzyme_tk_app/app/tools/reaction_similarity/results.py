@@ -4,8 +4,8 @@ Renders the top-N similar reactions as an interactive ``dag.AgGrid``
 with sorting, filtering, and inline SVG reaction images.
 
 The stat cards (databases searched, reactions scanned, results returned,
-elapsed time) are rendered automatically by the shared
-``build_result_stat_cards`` helper in ``my_tasks_view_results.py``.
+elapsed time) are rendered automatically from this tool's ``_stat_cards``
+by the results-page header in ``my_tasks_view_results.py``.
 """
 
 from __future__ import annotations
@@ -59,5 +59,5 @@ def results_layout(job: JobInfo) -> html.Div:
             html.P("No similar reactions found.", style={"color": "var(--text-secondary)"}),
         )
 
-    grid = build_ag_grid(_get_column_defs(), df_payload)
-    return html.Div(children=[grid])
+    results_table = build_ag_grid(_get_column_defs(), df_payload)
+    return html.Div(children=[results_table])

@@ -88,7 +88,7 @@ The shortest path to done is the right path.
 
 ## Component IDs
 - All Dash component IDs must follow the pattern: `id-<component-type>-<name>` (e.g., `id-div-nav-links`, `id-location`).
-- Only assign an `id` to a component if it is used in a **callback** (`Input`, `Output`, or `State`). HTML anchor targets are an exception.
+- Only assign an `id` to a component if it is used in a **callback** (`Input`, `Output`, or `State`). Two exceptions: HTML anchor targets, and `dbc.Tooltip` targets — a tooltip is bound by `target=` and needs no callback (e.g. `id-icon-<slug>-databases-info` from `create_modal_databases_label()`, `id-data-warning-<slug>` in `components/data_warning.py`).
 
 ## Agents
 This project defines specialized agents that encode its conventions. **Claude Code**
@@ -103,10 +103,11 @@ main assistant chains them when a flow needs several in sequence:
 - **`write-callback`** — detailed callback authoring patterns (guard clauses vs. intentional DOM writes, decorator syntax, naming).
 - **`write-css`** — CSS formatting rules (banners, comments, indentation) for `enzyme_tk_app/app/assets/`.
 - **`create-modal`** — layout/styling rules for new or modified tool modals.
-- **`create-ag-grid`** — column definition rules and theme conventions for AG Grid results tables.
+- **`create-ag-grid`** — column definition rules, theme conventions, and the shared CSV-export toolbar for AG Grid results tables.
 - **`write-tests`** — pytest patterns for new tests. After writing tests, run `verify`, then `review-tests` on the files you touched.
 - **`review-tests`** — audits existing tests for duplicates, parametrize candidates, brittle strings, uncovered guard clauses, isolation issues, and weak assertions; complements `write-tests`.
 - **`verify`** — runs `tox run -e format` then `tox`. Every code-generating agent (or code-generating task you do directly) invokes `verify` as its final step.
+- **`verify-ui`** *(skill, not an agent — it runs in your own context so you can see the screenshots)* — drives the running app in the Browser pane to prove a UI change actually works: rebuilding the Docker image, submitting a real job, clicking the thing, measuring the result. Invoke it with the `Skill` tool.
 - **`check-coverage`** — runs the test suite with coverage and reports uncovered functions; read-only.
 - **`architecture-diagram`** — explores the codebase and generates a Mermaid architecture diagram plus a print-friendly HTML file in `docs/`.
 - **`cleanup`** — scans for dead code (unused Python functions, icon constants, CSS classes, static assets) after removing or replacing code.
@@ -123,7 +124,8 @@ main assistant chains them when a flow needs several in sequence:
 
 ## Adding a New Tool (Algorithm)
 - **All new tools MUST follow the architectural guidelines and module structure defined by the `create-tool` agent.**
-- **Database-backed tools share one contract** (`create-tool` §3b): a `multi=True` "Databases" dropdown with every option pre-selected, `validate_db_names(names, options)` from `utils/data_loading.py` as the only name validator — it checks **membership in the tool's own `get_*_database_options()` list**, not a regex or a suffix — `params["databases"]` as a `list[str]`, all selections merged into one reference set tagged with a `database` column, and an unreadable database skipped and named in a **Databases Skipped** stat card — failing only when *every* selection is unreadable.
+- **Database-backed tools share one contract** (`create-tool` §3b): a `multi=True` "Databases" dropdown with every option pre-selected, its label column from `create_modal_databases_label(slug, contents)` so the label carries an info icon whose tooltip names in one sentence what those databases hold, `validate_db_names(names, options)` from `utils/data_loading.py` as the only name validator — it checks **membership in the tool's own `get_*_database_options()` list**, not a regex or a suffix — `params["databases"]` as a `list[str]`, all selections merged into one reference set tagged with a `database` column, and an unreadable database skipped and named in a **Databases Skipped** stat card — failing only when *every* selection is unreadable.
+- **A tool's `run()` return value must be JSON-serialisable in its entirety.** The worker `json.dumps` it with no `default=` before offloading it to the shared volume, so one numpy scalar or ndarray left in a `dataframe` column records the finished job as FAILURE at persist time — after the compute already succeeded. Convert or drop those columns (`funce/compute.py`'s `DROPPED_COLS`) and pin it with a `json.dumps(result)` assertion in the tool's test.
 - **`data/sequences/` files must declare their columns** (`create-tool` §3b.9): a file there is a sequence database only when its extension is one of `SEQUENCE_DB_SUFFIXES` (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`) **and** its header carries every one of `REQUIRED_SEQUENCE_COLUMNS` (`Entry`, `Sequence`, `EC number`). Every other column is metadata the app never enumerates — it rides through the search into the results grid untouched. A non-compliant file is not offered in the dropdown at all; `scan_sequence_databases()` names it and its missing columns for the tool's home-page "Missing data" tooltip. This contract is `data/sequences/` only — `reactions/`, `sequence_embeddings/`, and `foldseek_db/` are unchanged.
 - **A shared data directory is named for its data, not for a tool that reads it.** `data/sequence_embeddings/` holds protein embedding pickles; it is not `funce_db/` just because Func-E is today's only reader, and its option builder is `get_sequence_embedding_database_options()`. A directory *is* named for a tool only when the tool genuinely owns it — `foldseek_db/` and `foldseek_models/` (whose names are foldseek's own identifiers) and `funce_models/` (Func-E's EC checkpoints).
 - **A database is named on screen exactly as it is named in `data/`, extension included** — `Funce_pairs.pkl` shows as `Funce_pairs.pkl`, the FoldSeek folder `AFDB_SWISSPROT` as `AFDB_SWISSPROT` (a directory, so no extension to show). Never prettify (no `.replace("_", " ").title()`) and never strip the suffix (no `.stem`); this holds for dropdown labels, the `database` column, stat cards, and the input-parameters row alike, so the app and the disk always agree. The canonical statement, the reason the option *value* keeps its extension, and the one FoldSeek exception are in the `enzyme_tk_app/app/utils/data_loading.py` module docstring and `create-tool` §3c.
@@ -138,7 +140,8 @@ main assistant chains them when a flow needs several in sequence:
 
 ## Page vs. Component Organization
 - `enzyme_tk_app/app/pages/` modules are route entry points (each calls `dash.register_page()`) and own their `layout()` plus any page-specific helpers and callbacks.
-- **Keep page-private helpers inline in the page module** and prefix them with a leading underscore (e.g., `_build_stat_card`, `_jobs_to_rows`, `_dashboard_layout` in `admin.py`; `_build_stats`, `_build_status_badge` in `my_tasks.py`). Do **not** move single-page helpers into `components/` just because there are many of them — locality is preferred.
+- **Keep page-private helpers inline in the page module** and prefix them with a leading underscore (e.g., `_build_admin_page_stats`, `_jobs_to_rows`, `_dashboard_layout` in `admin.py`; `_build_my_tasks_page_stats`, `_build_job_row` in `my_tasks.py`). Do **not** move single-page helpers into `components/` just because there are many of them — locality is preferred.
+- **Name a page-private helper for its page when a sibling page has the same job.** `admin.py`'s `_build_admin_page_stats` and `my_tasks.py`'s `_build_my_tasks_page_stats` both build a `jobs-stats-row`, but count different things over different scopes; the page-qualified names keep them from reading as one shared helper. Only the leaf they share — `build_stat_card` in `components/results_helpers.py` — is generic.
 - **Promote a helper to `enzyme_tk_app/app/components/` only when it is shared across ≥2 pages or tools.** Shared helper modules use a `*_helpers.py` name and public (non-underscore) functions — see `modal_helpers.py` (every tool modal) and `results_helpers.py` (every results page).
 - Standalone, reusable UI widgets also live in `components/` (e.g., `navbar.py`, `footer.py`, `hero.py`, `tool_cards.py`). Page modules should compose these rather than re-implement them — see `home.py`.
 - Rule of thumb: **used by one page → inline `_`-helper in that page; used by many → public helper in `components/`.**
@@ -163,6 +166,13 @@ main assistant chains them when a flow needs several in sequence:
 - **Never create page-specific stat card classes** (e.g., no `jobs-detail-card`, `jobs-meta-card`). Reuse the shared set everywhere — My Jobs stats, Job Results header, tool-specific results meta, etc.
 - When adding new pages with summary statistics, follow the same pattern.
 
+## Shared UI Components — Results Table & CSV Export
+- **`build_ag_grid(column_defs, df_payload)` in `components/results_helpers.py` returns an `html.Div`** — the shared CSV-export toolbar plus the `dag.AgGrid`, not a bare grid. The signature is unchanged, so every tool's `results.py` keeps calling it exactly as before; just don't type or assert the result as `dag.AgGrid`.
+- **Every results table gets the download control for free — never add a per-tool export button, `csvExportParams`, or `dcc.Download`.** Change `build_ag_grid()` so all tools move together.
+- **Only one results grid may exist per page.** The grid id (`GRID_ID`), download button, and scope radios are static ids because `my_tasks_view_results` renders exactly one tool's `results_layout()`. Need two grids on a page? Give `build_ag_grid()` an `id` argument and move the `download_results_csv` callback to `MATCH` — do not duplicate the static ids.
+- **SVG columns are excluded from the CSV.** `_csv_export_params()` drops any column whose def has `cellRenderer == "SvgRenderer"` (each cell is a ~20 KB base64 data URI); the SMILES it was drawn from is exported instead. A new image renderer under a different name must widen that check in the same change — see the `create-ag-grid` agent (§1.1, §2.2, §6).
+- **The download filename reads the job id off the page.** `my_tasks_view_results._build_job_info_header()` puts `id=JOB_ID_SPAN_ID` (imported from `results_helpers`) on the task-id span whose `title` is the bare job id; the export callback takes it as `State`. This page↔component contract is guarded by a test in `test_my_tasks.py` — keep the `title` if you touch that header.
+
 ## Icons
 - All FontAwesome icon class strings should be defined as constants in `enzyme_tk_app/app/components/icons.py` with a descriptive name relative to where they are used (e.g., `ICON_LOGO = "fa-solid fa-flask"`).
 - Components should import icon constants from `icons.py` rather than hardcoding class strings.
@@ -184,6 +194,7 @@ main assistant chains them when a flow needs several in sequence:
 ## Formatting & Linting
 - This project uses **ruff** for formatting and linting, configured in `pyproject.toml`.
 - After making code changes, run the **`verify` agent** which executes `tox run -e format` then `tox`. All code-generating agents invoke `verify` automatically as their final step.
+- **If the change is visible in a browser** — anything under `pages/`, `components/`, `tools/*/modal.py`, `tools/*/results.py`, or `assets/*.css` — also invoke the **`verify-ui` skill** and confirm it in the running app. `verify` proves the code is clean; only `verify-ui` proves the button works. Never ask the user to check by hand.
 - `tox run -e format` auto-formats code, sorts imports, **and removes unused imports** (F401).
 - All code must pass `tox run -e check-style` before being considered done (included in the `tox` default envlist).
 - No need for permission to run tox commands — they are part of the development workflow.
