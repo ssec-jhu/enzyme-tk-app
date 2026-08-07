@@ -43,6 +43,7 @@ Key conventions
   - ``create_modal_header(TOOL_DEF["icon"], TOOL_DEF["title"])``
   - ``create_modal_input_section_header()``
   - ``create_modal_config_section_header()``
+  - ``create_modal_databases_label(TOOL_DEF["slug"], contents)``
   - ``create_modal_submission_results(TOOL_DEF["slug"])``
   - ``create_modal_footer(TOOL_DEF["slug"])``
 - Use ``dcc.Dropdown`` (not ``dbc.Select``) for dropdowns.
@@ -145,6 +146,7 @@ Use the shared factory functions from `enzyme_tk_app.app.components.modal_helper
 ```python
 from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_config_section_header,
+    create_modal_databases_label,
     create_modal_footer,
     create_modal_header,
     create_modal_input_section_header,
@@ -164,7 +166,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 ## 7. Required vs Default Sections
 - **Section 1: Input Data:** Place *Task Name*, required identifiers (like SMILES or file uploads), and Demo Examples here.
 - **Section 2: Tool Configurations:** Place optional tuning parameters, Algorithm selections, external Database selections, and Limits (Top-N) here in a single vertical tracking stack (avoid multi-column grids unless absolutely constrained for space).
-- **Database selection is always multi-select:** label it "Databases", give the dropdown `multi=True` with the id `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (plural), and pre-select **every** option (`value=[opt["value"] for opt in db_options]`) — the broadest search is the default. Even a directory holding one file gets a multi-select. Build the options with the matching `get_*_database_options()` helper and never re-label them — an option's `label` and `value` are both the exact name on disk (the full filename, extension included, or the folder name for FoldSeek). See `.claude/agents/create-tool.md` §3b for the rest of the contract (validation, merging, skipped-database stat cards) and §3c for the naming rule.
+- **Database selection is always multi-select:** build the label column with `create_modal_databases_label(TOOL_DEF["slug"], "<one sentence naming what the databases hold>")` — it supplies the "Databases" label, the info icon and its tooltip, so never hand-inline `dbc.Col(dbc.Label("Databases", ...), width=3)`. The sentence describes the *contents* (columns or payload, e.g. "Entry, Sequence and EC number columns, plus any metadata the file carries."), never selection mechanics. Give the dropdown `multi=True` with the id `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (plural), and pre-select **every** option (`value=[opt["value"] for opt in db_options]`) — the broadest search is the default. Even a directory holding one file gets a multi-select. Build the options with the matching `get_*_database_options()` helper and never re-label them — an option's `label` and `value` are both the exact name on disk (the full filename, extension included, or the folder name for FoldSeek). See `.claude/agents/create-tool.md` §3b for the rest of the contract (validation, merging, skipped-database stat cards) and §3c for the naming rule.
 
 ## 8. Footer
 Use `create_modal_footer(TOOL_DEF["slug"])` to generate the standard `dbc.ModalFooter` with Close (secondary outline) and Run (primary) buttons.

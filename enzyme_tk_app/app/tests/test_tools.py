@@ -24,9 +24,11 @@ import re
 from unittest.mock import MagicMock, patch
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
 from enzyme_tk_app.app.tools import TOOLS, ToolDef, _discover_tools, _modal_funcs, tool_modals
+
+from .conftest import find_components, get_text
 
 # ---------------------------------------------------------------------------
 # Helpers — find tool folders on disk
@@ -248,6 +250,20 @@ def test_modal_ids_follow_naming_convention():
     for modal in children:
         modal_id = getattr(modal, "id", "")
         assert pattern.match(modal_id), f"Modal id '{modal_id}' doesn't match the expected pattern 'id-modal-<slug>'"
+
+
+def test_every_databases_dropdown_has_an_info_tooltip():
+    """A Databases dropdown must ship an info tooltip describing its contents."""
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        dropdowns = [str(d.id) for d in find_components(modal, dcc.Dropdown) if getattr(d, "id", None)]
+        if not any(d.endswith("-databases") for d in dropdowns):
+            continue  # Not a database-backed tool (e.g. the timer template).
+
+        target = f"id-icon-{slug}-databases-info"
+        tooltips = [t for t in find_components(modal, dbc.Tooltip) if t.target == target]
+        assert len(tooltips) == 1, f"{slug}: Databases row has no info tooltip"
+        assert get_text(tooltips[0]).strip(), f"{slug}: Databases info tooltip is empty"
 
 
 # ---------------------------------------------------------------------------

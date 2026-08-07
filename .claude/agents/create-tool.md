@@ -24,6 +24,7 @@ To add a tool, create a folder with:
 
 - `TOOL_DEF` requires an `order: int` field that controls the card's position in the grid.
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
+- **`max_duration` (optional, seconds) is a *soft* limit**: it becomes Celery's `soft_time_limit`, so an overrun is recorded as `TIMEOUT` rather than `FAILURE`, and the hard SIGKILL lands `HARD_TIMEOUT_GRACE_SECONDS` (60 s) later so the handler can write that status. Both defaults live in `backend/celery_app.py`; set the field whenever the tool's real runtime is far from the 3600 s default in either direction (the timer template uses 600, Func-E 1800).
 
 ## 2. Invariants & Slug Management
 ### Single-source slug & title — the rename-once invariant
@@ -46,7 +47,7 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 - Return a list of **human-readable labels** (one per item) when data is absent — these render as tooltip lines under a "Missing data" badge on the tool card.
 - **A file that is present but unusable is reported here too**, with the reason. `sequence_similarity/check_data.py` lists every `data/sequences/` file that fails the column contract (§3b.9) — `"badfile.csv — missing columns: Sequence, EC number"` — because such a file is filtered out of the dropdown, so this card is the only place the scientist who dropped it in learns why it vanished.
 - Auto-discovery in `tools/__init__.py` registers the callable into the `CHECK_DATA` dict keyed by `TOOL_DEF["slug"]`. Tools **without** this module are treated as having no data dependencies and never show a badge.
-- Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a new constant there if a needed path is missing.
+- Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a constant there only for a directory that is shared, large, or plausibly reusable by a future tool; a path only your tool reads stays in your tool module and derives from `paths.DATA_DIR` itself (see the `paths.py` module docstring).
 - Keep checks cheap and side-effect-free: `check_data()` runs at home-page render time, on every render. Existence/non-empty checks are free; a check that must open a file reads only the header (`nrows=0`) and is cached on `(path, mtime, size)` so a re-dropped database is still picked up without an app restart — that is what `scan_sequence_databases()` does. Never read a full column here. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
 
 ## 3. UI & Modal Conventions
@@ -58,7 +59,7 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 
 ### Modal dropdowns, inputs, and form controls
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.
-- For all form controls (Dropdowns, Inputs, Textareas, Checkboxes, RadioItems), always add the CSS class `themed-control`.
+- For all form controls **in a modal** (Dropdowns, Inputs, Textareas, Checkboxes, RadioItems), always add the CSS class `themed-control`. It is a modal-form class only — controls elsewhere use their own component class (e.g. the results-grid export scope radios use `jobs-toolbar-radios`), so do not retrofit `themed-control` onto them.
 
 ## 3b. Database-Backed Tools — Mandatory Contract
 Applies to every tool that reads reference databases out of a data directory (`sequences/`,
@@ -75,7 +76,11 @@ own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
 1. **The dropdown is multi-select.** `dcc.Dropdown(..., multi=True)`, id
    `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (**plural**), with **every option
    pre-selected** — the broadest search is the default. There is no single-database tool;
-   a directory that happens to hold one file still gets a multi-select.
+   a directory that happens to hold one file still gets a multi-select. Its label column is
+   `create_modal_databases_label(TOOL_DEF["slug"], contents)` from
+   `components/modal_helpers.py` — the "Databases" label plus an info icon whose tooltip
+   (`contents`) is one sentence on what this tool's databases hold, i.e. their columns or
+   payload, never selection mechanics (`create-modal` §7).
 2. **Validate with the shared validator, never a hand-rolled regex.** Pass the tool's own
    option list — the second argument is what the name is checked *against*:
    ```python
@@ -177,6 +182,7 @@ before touching any of this.
 ## 4. Backend & Callbacks
 - Use `get_task_scheduler()` from `enzyme_tk_app.app.backend` to obtain the singleton scheduler.
 - `compute.py` must export `def run(params: dict) -> dict`.
+- **The whole return dict must be JSON-serialisable.** `tasks._store_result` calls `json.dumps` on it with no `default=` before offloading it to the shared volume, so one numpy scalar or ndarray left in a `dataframe` column raises *after* the compute succeeded and the job is recorded as FAILURE. Convert or drop those columns before returning (see `funce/compute.py`'s `DROPPED_COLS`) and pin it with a `json.dumps(result)` assertion in the tool's test.
 - **The `params` dict literal is the Input Parameters row order** — `build_result_input_params`
   renders `job.params` in insertion order, so list the keys in the same order the fields appear
   in `modal.py`. A key added out of order shows up out of order on the results page.

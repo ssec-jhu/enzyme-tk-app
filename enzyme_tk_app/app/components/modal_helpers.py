@@ -1,15 +1,16 @@
 """Shared UI helpers for tool modal layouts.
 
 Provides factory functions for the standardized header, section headers,
-results placeholder, and footer used across all tool modals.  Every
-modal should use these helpers instead of inlining the boilerplate —
-this guarantees consistent styling and makes future design changes a
-single-file edit.
+databases label, results placeholder, and footer used across all tool
+modals.  Every modal should use these helpers instead of inlining the
+boilerplate — this guarantees consistent styling and makes future design
+changes a single-file edit.
 
 Usage::
 
     from enzyme_tk_app.app.components.modal_helpers import (
         create_modal_config_section_header,
+        create_modal_databases_label,
         create_modal_footer,
         create_modal_header,
         create_modal_input_section_header,
@@ -39,7 +40,7 @@ Usage::
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.icons import ICON_SECTION_CONFIG, ICON_SECTION_INPUT
+from enzyme_tk_app.app.components.icons import ICON_MODAL_INFO, ICON_SECTION_CONFIG, ICON_SECTION_INPUT
 
 
 def create_modal_header(icon, title):
@@ -104,6 +105,38 @@ def create_modal_config_section_header():
             "Tool Configurations",
         ],
         className="text-uppercase fw-bold text-muted border-bottom pb-2 mb-2",
+    )
+
+
+def create_modal_databases_label(slug, contents):
+    """Return the *Databases* label column with an info icon and content tooltip.
+
+    Args:
+        slug: The tool slug from ``TOOL_DEF["slug"]``, used to build the
+            tooltip target id.
+        contents: One sentence naming what this tool's databases hold
+            (e.g. "Entry, Sequence and EC number columns, plus any
+            metadata the file carries.").
+
+    Returns:
+        A ``dbc.Col(width=3)`` holding the label, the info icon, and the
+        ``dbc.Tooltip`` bound to it.  No callback is needed — the tooltip's
+        default trigger is "hover focus".
+    """
+    icon_id = f"id-icon-{slug}-databases-info"
+    return dbc.Col(
+        children=[
+            dbc.Label("Databases", className="col-form-label fw-bold"),
+            html.I(
+                id=icon_id,
+                className=f"{ICON_MODAL_INFO} field-info-icon",
+                # tabIndex makes the icon focusable so the tooltip's default
+                # "hover focus" trigger reaches keyboard users too.
+                tabIndex="0",
+            ),
+            dbc.Tooltip(contents, target=icon_id, placement="top"),
+        ],
+        width=3,
     )
 
 

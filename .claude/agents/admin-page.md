@@ -21,5 +21,5 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 - When making modifications, preserve the strict boundary between anonymous sessions and admin-authenticated sessions.
 
 ## 3. Implementation Rules
-- Admin-specific helper functions must remain prefixed with a leading underscore and kept inline within the admin page module (e.g., `_build_stat_card`) unless they are explicitly promoted to shared components.
+- Admin-specific helper functions must remain prefixed with a leading underscore and kept inline within the admin page module (e.g., `_build_admin_page_stats`, `_jobs_to_rows`) unless they are explicitly promoted to shared components.
 - Do not add unrequested abstractions to the login flow. Keep the implementation minimal and secure.

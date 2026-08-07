@@ -21,6 +21,7 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 # --- Tool Modals ---
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
 ICON_MODAL_UPLOAD = "fa-solid fa-upload"
+ICON_MODAL_INFO = "fa-solid fa-circle-info"
 
 # --- Modal Section Headers ---
 ICON_SECTION_INPUT = "fa-solid fa-flask"
@@ -41,6 +42,9 @@ ICON_STATUS_SUCCESS = "fa-solid fa-circle-check"
 ICON_STATUS_FAILURE = "fa-solid fa-circle-xmark"
 ICON_STATUS_REVOKED = "fa-solid fa-ban"
 ICON_STATUS_TIMEOUT = "fa-solid fa-hourglass-end"
+
+# --- Results Tables ---
+ICON_RESULTS_DOWNLOAD = "fa-solid fa-download"
 
 # --- Admin Page ---
 ICON_ADMIN_PAGE = "fa-solid fa-user-shield"

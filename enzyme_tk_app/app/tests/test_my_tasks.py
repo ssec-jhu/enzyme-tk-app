@@ -9,11 +9,11 @@ from dash.exceptions import PreventUpdate
 from enzyme_tk_app.app.app import server
 from enzyme_tk_app.app.backend.models import JobStatus
 from enzyme_tk_app.app.components.icons import ICON_JOB_BACK
+from enzyme_tk_app.app.components.results_helpers import JOB_ID_SPAN_ID
 from enzyme_tk_app.app.pages.my_tasks import (
     _build_job_row,
     _build_jobs_table,
-    _build_stats,
-    _build_status_badge,
+    _build_my_tasks_page_stats,
     cancel_all_running_jobs,
     cancel_single_job,
     clear_finished_jobs,
@@ -30,45 +30,11 @@ from enzyme_tk_app.app.pages.my_tasks_view_results import (
 
 from .conftest import find_components, get_text, make_job
 
-# ── _build_status_badge ──────────────────────────────────────────────────────
+# ── _build_my_tasks_page_stats ───────────────────────────────────────────────
 
 
-@pytest.mark.parametrize(
-    "status",
-    list(JobStatus),
-    ids=[s.value for s in JobStatus],
-)
-def test_build_status_badge_renders_for_every_status(status):
-    """_build_status_badge must return a Span with the correct badge class and status text."""
-    badge = _build_status_badge(status)
-
-    assert isinstance(badge, html.Span)
-    assert f"badge-{status.value}" in badge.className
-    text = get_text(badge)
-    assert status.value in text
-
-
-# ── build_stat_card ──────────────────────────────────────────────────────────
-
-
-def test_build_stat_card_renders_value_and_label():
-    """build_stat_card must produce a card with the given value and label."""
-    from enzyme_tk_app.app.components.results_helpers import build_stat_card
-
-    card = build_stat_card(42, "Total Tasks")
-
-    assert isinstance(card, html.Div)
-    assert card.className == "jobs-stat-card"
-    text = get_text(card)
-    assert "42" in text
-    assert "Total Tasks" in text
-
-
-# ── _build_stats ─────────────────────────────────────────────────────────────
-
-
-def test_build_stats_counts_jobs_correctly():
-    """_build_stats must produce four stat cards with correct counts."""
+def test_build_my_tasks_page_stats_counts_jobs_correctly():
+    """_build_my_tasks_page_stats must produce four stat cards with correct counts."""
     jobs = [
         make_job(status=JobStatus.SUCCESS),
         make_job(status=JobStatus.SUCCESS),
@@ -76,7 +42,7 @@ def test_build_stats_counts_jobs_correctly():
         make_job(status=JobStatus.FAILURE),
         make_job(status=JobStatus.REVOKED),
     ]
-    cards = _build_stats(jobs)
+    cards = _build_my_tasks_page_stats(jobs)
 
     assert len(cards) == 4
 
@@ -457,10 +423,21 @@ def test_build_job_info_header_includes_custom_stat_cards():
     assert "3" in text
 
 
-def test_build_job_info_header_ignores_non_list_stat_cards():
-    """When _stat_cards is not a list, no extra stat cards should appear."""
-    job = make_job(result={"_stat_cards": "not-a-list"})
-    header = _build_job_info_header(job)
+@pytest.mark.parametrize(
+    "result",
+    [
+        None,
+        {"data": [1, 2]},
+        {"_stat_cards": "not-a-list"},
+        {"_stat_cards": {"label": "x", "value": "y"}},
+        {"_stat_cards": []},
+        {"_stat_cards": ["a", 1, None]},
+    ],
+    ids=["none-result", "no-key", "string-stat-cards", "dict-stat-cards", "empty-list", "all-non-dict"],
+)
+def test_build_job_info_header_renders_only_base_cards_for_invalid_stat_cards(result):
+    """Anything but a list of dicts in _stat_cards leaves only Duration and Expires In."""
+    header = _build_job_info_header(make_job(result=result))
 
     # Should still render without error — only Duration and Expires In.
     stat_cards = [d for d in find_components(header, html.Div) if getattr(d, "className", None) == "jobs-stat-card"]
@@ -483,6 +460,20 @@ def test_build_job_info_header_ignores_non_dict_items_in_stat_cards():
     stat_cards = [d for d in find_components(header, html.Div) if getattr(d, "className", None) == "jobs-stat-card"]
     # Duration + Expires In + 1 valid custom card = 3
     assert len(stat_cards) == 3
+
+
+def test_build_job_info_header_stat_cards_handle_missing_label_or_value():
+    """Items missing ``label`` or ``value`` still render, with an empty-string fallback."""
+    job = make_job(result={"_stat_cards": [{"label": "OnlyLabel"}, {"value": "OnlyValue"}, {}]})
+    header = _build_job_info_header(job)
+
+    text = get_text(header)
+    assert "OnlyLabel" in text
+    assert "OnlyValue" in text
+
+    # Duration + Expires In + the three partial cards.
+    stat_cards = [d for d in find_components(header, html.Div) if getattr(d, "className", None) == "jobs-stat-card"]
+    assert len(stat_cards) == 5
 
 
 def test_build_job_info_header_shows_computed_duration_for_completed_job():
@@ -510,6 +501,20 @@ def test_build_job_info_header_uses_known_tool_title():
 
     text = get_text(header)
     assert title in text
+
+
+def test_build_job_info_header_exposes_job_id_for_the_export_callback():
+    """The task-id span must carry JOB_ID_SPAN_ID with the bare id in ``title``.
+
+    The results-grid CSV export callback reads that ``title`` as State to name
+    the download, so this is a contract between the page and the shared grid.
+    """
+    job = make_job(job_id="job-abc-123")
+    spans = find_components(_build_job_info_header(job), html.Span)
+
+    tagged = [s for s in spans if getattr(s, "id", None) == JOB_ID_SPAN_ID]
+    assert len(tagged) == 1, "Expected exactly one span tagged for the export callback"
+    assert tagged[0].title == "job-abc-123"
 
 
 # ── view_results_layout — early returns ──────────────────────────────────────

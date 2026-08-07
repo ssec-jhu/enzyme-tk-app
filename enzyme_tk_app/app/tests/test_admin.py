@@ -11,9 +11,9 @@ from dash.exceptions import PreventUpdate
 from enzyme_tk_app.app.app import server
 from enzyme_tk_app.app.backend.models import JobStatus
 from enzyme_tk_app.app.pages.admin import (
+    _build_admin_page_stats,
     _build_jobs_grid,
     _build_sessions_grid,
-    _compute_stats,
     _grant_admin,
     _is_admin,
     _jobs_to_rows,
@@ -156,11 +156,11 @@ def test_build_stat_card_renders_value_and_label():
     assert "Active Sessions" in text
 
 
-# ── _compute_stats ───────────────────────────────────────────────────────────
+# ── _build_admin_page_stats ──────────────────────────────────────────────────
 
 
-def test_compute_stats_returns_five_cards_with_correct_counts():
-    """_compute_stats must produce five cards with correct aggregate counts."""
+def test_build_admin_page_stats_returns_five_cards_with_correct_counts():
+    """_build_admin_page_stats must produce five cards with correct aggregate counts."""
     jobs = [
         make_job(job_id="a", session_id="s1", status=JobStatus.SUCCESS),
         make_job(job_id="b", session_id="s1", status=JobStatus.PENDING),
@@ -168,7 +168,7 @@ def test_compute_stats_returns_five_cards_with_correct_counts():
         make_job(job_id="d", session_id="s2", status=JobStatus.FAILURE),
         make_job(job_id="e", session_id="s2", status=JobStatus.TIMEOUT),
     ]
-    cards = _compute_stats(jobs)
+    cards = _build_admin_page_stats(jobs)
 
     assert len(cards) == 5
     # Active sessions: 2, Total: 5, Running: 2, Succeeded: 1, Failed/Errored: 2.

@@ -13,7 +13,13 @@ from enzyme_tk_app.app.components.icons import (
     ICON_JOBS_PAGE,
     ICON_STATUS_PENDING,
 )
-from enzyme_tk_app.app.components.results_helpers import STATUS_ICONS, build_result_input_params
+from enzyme_tk_app.app.components.results_helpers import (
+    JOB_ID_SPAN_ID,
+    STATUS_ICONS,
+    build_result_input_params,
+    build_stat_card,
+    build_status_badge,
+)
 from enzyme_tk_app.app.tools import RESULTS_LAYOUTS, TOOL_TITLE_MAP, default_results_layout
 from enzyme_tk_app.app.utils.formatting import compute_duration, expires_in, format_timestamp
 
@@ -53,9 +59,8 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
     Returns:
         An ``html.Div`` with a page header, subtitle, and stat cards.
     """
-    # Get the tool title and status icon, with fallbacks for unknown slugs or statuses.
+    # Get the tool title, with a fallback for an unknown slug.
     tool_title = TOOL_TITLE_MAP.get(job.tool_slug, job.tool_slug)
-    status_icon = STATUS_ICONS.get(job.status, ICON_STATUS_PENDING)
 
     # Page header: icon + title + status badge (matches my_tasks page header)
     page_header = html.Div(
@@ -64,13 +69,7 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
             # Icon + title + status badge
             html.I(className=f"{ICON_JOBS_PAGE} jobs-page-header-icon"),
             html.H2(f"{tool_title} — Task Details", style={"margin": "0"}),
-            html.Span(
-                className=f"badge-status badge-{job.status.value}",
-                children=[
-                    html.I(className=f"{status_icon} badge-status-icon"),
-                    job.status.value,
-                ],
-            ),
+            build_status_badge(job.status),
         ],
     )
     # Task ID has a tooltip showing the full UUID, and the submission time is formatted for readability.
@@ -78,6 +77,9 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
         children=[
             html.Span(
                 f"Task {job.job_id}",
+                # The bare id lives in ``title`` — read as State by the
+                # results-grid CSV export callback to name the download.
+                id=JOB_ID_SPAN_ID,
                 title=job.job_id,
                 style={"cursor": "help"},
             ),
@@ -108,16 +110,7 @@ def _build_job_info_header(job: JobInfo) -> html.Div:
     # Build unified stat cards (same style as My Tasks page)
     stat_cards = html.Div(
         className="jobs-stats-row",
-        children=[
-            html.Div(
-                className="jobs-stat-card",
-                children=[
-                    html.Div(value, className="jobs-stat-value"),
-                    html.Div(label, className="jobs-stat-label"),
-                ],
-            )
-            for label, value in stats
-        ],
+        children=[build_stat_card(value, label) for label, value in stats],
     )
 
     return html.Div(children=[page_header, subtitle, stat_cards])

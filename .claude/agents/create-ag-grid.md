@@ -1,6 +1,6 @@
 ---
 name: create-ag-grid
-description: Use PROACTIVELY when creating, modifying, or adding columns to an AG Grid results table (e.g. results.py) in the EnzymeTK app.
+description: Use PROACTIVELY when creating, modifying, or adding columns to an AG Grid results table (e.g. results.py) in the EnzymeTK app, or when changing its shared CSV-export toolbar.
 tools: Read, Write, Edit, Bash, Grep, Glob
 ---
 
@@ -14,9 +14,10 @@ This agent defines the rules for building AG Grid tables in the app. All grids u
 
 | File | Responsibility |
 |---|---|
-| `components/results_helpers.py` | `shared_col_defs()` (shared columns), `build_ag_grid()` (grid factory) |
+| `components/results_helpers.py` | `shared_col_defs()` (shared columns), `build_ag_grid()` (grid factory), `_build_export_toolbar()` + `download_results_csv` (CSV export) |
 | `tools/<tool>/results.py` | Tool-specific column defs + `results_layout()` |
 | `assets/09-ag-grid.css` | Theme overrides (header, rows, icons, pagination) |
+| `assets/08-jobs.css` | `.btn-toolbar` (download button) and `.jobs-toolbar-radios` (export-scope radios) |
 | `assets/dashAgGridComponentFunctions.js` | Custom cell renderers (`SvgRenderer`, etc.) |
 
 ### How it fits together
@@ -25,10 +26,43 @@ This agent defines the rules for building AG Grid tables in the app. All grids u
 tool results.py
   └─ _get_column_defs()          # tool-specific cols + shared_col_defs()
   └─ results_layout(job)         # calls build_ag_grid(col_defs, df_payload)
-       └─ build_ag_grid()        # filters cols, sets tooltips, returns dag.AgGrid
-            └─ defaultColDef      # global defaults (sort, filter, resize)
-            └─ 09-ag-grid.css    # visual theme
+       └─ build_ag_grid()        # filters cols, sets tooltips, returns html.Div
+            ├─ _build_export_toolbar()      # Download CSV button + scope radios
+            └─ dag.AgGrid(id=GRID_ID)
+                 └─ defaultColDef           # global defaults (sort, filter, resize)
+                 └─ 09-ag-grid.css          # visual theme
 ```
+
+### 1.1 — What `build_ag_grid()` returns
+
+**`build_ag_grid(column_defs, df_payload)` returns an `html.Div`, not a `dag.AgGrid`** — the
+Div wraps the shared CSV-export toolbar and the grid. The signature is unchanged, so a
+`results.py` that does `results_table = build_ag_grid(column_defs, df_payload)` needs no
+edit; just do not annotate or assert the return as `dag.AgGrid`.
+
+Every tool therefore gets the download control for free. **Never add a per-tool export
+button, `csvExportParams`, or `dcc.Download`** to a `results.py` — put the change in
+`build_ag_grid()` so all tools move together.
+
+| Piece | Detail |
+|---|---|
+| Grid id | `GRID_ID = "id-grid-results"` — set by `build_ag_grid()`, static |
+| Toolbar | `STYLE_RESULTS_TOOLBAR` flex row: `html.Button` (`className="btn-toolbar"`, `ICON_RESULTS_DOWNLOAD`, "Download CSV") on the left, inline `dbc.RadioItems` (`className="jobs-toolbar-radios"`) beside it |
+| Scopes | `SCOPE_FILTERED` ("Filtered", the default) → `exportedRows: "filteredAndSorted"`; `SCOPE_ALL` ("Unfiltered") → `exportedRows: "all"`. Each radio label is an `html.Span` with a native `title` tooltip |
+| File name | `enzymetk-<job_id[:6]>-<scope>.csv`, from `_csv_export_params()` — the same 6-char prefix the My Tasks table shows |
+| Job id source | `State(JOB_ID_SPAN_ID, "title")` — `my_tasks_view_results._build_job_info_header()` puts `id=JOB_ID_SPAN_ID` on the task-id span whose `title` is the bare job id. **A page↔component contract**: renaming or dropping that `title` breaks the download filename (guarded by a test in `test_my_tasks.py`) |
+
+**One results grid per page.** `GRID_ID` and the toolbar ids are static because
+`my_tasks_view_results` renders exactly one tool's `results_layout()`. Do not call
+`build_ag_grid()` twice on one page. If a page ever needs two grids, the upgrade path is:
+give `build_ag_grid()` an `id` argument and move `download_results_csv` to `MATCH`
+pattern-matching ids.
+
+**SVG columns are excluded from the export.** `_csv_export_params()` builds `columnKeys`
+from every column def with a `field` **except** those whose def has
+`cellRenderer == "SvgRenderer"` — each of those cells holds a ~20 KB base64 data URI that
+would bloat the CSV into uselessness. The SMILES the picture was drawn from is exported
+instead, so the images stay reproducible. See §2.2 and §6.
 
 ---
 
@@ -66,6 +100,11 @@ The `SvgRenderer` is defined in `dashAgGridComponentFunctions.js`. It:
 - Renders a base64 `data:image/svg+xml;base64,...` URI as an `<img>` thumbnail (max-height 150px).
 - Wraps it in a flex container for vertical centering.
 - Opens a full-screen overlay on click (uses `.svg-overlay` CSS).
+
+`cellRenderer: "SvgRenderer"` also **drives CSV-export exclusion** — `_csv_export_params()`
+drops any column carrying that exact renderer name from `columnKeys`, keeping ~20 KB of
+base64 per cell out of the download. Set it on every image column, and keep a text column
+with the source SMILES in the grid so the picture stays reproducible from the CSV.
 
 ### 2.3 — Long text that must wrap (multi-line)
 
@@ -211,6 +250,15 @@ def _get_column_defs():
     ] + shared_col_defs()
 ```
 
+**Omit `shared_col_defs()` when the payload provably carries none of those fields.**
+`build_ag_grid()` drops every def whose field is absent from `df_payload["columns"]`, so
+appending it to a table of unrelated columns is ~35 lines of guaranteed no-op.
+`tools/timer_tool_template/results.py` is the one such case: its demo dataframe
+(`sample_id`, `activity_score`, `stability_score`, `temperature_c`, `yield_pct`) shares no
+column with the science tools, and it is the file new tools are copied from, so the noise
+would propagate. Say so in a comment at the call site. This is a narrow exception — any tool
+whose payload *might* carry a shared column still appends it.
+
 ---
 
 ## 3. `defaultColDef` — Global Defaults
@@ -311,6 +359,11 @@ dag.AgGrid(
 2. The cell value must be a data URI string (`data:image/svg+xml;base64,...`).
 3. Use the `_openSvgOverlay(src)` helper for click-to-enlarge behaviour.
 4. In the column def, set `"cellRenderer": "YourRendererName"`, `"autoHeight": True`, `"filter": False`, `"sortable": False`.
+5. **Prefer reusing `SvgRenderer` over naming a new renderer.** The CSV-export exclusion in
+   `_csv_export_params()` matches the literal string `"SvgRenderer"`, so a column using
+   `"MyStructureRenderer"` would export its base64 data URIs. If a genuinely different
+   renderer is needed, widen that check in `results_helpers._csv_export_params()` in the
+   same change (e.g. a set of image renderer names) — do not leave it keyed on one name.
 
 ---
 
@@ -324,13 +377,13 @@ dag.AgGrid(
 
 ## 8. Quick Reference — Column Def Cheat Sheet
 
-| Column type | `autoHeight` | `wrapText` | `cellClass` / `cellStyle` | `cellRenderer` | `filter` |
-|---|---|---|---|---|---|
-| Short text / ID | — | — | — | — | `True` (default) |
-| Number | — | — | — | — | `"agNumberColumnFilter"` |
-| SVG image | `True` | — | — | `"SvgRenderer"` | `False` |
-| Long text (truncate) | — | — | — | — | `True` (default) |
-| Long text (must wrap) | `True` | — | `"cell-wrap-dash-ag-grid"` | — | `True` (default) |
+| Column type | `autoHeight` | `wrapText` | `cellClass` / `cellStyle` | `cellRenderer` | `filter` | In CSV export |
+|---|---|---|---|---|---|---|
+| Short text / ID | — | — | — | — | `True` (default) | yes |
+| Number | — | — | — | — | `"agNumberColumnFilter"` | yes |
+| SVG image | `True` | — | — | `"SvgRenderer"` | `False` | **no** (§1.1) |
+| Long text (truncate) | — | — | — | — | `True` (default) | yes |
+| Long text (must wrap) | `True` | — | `"cell-wrap-dash-ag-grid"` | — | `True` (default) | yes |
 
 ---
 

@@ -159,3 +159,17 @@
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
 }
+
+/* --- Field info icon ----------------------------------------------------- */
+
+.modal-body .field-info-icon {
+    margin-left: 0.35rem;
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+    cursor: help;
+}
+
+.modal-body .field-info-icon:hover,
+.modal-body .field-info-icon:focus-visible {
+    color: var(--primary-color);
+}

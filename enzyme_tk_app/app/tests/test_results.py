@@ -1,88 +1,58 @@
+import dash_ag_grid as dag
+import dash_bootstrap_components as dbc
 import pytest
 from dash import html
+from dash.exceptions import PreventUpdate
 
+from enzyme_tk_app.app.backend.models import JobStatus
 from enzyme_tk_app.app.components.results_helpers import (
+    GRID_ID,
+    SCOPE_ALL,
+    SCOPE_FILTERED,
+    _csv_export_params,
     _pretty_label,
+    build_ag_grid,
     build_result_input_params,
-    build_result_stat_cards,
+    build_stat_card,
+    build_status_badge,
+    download_results_csv,
 )
 
 from .conftest import find_components, get_text, make_job
 
 # ---------------------------------------------------------------------------
-# build_result_stat_cards
+# build_status_badge
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "result",
-    [
-        {"data": [1, 2]},
-        None,
-        {"_stat_cards": "not-a-list"},
-        {"_stat_cards": {"label": "x", "value": "y"}},
-        {"_stat_cards": []},
-    ],
-    ids=["no-key", "none-result", "string-stat-cards", "dict-stat-cards", "empty-list"],
+    "status",
+    list(JobStatus),
+    ids=[s.value for s in JobStatus],
 )
-def test_build_result_stat_cards_returns_none_for_absent_or_invalid(result):
-    """``build_result_stat_cards`` returns ``None`` when ``_stat_cards`` is missing, non-list, or empty."""
-    assert build_result_stat_cards(make_job(result=result)) is None
+def test_build_status_badge_renders_for_every_status(status):
+    """``build_status_badge`` must return a Span with the correct badge class and status text."""
+    badge = build_status_badge(status)
+
+    assert isinstance(badge, html.Span)
+    assert f"badge-{status.value}" in badge.className
+    assert status.value in get_text(badge)
 
 
-def test_build_result_stat_cards_renders_stat_cards():
-    """Each dict in ``_stat_cards`` should produce a stat card with the correct label, value, and count."""
-    meta = [
-        {"label": "Elapsed", "value": "12.3 s"},
-        {"label": "Matches", "value": "42"},
-    ]
-    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
+# ---------------------------------------------------------------------------
+# build_stat_card
+# ---------------------------------------------------------------------------
 
-    assert component is not None
-    text = get_text(component)
-    assert "Summary" in text
-    assert "Elapsed" in text
-    assert "12.3 s" in text
-    assert "Matches" in text
+
+def test_build_stat_card_renders_value_and_label():
+    """``build_stat_card`` must produce a card with the given value and label."""
+    card = build_stat_card(42, "Total Tasks")
+
+    assert isinstance(card, html.Div)
+    assert card.className == "jobs-stat-card"
+    text = get_text(card)
     assert "42" in text
-
-    # Card count must match the number of meta items.
-    cards = [c for c in find_components(component, html.Div) if getattr(c, "className", None) == "jobs-stat-card"]
-    assert len(cards) == 2
-
-
-def test_build_result_stat_cards_uses_shared_css_classes():
-    """The output must use the shared ``jobs-stats-row`` / ``jobs-stat-card`` classes."""
-    meta = [{"label": "L", "value": "V"}]
-    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
-
-    stats_row = [c for c in find_components(component, html.Div) if getattr(c, "className", None) == "jobs-stats-row"]
-    assert len(stats_row) == 1, "Expected exactly one jobs-stats-row container"
-
-
-def test_build_result_stat_cards_skips_non_dict_items():
-    """Non-dict entries in ``_stat_cards`` should be silently ignored."""
-    meta = [{"label": "Keep", "value": "1"}, "stray-string", 42, None]
-    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
-
-    cards = [c for c in find_components(component, html.Div) if getattr(c, "className", None) == "jobs-stat-card"]
-    assert len(cards) == 1
-
-
-def test_build_result_stat_cards_returns_none_when_all_items_are_non_dict():
-    """If every item in ``_stat_cards`` is non-dict, the result should be ``None``."""
-    assert build_result_stat_cards(make_job(result={"_stat_cards": ["a", 1, None]})) is None
-
-
-def test_build_result_stat_cards_handles_missing_label_or_value_keys():
-    """Items missing ``label`` or ``value`` should still render (empty string fallback)."""
-    meta = [{"label": "OnlyLabel"}, {"value": "OnlyValue"}, {}]
-    component = build_result_stat_cards(make_job(result={"_stat_cards": meta}))
-
-    assert component is not None
-    text = get_text(component)
-    assert "OnlyLabel" in text
-    assert "OnlyValue" in text
+    assert "Total Tasks" in text
 
 
 # ---------------------------------------------------------------------------
@@ -207,3 +177,98 @@ def test_build_input_params_databases_render_as_plain_filenames(databases, expec
 def test_pretty_label(raw, expected):
     """``_pretty_label`` converts raw keys to human-friendly title-case labels."""
     assert _pretty_label(raw) == expected
+
+
+# ---------------------------------------------------------------------------
+# build_ag_grid — CSV export toolbar
+# ---------------------------------------------------------------------------
+
+_PAYLOAD = {"columns": ["a"], "data": [{"a": 1}]}
+
+
+def test_build_ag_grid_wraps_grid_with_export_toolbar():
+    """The results table must pair one addressable grid with one download button and radio group."""
+    table = build_ag_grid([{"field": "a"}], _PAYLOAD)
+
+    assert isinstance(table, html.Div)
+
+    grids = find_components(table, dag.AgGrid)
+    assert len(grids) == 1, "Expected exactly one AgGrid"
+    assert grids[0].id == GRID_ID, "The grid must carry the id the export callback targets"
+
+    assert len(find_components(table, html.Button)) == 1, "Expected exactly one download button"
+
+    radios = find_components(table, dbc.RadioItems)
+    assert len(radios) == 1, "Expected exactly one export-scope radio group"
+    assert radios[0].value == SCOPE_FILTERED, "Filtered is the default — it matches what the user sees"
+    assert [opt["value"] for opt in radios[0].options] == [SCOPE_FILTERED, SCOPE_ALL]
+    # Each option explains itself through a native tooltip on its label.
+    assert all(opt["label"].title for opt in radios[0].options)
+
+
+# ---------------------------------------------------------------------------
+# _csv_export_params
+# ---------------------------------------------------------------------------
+
+
+def test_csv_export_params_drops_svg_columns():
+    """SVG columns hold huge base64 URIs and must never reach the CSV."""
+    defs = [
+        {"field": "reaction_svg", "cellRenderer": "SvgRenderer"},
+        {"field": "unmapped_smiles"},
+        {"field": "tanimoto"},
+        {"headerName": "no-field-col"},
+    ]
+
+    assert _csv_export_params(SCOPE_FILTERED, defs, "abc")["columnKeys"] == ["unmapped_smiles", "tanimoto"]
+
+
+@pytest.mark.parametrize(
+    ("scope", "expected"),
+    [
+        (SCOPE_FILTERED, "filteredAndSorted"),
+        (SCOPE_ALL, "all"),
+    ],
+    ids=["filtered", "unfiltered"],
+)
+def test_csv_export_params_maps_scope_to_exported_rows(scope, expected):
+    """The radio value must select AG Grid's ``exportedRows`` mode."""
+    assert _csv_export_params(scope, [], "abc")["exportedRows"] == expected
+
+
+@pytest.mark.parametrize(
+    ("job_id", "expected"),
+    [
+        # Truncated to the same 6-char prefix the My Tasks table shows.
+        ("7e1de513-69ae-44f8-a32f-626b447308f8", "enzymetk-7e1de5-filtered.csv"),
+        ("abcd", "enzymetk-abcd-filtered.csv"),
+        (None, "enzymetk-results-filtered.csv"),
+        ("", "enzymetk-results-filtered.csv"),
+    ],
+    ids=["full-uuid", "shorter-than-prefix", "none-job-id", "empty-job-id"],
+)
+def test_csv_export_params_names_file_after_the_job(job_id, expected):
+    """The download is named after the task so a user can trace it back."""
+    assert _csv_export_params(SCOPE_FILTERED, [], job_id)["fileName"] == expected
+
+
+# ---------------------------------------------------------------------------
+# download_results_csv
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("n_clicks", [0, None], ids=["zero", "none"])
+def test_download_results_csv_prevents_update_without_a_click(n_clicks):
+    """A layout write must not fire an export the user never asked for."""
+    with pytest.raises(PreventUpdate):
+        download_results_csv(n_clicks, SCOPE_FILTERED, [{"field": "a"}], "abc")
+
+
+def test_download_results_csv_triggers_export():
+    """A click must set the export flag and hand AG Grid the matching params."""
+    trigger, params = download_results_csv(1, SCOPE_ALL, [{"field": "a"}], "7e1de513-69ae-44f8")
+
+    assert trigger is True
+    assert params["exportedRows"] == "all"
+    assert params["columnKeys"] == ["a"]
+    assert params["fileName"] == "enzymetk-7e1de5-unfiltered.csv"

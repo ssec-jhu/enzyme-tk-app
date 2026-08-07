@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pytest
 from dash import html
@@ -291,9 +292,7 @@ def test_results_layout_shows_fallback_for_bad_payload(result_dict):
 
 
 def test_results_layout_with_empty_data_list():
-    """results_layout must render a table even if data list is empty."""
-    from dash import dash_table  # noqa: PLC0415
-
+    """results_layout must render a grid even if data list is empty."""
     from enzyme_tk_app.app.tools.timer_tool_template.results import results_layout  # noqa: PLC0415
 
     job = make_job(
@@ -305,10 +304,11 @@ def test_results_layout_with_empty_data_list():
         },
     )
     layout = results_layout(job)
-    tables = find_components(layout, dash_table.DataTable)
-    # Empty data still produces a table (with zero rows)
-    assert len(tables) == 1
-    assert len(tables[0].data) == 0
+    # ``build_ag_grid`` wraps the grid in a Div with the CSV-export toolbar.
+    grids = find_components(layout, dag.AgGrid)
+    # Empty data still produces a grid (with zero rows)
+    assert len(grids) == 1
+    assert len(grids[0].rowData) == 0
 
 
 # ---------------------------------------------------------------------------

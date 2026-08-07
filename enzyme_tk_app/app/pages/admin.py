@@ -118,7 +118,7 @@ def _verify_token(token: str | None) -> bool:
 # ----------------
 
 
-def _compute_stats(jobs: list[JobInfo]) -> list:
+def _build_admin_page_stats(jobs: list[JobInfo]) -> list:
     """Build the five summary stat cards from all jobs.
 
     Args:
@@ -617,7 +617,7 @@ def refresh_admin_dashboard(n_intervals: int, refresh_token: int) -> tuple:
         raise PreventUpdate
     scheduler = get_task_scheduler()
     jobs = scheduler.admin_list_all_jobs()
-    return _compute_stats(jobs), _sessions_to_rows(jobs), _jobs_to_rows(jobs)
+    return _build_admin_page_stats(jobs), _sessions_to_rows(jobs), _jobs_to_rows(jobs)
 
 
 @callback(
