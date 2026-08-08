@@ -158,12 +158,6 @@ def modal():
                                                         className="mt-1 themed-control",
                                                         searchable=False,
                                                     ),
-                                                    html.Small(
-                                                        "Reaction-to-fingerprint encoding is not available yet — "
-                                                        "only the pre-encoded example reaction can be scored.",
-                                                        className="d-block mt-1",
-                                                        style={"color": "var(--text-tertiary)"},
-                                                    ),
                                                 ],
                                             ),
                                         ],

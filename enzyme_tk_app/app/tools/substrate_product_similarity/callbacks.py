@@ -7,14 +7,18 @@ This module defines callbacks that:
 - Submit a substrate/product similarity job to the backend scheduler
 """
 
-from dash import Input, Output, State, callback, ctx
+from dash import Input, Output, State, callback, ctx, no_update
 from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
+from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+
+# Build lookup dict: encoded dropdown value ("role||smiles") -> task name.
+_TASK_NAMES_BY_VALUE = {f"{ex['role']}||{ex['value']}": ex["task_name"] for ex in _get_example_smiles()}
 
 
 @callback(
@@ -49,31 +53,38 @@ def toggle_substrate_product_similarity_modal(launch_clicks, cancel_clicks):
 
 
 @callback(
-    # Populate the SMILES textarea and role selector when an example is selected.
+    # Populate the SMILES textarea, role selector and Task Name when an example is selected.
     Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     Output(f"id-radio-{TOOL_DEF['slug']}-role", "value"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_smiles(example_value):
-    """Populate the SMILES textarea and role selector when an example is selected.
+    """Populate the SMILES textarea, role selector and Task Name from an example.
 
     The example value is encoded as ``"role||smiles"`` so both the molecule
     role (substrate/product) and the SMILES string can be set from a single
-    dropdown selection.
+    dropdown selection.  The Task Name is prefilled with the example's own
+    name so a run is submittable in one click — it is the one field that
+    otherwise blocks submit.  An already-typed name is overwritten, like every
+    other example-filled field.
 
     Args:
         example_value: The encoded example string (``"role||smiles"``).
 
     Returns:
-        Tuple of (smiles_string, role_value) to populate the form fields.
+        Tuple of (smiles_string, role_value, task_name).  The task name is
+        ``no_update`` for a value that is not one of the shipped examples.
     """
-    if example_value and "||" in example_value:
-        # The example value is expected to be in the format "role||smiles",
-        #  e.g. "substrate||CCO".
-        role, smiles = example_value.split("||", 1)
-        return smiles, role
-    raise PreventUpdate
+    if not example_value or "||" not in example_value:
+        raise PreventUpdate
+
+    # The example value is expected to be in the format "role||smiles",
+    #  e.g. "substrate||CCO".
+    role, smiles = example_value.split("||", 1)
+    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
+    return smiles, role, task_name or no_update
 
 
 @callback(

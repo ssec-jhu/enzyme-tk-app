@@ -7,14 +7,18 @@ This module defines callbacks that:
 - Submit a reaction similarity job to the backend scheduler
 """
 
-from dash import Input, Output, State, callback, ctx
+from dash import Input, Output, State, callback, ctx, no_update
 from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF
+from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_reactions
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+
+# Build lookup dict: example SMILES (the dropdown value) -> task name.
+_TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in _get_example_reactions()}
 
 
 @callback(
@@ -44,21 +48,29 @@ def toggle_reaction_similarity_modal(launch_clicks, cancel_clicks):
 
 @callback(
     Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_reaction(example_value):
-    """Populate the SMILES textarea when an example is selected.
+    """Populate the SMILES textarea and Task Name when an example is selected.
+
+    The Task Name is prefilled with the example's own name so a run is
+    submittable in one click — it is the one field that otherwise blocks submit.
+    An already-typed name is overwritten, like every other example-filled field.
 
     Args:
         example_value: The selected example reaction SMILES string.
 
     Returns:
-        The SMILES string to put in the textarea.
+        Tuple of (smiles_string, task_name).  The task name is ``no_update``
+        for a SMILES that is not one of the shipped examples.
     """
-    if example_value:
-        return example_value
-    raise PreventUpdate
+    if not example_value:
+        raise PreventUpdate
+
+    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
+    return example_value, task_name or no_update
 
 
 @callback(

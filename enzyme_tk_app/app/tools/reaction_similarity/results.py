@@ -14,7 +14,7 @@ from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
 from enzyme_tk_app.app.components.results_helpers import build_ag_grid, shared_col_defs
-from enzyme_tk_app.app.utils.columns import COL_RXN_SVG
+from enzyme_tk_app.app.utils.columns import COL_RXN_SVG, COL_UNMAPPED_SMILES
 
 
 def _get_column_defs() -> list[dict]:
@@ -30,6 +30,8 @@ def _get_column_defs() -> list[dict]:
         {
             "field": COL_RXN_SVG,
             "cellRenderer": "SvgRenderer",
+            # Captions this reaction under its image in the compare lightbox.
+            "cellRendererParams": {"smilesField": COL_UNMAPPED_SMILES},
             "width": 450,
             # autoHeight tells AG Grid to automatically expand the row height
             # to fit the cell's content. Without it, content that doesn't fit in

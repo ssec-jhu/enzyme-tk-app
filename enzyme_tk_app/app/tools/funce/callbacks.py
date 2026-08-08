@@ -7,14 +7,21 @@ This module defines callbacks that:
 - Submit a Func-E job to the backend scheduler
 """
 
-from dash import Input, Output, State, callback, ctx
+from dash import Input, Output, State, callback, ctx, no_update
 from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.tools.funce import TOOL_DEF
+from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
+
+# Safe at module scope: compute.py's own imports are all light — the enzymetk,
+# torch and rdkit ones are function-local.
+from enzyme_tk_app.app.tools.funce.compute import validate_reaction_smiles
 from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+
+# Build lookup dict: example SMILES (the dropdown value) -> task name.
+_TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in EXAMPLE_REACTIONS}
 
 
 @callback(
@@ -44,21 +51,29 @@ def toggle_funce_modal(launch_clicks, cancel_clicks):
 
 @callback(
     Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_reaction(example_value):
-    """Populate the SMILES textarea when an example is selected.
+    """Populate the SMILES textarea and Task Name when an example is selected.
+
+    The Task Name is prefilled with the example's own name so a run is
+    submittable in one click — it is the one field that otherwise blocks submit.
+    An already-typed name is overwritten, like every other example-filled field.
 
     Args:
         example_value: The selected example reaction SMILES string.
 
     Returns:
-        The SMILES string to put in the textarea.
+        Tuple of (smiles_string, task_name).  The task name is ``no_update``
+        for a SMILES that is not one of the shipped examples.
     """
-    if example_value:
-        return example_value
-    raise PreventUpdate
+    if not example_value:
+        raise PreventUpdate
+
+    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
+    return example_value, task_name or no_update
 
 
 @callback(
@@ -126,8 +141,15 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
 
     # Re-validate server-side even though the UI disables submit — the
     # database names become file paths.
-    if not task_name or not task_name.strip() or not smiles or not smiles.strip():
+    if not task_name or not task_name.strip():
         raise PreventUpdate
+
+    # Reject a malformed reaction here rather than a minute into the worker, where
+    # it dies inside UniMol.  Reports the empty case itself, like validate_db_names,
+    # so the guard above must not test the SMILES and swallow that message.
+    error = validate_reaction_smiles(smiles)
+    if error:
+        return error
 
     # Reject any name the dropdown is not currently offering — it becomes a file
     # path under SEQUENCE_EMBEDDINGS_DIR on the backend.

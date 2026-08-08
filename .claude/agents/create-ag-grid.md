@@ -79,6 +79,23 @@ column_defs = [
 ]
 ```
 
+**Give every column a `width`; leave `minWidth` and `flex` alone.** `build_ag_grid()` copies
+each `width` into `minWidth` and sets `columnSize="responsiveSizeToFit"`, so the columns
+share out whatever width a short table leaves over and the table ends flush with the page
+instead of against a grey gutter. Because every column is already at its floor, a table
+wider than the page cannot shrink — it keeps its widths and scrolls, unchanged. Read
+`width` as "at least this wide". A column that must never grow needs an explicit
+`maxWidth`; one that may go narrower than its start needs an explicit `minWidth`.
+
+How wide a table ends up is decided by the *data*, not by this list — §1 drops any def
+whose field the payload lacks, so Reaction Similarity declares 32 defs and renders the 7
+`ReactionDist` actually returns (1340px, well inside the page).
+
+**Do not reach for `flex`.** It is the obvious way to do this and it does not work:
+dash-ag-grid 35.3.0 records `flex` in the column state and never applies it, leaving the
+column at its `minWidth` while `getHorizontalPixelRange()` reports the space it should
+have taken.
+
 ### 2.2 — SVG / image columns
 
 Image columns **must** set `autoHeight: True` so the row expands to fit the image. Also set `filter: False` and `sortable: False` — images are not filterable or sortable.
@@ -88,6 +105,8 @@ column_defs = [
     {
         "field": "reaction_svg",
         "cellRenderer": "SvgRenderer",
+        # Captions this row's structure in the compare lightbox.
+        "cellRendererParams": {"smilesField": "unmapped"},
         "width": 450,
         "autoHeight": True,
         "filter": False,
@@ -99,7 +118,40 @@ column_defs = [
 The `SvgRenderer` is defined in `dashAgGridComponentFunctions.js`. It:
 - Renders a base64 `data:image/svg+xml;base64,...` URI as an `<img>` thumbnail (max-height 150px).
 - Wraps it in a flex container for vertical centering.
-- Opens a full-screen overlay on click (uses `.svg-overlay` CSS).
+- Opens a **compare lightbox** on click (`.svg-overlay` + `.svg-compare*` CSS): the job's query
+  structure and this row's, each labelled and captioned with its SMILES — side by side for a
+  compact structure, stacked query-over-result for a wide one (see below). Closes on backdrop
+  click, the `×` or Escape — but **not** on a click inside the panels, so the SMILES stay
+  selectable.
+
+The query panel is **read out of the page**, not plumbed through `columnDefs`:
+`_openSvgOverlay` does `querySelector("img.jobs-params-preview")` and reads the SMILES off
+that image's `data-smiles` attribute. Both anchors are `QUERY_PREVIEW_CLASS` /
+`QUERY_SMILES_ATTR` in `components/results_helpers.py`, written by `_render_smiles_preview()`
+and pinned from both sides by `test_query_preview_anchors_match_the_compare_lightbox` in
+`tests/test_smiles_rendering.py` — rename either and the JS must change in the same edit.
+**A new tool needs no wiring for this**: any tool storing a `smiles` param already gets the
+query image, so the query panel appears for free. A tool with no query image degrades to the
+old single-image lightbox.
+
+**Orientation follows the structure's shape, not the viewport.** `_stackWideImages()` measures
+each panel's `naturalWidth / naturalHeight` and adds `.svg-compare-stacked` when one exceeds
+`_STACK_ASPECT_RATIO = 2.5`; stacked panels are capped at `88vw` instead of `46vw`, which is
+what makes a reaction legible (644 px wide side by side, 1232 px stacked at 1400x900) while
+molecules keep the two-column layout. A `data:` URI has no `naturalWidth` until it decodes, so
+the measurement also re-runs on each image's `load`. The constant sits in the gap between the
+only two canvases this app draws — molecules 500x300 (**1.67**), the narrowest real reaction
+750x200 (**3.75**, from `max(400, n_templates * 250)` x 200) — so **it is only correct while
+reactions are drawn 200 px high**: a taller reaction canvas drops a one-reactant/one-product
+reaction below 2.5 and it silently stops stacking.
+`test_stack_threshold_separates_reactions_from_molecules` in `tests/test_smiles_rendering.py`
+reads the constant out of the JS and re-renders both canvases, so change a canvas size and
+move the constant in the same edit. Below 768 px the `@media` block in `09-ag-grid.css` still
+stacks everything — the JS never adds the class for a 1.67 molecule, so that case stays CSS's.
+
+`cellRendererParams.smilesField` names the row column holding this structure's SMILES —
+`props.data` is the full row, so that column need not be one of the grid's visible columns.
+Omit it and only the caption is lost.
 
 `cellRenderer: "SvgRenderer"` also **drives CSV-export exclusion** — `_csv_export_params()`
 drops any column carrying that exact renderer name from `columnKeys`, keeping ~20 KB of
@@ -357,7 +409,12 @@ dag.AgGrid(
 
 1. Define the renderer function in `dashAgGridComponentFunctions.js` on `dagcomponentfuncs`.
 2. The cell value must be a data URI string (`data:image/svg+xml;base64,...`).
-3. Use the `_openSvgOverlay(src)` helper for click-to-enlarge behaviour.
+3. Use the `_openSvgOverlay(src, smiles)` helper for the compare lightbox. Pass the row's
+   SMILES as the second argument (read it from `props.data[props.smilesField]`) so the panel
+   is captioned; `""` renders the image with no caption. Going through the helper also gets
+   the aspect-ratio stacking for free — but if your renderer draws a canvas shaped like
+   neither of the current two, check it against `_STACK_ASPECT_RATIO` (§2.2) before assuming
+   the layout it lands in is the right one.
 4. In the column def, set `"cellRenderer": "YourRendererName"`, `"autoHeight": True`, `"filter": False`, `"sortable": False`.
 5. **Prefer reusing `SvgRenderer` over naming a new renderer.** The CSV-export exclusion in
    `_csv_export_params()` matches the literal string `"SvgRenderer"`, so a column using

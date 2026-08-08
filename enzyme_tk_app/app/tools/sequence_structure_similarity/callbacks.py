@@ -61,22 +61,26 @@ def toggle_structure_similarity_modal(launch_clicks, cancel_clicks):
     Output(f"id-textarea-{TOOL_DEF['slug']}-sequence", "value"),
     Output(f"id-upload-{TOOL_DEF['slug']}-structure", "contents"),
     Output(f"id-upload-{TOOL_DEF['slug']}-structure", "filename"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_sequence(example_id):
-    """Populate the sequence textarea and optionally the structure upload.
+    """Populate the sequence textarea, Task Name and optionally the structure upload.
 
     When an example with a bundled structure file is selected, the
     structure file is read from disk, base64-encoded, and injected into
     the ``dcc.Upload`` component.  For sequence-only examples, the
-    upload fields are left unchanged via ``no_update``.
+    upload fields are left unchanged via ``no_update``.  The Task Name is
+    prefilled with the example's own name so a run is submittable in one
+    click — it is the one field that otherwise blocks submit.  An
+    already-typed name is overwritten, like every other example-filled field.
 
     Args:
         example_id: The ID of the selected example entry.
 
     Returns:
-        Tuple of (sequence, structure_contents, structure_filename).
+        Tuple of (sequence, structure_contents, structure_filename, task_name).
     """
     # Don't update anything if the example ID is invalid or not found.
     if not example_id:
@@ -90,6 +94,7 @@ def populate_example_sequence(example_id):
     # Extract the sequence and structure info from the entry.
     sequence = entry["sequence"]
     structure_file = entry.get("structure_file")
+    task_name = entry["task_name"]
 
     # This is only for the example sequences that ship with a structure
     if structure_file:
@@ -98,10 +103,10 @@ def populate_example_sequence(example_id):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         mime_type = _MIME_BY_EXT.get(file_path.suffix.lower(), "application/octet-stream")
         contents = f"data:{mime_type};base64,{encoded}"
-        return sequence, contents, structure_file
+        return sequence, contents, structure_file, task_name
 
     # return the sequence and leave the upload unchanged for sequence-only examples
-    return sequence, no_update, no_update
+    return sequence, no_update, no_update, task_name
 
 
 @callback(

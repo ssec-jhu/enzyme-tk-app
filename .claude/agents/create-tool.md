@@ -193,10 +193,19 @@ before touching any of this.
   - `_params_exclude` — list of param keys to hide from the auto-rendered input parameters table.
   - `dataframe` — tabular results (`{"columns": [...], "data": [...]}`).
   - Any tool-specific computed values that `results.py` explicitly reads from `job.result`.
+- **An example picker prefills the Task Name.** Every example dict carries a `task_name` beside its
+  `label`/`value` — in `modal.py`'s `_get_example_*()` helper, or in `__init__.py` when `compute.py`
+  shares the same constants (`funce`'s `EXAMPLE_REACTIONS`) — and the tool's `populate_example_*`
+  callback returns it **verbatim** as its **last** output, into
+  `f"id-input-{TOOL_DEF['slug']}-task-name"`. Task Name is the one field that blocks submit, so an
+  example that leaves it blank is not runnable in one click. Never prepend the tool slug — the My
+  Tasks table already shows the tool in the column beside Task Name. Full contract in
+  `create-modal` §7; `test_every_example_prefills_a_task_name` in `tests/test_tools.py` enforces a
+  non-blank name for every tool.
 - For callback implementation patterns (guard clauses, decorator syntax, naming), read and follow `.claude/agents/write-callback.md`, and examine existing tools.
 
 ## 5. Reference Material
-Refer to the `timer_tool_template` folder for **folder structure and module layout** (`__init__.py`, slug naming, file roles). For callback implementation patterns, read and follow `.claude/agents/write-callback.md`, and examine existing tools like `substrate_product_similarity`.
+Refer to the `timer_tool_template` folder for the **whole shape of a tool**, not just its skeleton: `__init__.py` and slug naming, file roles, a modal with the Task Name row and an example picker, all four callbacks (`toggle_` / `populate_example_` / `validate_` / `submit_`), and an AG Grid `results.py` — over a `compute.py` that only sleeps. It follows every shared convention, so mirror it and substitute your algorithm rather than treating it as a reduced special case. For callback implementation patterns, read and follow `.claude/agents/write-callback.md`; for a tool that also reads bundled databases, examine `substrate_product_similarity`.
 
 ---
 

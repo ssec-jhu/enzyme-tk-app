@@ -86,6 +86,12 @@ to change**. Common offenders:
   generated. Do **not** propose replacing such a list with a loop/comprehension,
   or with an import of the very constant the module under test uses — either
   change makes the test agree with the code instead of pinning it.
+- A string (or regex) read out of **another language's source file** —
+  `test_smiles_rendering.py` greps `assets/dashAgGridComponentFunctions.js` for
+  `_QUERY_PREVIEW_CLASS` / `_QUERY_SMILES_ATTR` and scrapes `_STACK_ASPECT_RATIO`
+  out of it, because Python and JS share those values across a boundary no import
+  crosses. The scrape *is* the test. Do not propose importing the constant instead
+  (there is nothing to import) or dropping it as brittle.
 
 ### 4. Uncovered Early Returns & Guard Clauses
 

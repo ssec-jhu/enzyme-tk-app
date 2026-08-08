@@ -39,14 +39,30 @@ This agent defines the mandatory patterns for all Dash callback code in the Enzy
 - In callbacks with early-exit guard clauses (no click, falsy input, no triggered ID), use `raise PreventUpdate` instead of returning an empty string or `None`. This tells Dash to skip the update entirely, avoiding unnecessary DOM writes.
 
 ```python
+from dash import no_update
 from dash.exceptions import PreventUpdate
 
+# Module scope: example dropdown value -> task name.
+_TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in _get_example_reactions()}
 
-def populate_example(example_value):
+
+def populate_example_reaction(example_value):
     if not example_value:
-        raise PreventUpdate  # ← no user action, skip update
-    return example_value
+        raise PreventUpdate  # ← no user action, skip every output
+
+    # Every populate_example_* prefills the Task Name as its LAST output
+    # (create-modal §7) — it is the one field that blocks submit.  The name
+    # goes in verbatim; never prepend the tool slug.
+    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
+    return example_value, task_name or no_update
 ```
+
+**`PreventUpdate` is all-or-nothing; `no_update` is per-output.** Nothing meaningful happened →
+`raise PreventUpdate` and every output is skipped. Something did happen but one output must be
+left exactly as the user left it → return `no_update` *in that position* (never `None`, which
+would blank the field). Above, a value that is not one of the shipped examples still fills the
+textarea and only spares the Task Name; `sequence_structure_similarity`'s version does the same
+for the structure-upload outputs on a sequence-only example.
 
 ### 3. Intentional DOM Writes Are Not Guard Clauses
 
@@ -65,6 +81,15 @@ def submit_job(submit_clicks, launch_clicks, ...):
 **Rule of thumb:** if removing the return would leave stale/incorrect content visible to the user, it is an intentional write — keep `return ""`. If nothing meaningful happened (no click, missing input), `raise PreventUpdate`.
 
 ### 4. Submit Callbacks Re-Validate Everything Server-Side
+
+**The `validate_*` callback checks presence, not validity, and carries no
+`prevent_initial_call`** — it must fire at page load so the Run button starts *disabled* on an
+empty form. Validity is the browser's job for anything it can express: `dbc.Input(type="number",
+min=1, max=300)` makes the browser mark an out-of-range entry invalid and **Dash then passes
+`None` to the callback**, so typing `0` or `500` disables the button through the plain
+presence check and never reaches the submit callback's range message at all. Test presence with
+`value is not None` rather than `bool(value)` — a bare `0` is present, just out of range — and
+leave the range message where it is: it is the server-side backstop below, not UI feedback.
 
 The client-side `validate_*` callback only disables the submit button — a crafted request
 still reaches the submit callback with whatever payload it likes. **Every** `submit_*`
@@ -125,12 +150,13 @@ heavy import there would load them into the web process on every boot.
 
 ### 5. Naming & Placement
 
-- Callback function names start with a **verb** describing the action: `toggle_*`, `submit_*`, `validate_*`, `populate_*`, `sync_*`.
+- Callback function names start with a **verb** describing the action. Every tool modal uses the same four: `toggle_*`, `populate_example_*`, `validate_*`, `submit_*`.
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
-- Always add `prevent_initial_call=True` on callbacks that should not fire at page load.
+- Always add `prevent_initial_call=True` on callbacks that should not fire at page load. `validate_*` is the standing exception (§4) — it must fire at load to disable the Run button.
 
 ### 6. Exemplars
 
+- **All four callbacks in one short file:** See `enzyme_tk_app/app/tools/timer_tool_template/callbacks.py` — the canonical `toggle_` / `populate_example_` / `validate_` / `submit_` set, heavily commented and with no tool-specific logic in the way.
 - **`PreventUpdate` usage:** See `enzyme_tk_app/app/pages/my_tasks.py` — uses `raise PreventUpdate` consistently in all action callback guard clauses.
 - **Positional-arg decorator style:** See `enzyme_tk_app/app/tools/substrate_product_similarity/callbacks.py` — all `@callback` decorators use positional args, never list syntax.
 - **Server-side guard + `validate_db_names`:** See `enzyme_tk_app/app/tools/substrate_product_similarity/callbacks.py` and `enzyme_tk_app/app/tools/sequence_similarity/callbacks.py`.

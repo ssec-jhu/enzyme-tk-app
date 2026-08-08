@@ -10,22 +10,27 @@ activity.
    the protein embedding (``esm3_mean``) and the three reaction embeddings
    (``rxnfp``, ``substrate_unimol_repr``, ``product_unimol_repr``).  The
    database pickles under ``data/sequence_embeddings/`` supply the protein side; the
-   reaction side comes from :func:`_encode_reaction`.
+   reaction side is computed from the query SMILES by :func:`_encode_reaction`.
 """
 
+import multiprocessing
+import os
 import pickle
+import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pandas as pd
 
-from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR
-from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES
+from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR, UNIMOL_WEIGHTS_DIR
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
 
 # Reaction-side embedding columns the Funce step reads — enzymetk's own
 # defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_encode_reaction``
-# fills them in; the protein side comes from the database pickle.
+# returns exactly these keys and ``_load_databases`` strips them from the
+# pickles; the protein side comes from the database pickle.
 RXN_COLS = ["rxnfp", "substrate_unimol_repr", "product_unimol_repr"]
 
 # The step's activity score.  enzymetk prefixes its output columns with its
@@ -151,6 +156,12 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
             skipped.append(safe_name)
             continue
 
+        # Drop any reaction embeddings the pickle carries of its own.  Fixtures like
+        # Funce_pairs.pkl were built with one reaction already broadcast across every
+        # row; the query's vectors must win, and leaving these in place would let a
+        # stale reaction survive into rows the broadcast in ``run`` does not reach.
+        frame = frame.drop(columns=RXN_COLS, errors="ignore")
+
         # Named exactly as the file is named in data/sequence_embeddings/, extension
         # included — see the data_loading module docstring.
         frame[COL_DATABASE] = db_path.name
@@ -162,55 +173,161 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
     return pd.concat(frames, ignore_index=True), skipped
 
 
-def _encode_reaction(smiles: str, db_df: pd.DataFrame) -> dict:
-    """Return the three reaction embedding vectors for *smiles*.
+def _split_reaction(smiles: str) -> tuple[str, str]:
+    """Split a reaction SMILES into ``(substrate, product)`` on ``>>``.
 
-    Ceiling: only the pre-encoded DEHP->MEHP reaction resolves today — its
-    vectors are read out of the first database row that carries them, since
-    the shipped pickles have the reaction broadcast across every protein row.
-    Upgrade path: replace this body with ``RxnFP(smiles)`` plus ``UniMol`` on
-    the substrate and product, and drop the *db_df* argument — the vectors
-    then come from the query and no database needs to carry them.  The exact
-    string match is deliberate; canonicalise with RDKit once that lands.
+    The product is the *last* segment, so a multi-arrow string like ``A>>B>>C``
+    yields ``(A, C)``.  Each side may be dot-joined (``A.B>>C``); it is embedded
+    whole, exactly as the reference example does.
+    """
+    parts = smiles.strip().split(">>")
+    return parts[0].strip(), parts[-1].strip()
+
+
+def validate_reaction_smiles(smiles: object) -> str | None:
+    """Return an error message for an unusable reaction SMILES, or ``None``.
+
+    Message-or-``None`` matches ``validate_db_names`` and ``validate_top_n``, so the
+    modal callback and :func:`run` can share one definition of "valid".  The string
+    is typed by the user and encoding is slow, so a typo rejected here saves a
+    minute-long job that would otherwise die deep inside UniMol.
 
     Args:
-        smiles: The query reaction SMILES.
-        db_df: The concatenated databases, used as the vector source for now.
+        smiles: The reaction SMILES from the modal.
 
     Returns:
-        Mapping of embedding column name to its vector.
-
-    Raises:
-        ValueError: If *smiles* is anything but the pre-encoded reaction, or
-            no selected database carries the reaction embeddings.
+        A human-readable error message, or ``None`` when *smiles* is usable.
     """
+    from rdkit.Chem import MolFromSmiles  # noqa: PLC0415
 
-    # TODO:
-    # the reaction encoding logic should be updated once RxnFP and UniMol are integrated.
-    # For now, only the pre-encoded DEHP->MEHP reaction is supported.
+    if not isinstance(smiles, str) or not smiles.strip():
+        return "Enter a reaction SMILES."
 
-    if smiles.strip() != DEHP_MEHP_SMILES:
-        raise ValueError(
-            "Only the pre-encoded example reaction can be scored right now. "
-            "Reaction-to-fingerprint encoding is not yet available — pick "
-            "'DEHP → MEHP' from the examples dropdown."
+    if ">>" not in smiles:
+        return "Reaction SMILES must separate substrate from product with '>>'."
+
+    substrate, product = _split_reaction(smiles)
+    if not substrate or not product:
+        return "Reaction SMILES needs a substrate before '>>' and a product after it."
+
+    # RDKit returns None rather than raising on an unparseable molecule.
+    for label, side in (("substrate", substrate), ("product", product)):
+        if MolFromSmiles(side) is None:
+            return f"The {label} is not a valid SMILES: {side}"
+
+    return None
+
+
+def _ensure_python_on_path() -> None:
+    """Make a bare ``python`` resolve to the interpreter running this process.
+
+    ``RxnFP`` shells out with ``cmd[0] == "python"`` rather than ``sys.executable``,
+    so with ``env_name=None`` it runs on whatever ``python`` the PATH happens to
+    find — and an environment that only ships ``python3`` gets
+    ``FileNotFoundError: 'python'``.  A no-op in the Docker image, where ``python``
+    is already the right interpreter.
+    """
+    bindir = str(Path(sys.executable).parent)
+    if bindir not in os.environ.get("PATH", "").split(os.pathsep):
+        os.environ["PATH"] = bindir + os.pathsep + os.environ.get("PATH", "")
+
+
+@contextmanager
+def _allow_forking():
+    """Let a step fork worker processes while inside Celery's prefork pool.
+
+    Celery runs each task in a *daemonic* child, and a daemonic process may not
+    have children of its own.  ``unimol_tools`` builds conformers with a
+    ``multiprocessing.Pool``, so under Celery it raises "daemonic processes are
+    not allowed to have children" — which UniMol's own ``except`` swallows into a
+    ``None`` embedding rather than an error.  Clearing the flag for the duration
+    of the call is the standard Celery workaround.
+
+    Ceiling: unimol_tools pools up to 8 processes to embed our two molecules, and
+    a hard kill of the worker mid-call could orphan them.  Forwarding a kwarg will
+    not fix it: ``multi_process`` is read from the ``params`` dict ``UniMolRepr``
+    builds from its own named arguments, and anything else passed to it is dropped,
+    so the flag never reaches the conformer generator.  Dropping this needs a change
+    inside unimol_tools itself.
+    """
+    process = multiprocessing.current_process()
+    was_daemon = getattr(process, "daemon", False)
+    if was_daemon:
+        process.daemon = False
+    try:
+        yield
+    finally:
+        if was_daemon:
+            process.daemon = True
+
+
+def _encode_reaction(smiles: str) -> dict:
+    """Embed *smiles* into the three reaction vectors the Funce step reads.
+
+    The reaction is fingerprinted with RxnFP (256-d) and its substrate and product
+    are embedded with UniMol (768-d each) — widths fixed by the trained Funce
+    checkpoints.  RxnFP, not DRFP: ``forward_reaction`` is ``nn.Linear(in=256)`` and
+    was fit on RxnFP's dense continuous basis, so a DRFP vector folded to 256 is
+    *accepted* and silently reranks rather than failing.
+
+    Ceiling: both steps reload their checkpoint on every call — roughly ten of the
+    twelve seconds a small job takes, and flat regardless of database size.  The
+    upgrade is module-level cached ``UniMolRepr`` / ``RXNBERTFingerprintGenerator``
+    singletons, worth doing only if that fixed cost ever stops being noise next to
+    scoring itself.
+
+    Args:
+        smiles: The query reaction SMILES, already passed through
+            :func:`validate_reaction_smiles`.
+
+    Returns:
+        Mapping of each name in ``RXN_COLS`` to its ``float32`` vector.
+    """
+    import numpy as np  # noqa: PLC0415
+    from enzymetk.embedchem_rxnfp_step import RxnFP  # noqa: PLC0415
+    from enzymetk.embedchem_unimol_step import UniMol  # noqa: PLC0415
+
+    substrate, product = _split_reaction(smiles)
+
+    # RxnFP round-trips the frame through to_csv/read_csv in a subprocess, so it must
+    # see no array columns — hence this bare one-row frame, before anything is merged.
+    # env_name=None skips the `conda run -n rxnfp` wrapper; tmp_dir must be a real
+    # path, because left None the step f-strings the TemporaryDirectory *object*
+    # into a filename and breaks.
+    _ensure_python_on_path()
+    with TemporaryDirectory() as tmp_dir:
+        rxn_df = RxnFP("reaction", 1, env_name=None, tmp_dir=tmp_dir).execute(pd.DataFrame({"reaction": [smiles]}))
+
+    # Both molecules in one call: UniMol rebuilds its model on every execute() and
+    # always writes to "unimol_repr", so one call per molecule would cost a second
+    # checkpoint load *and* need renaming in between.  weights_dir names the bundled
+    # checkpoint; left off, unimol_tools resolves UNIMOL_WEIGHT_DIR instead and downloads
+    # ~660 MB into its own site-packages directory on every fresh container.
+    with _allow_forking():
+        mol_df = UniMol("smiles", weights_dir=str(UNIMOL_WEIGHTS_DIR)).execute(
+            pd.DataFrame({"smiles": [substrate, product]})
         )
 
-    # Check if the reaction is the pre-encoded DEHP->MEHP reaction.
-    missing = [c for c in RXN_COLS if c not in db_df.columns]
-    if missing:
+    # UniMol logs its own failures and writes None rather than raising.  numpy turns
+    # that None into a 1-wide nan vector, which survives the broadcast and only
+    # surfaces as "mat1 and mat2 shapes cannot be multiplied" inside Funce — or, if
+    # the widths happened to line up, as silently meaningless scores.  Stop here,
+    # where the cause is still named.
+    reprs = list(mol_df["unimol_repr"])
+    if any(v is None for v in reprs):
         raise ValueError(
-            "No selected database carries the pre-encoded reaction "
-            f"(missing {', '.join(missing)}). Include a database that does, "
-            "such as Funce_pairs."
+            "UniMol could not embed the substrate or product of this reaction — "
+            "see the job log for the underlying error."
         )
 
-    # Take the first row that actually has the reaction vectors — a database
-    # without them contributes NaN once the frames are concatenated.
-    encoded = db_df.dropna(subset=list(RXN_COLS))
-    if encoded.empty:
-        raise ValueError("No selected database carries the pre-encoded reaction embeddings.")
-    return {col: encoded[col].iloc[0] for col in RXN_COLS}
+    # UniMol hands back a nested cls_repr ([[...768...]]); flatten to the
+    # one-vector-per-cell shape the Funce step expects.
+    substrate_repr, product_repr = (np.asarray(v).flatten().astype(np.float32) for v in reprs)
+    return {
+        "rxnfp": np.asarray(rxn_df["rxnfp"].iloc[0]).flatten().astype(np.float32),
+        "substrate_unimol_repr": substrate_repr,
+        "product_unimol_repr": product_repr,
+    }
 
 
 def run(params: dict) -> dict:
@@ -230,7 +347,7 @@ def run(params: dict) -> dict:
         - ``dataframe``: ``{"columns": [...], "data": [records]}``.
 
     Raises:
-        ValueError: When the database or reaction cannot be resolved.
+        ValueError: When the reaction SMILES is invalid or no database can be read.
         ImportError: When ``enzymetk`` (or torch) is not available.
     """
     # Lazy import — enzymetk pulls in torch, which is heavy; worker only.
@@ -241,6 +358,12 @@ def run(params: dict) -> dict:
     databases: list[str] = params["databases"]
     top_n: int = int(params["top_n"])
 
+    # The modal validates too, but a replayed job reaches this function directly —
+    # and encoding is far too slow to spend on a string we can reject up front.
+    invalid = validate_reaction_smiles(smiles)
+    if invalid:
+        raise ValueError(invalid)
+
     run_time_start = time.monotonic()
 
     db_df, databases_skipped = _load_databases(databases)
@@ -248,7 +371,7 @@ def run(params: dict) -> dict:
 
     # Broadcast the single query reaction across every protein row — the step
     # scores pairs and does no broadcasting of its own.
-    for col, vector in _encode_reaction(smiles, db_df).items():
+    for col, vector in _encode_reaction(smiles).items():
         db_df[col] = [vector] * candidate_count
 
     # Initialize the Funce step for scoring the reaction against the protein database.

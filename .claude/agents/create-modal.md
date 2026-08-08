@@ -11,7 +11,7 @@ When creating a new tool modal (e.g., in `enzyme_tk_app/app/tools/<tool_name>/mo
 ## 1. Module Docstring Convention
 Every `modal.py` must start with a detailed docstring that includes:
 - A one-line summary of what the modal is for.
-- A **Layout rules** section listing the six structural rules (see the timer_tool_template for the canonical example).
+- A **Layout rules** section listing the six structural rules — copy the example below verbatim.
 - A **Key conventions** section listing ID conventions, shared helpers, and control class requirements.
 
 Example:
@@ -164,7 +164,8 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the `write-css` subagent for banner/section-comment style and 4-space indentation.
 
 ## 7. Required vs Default Sections
-- **Section 1: Input Data:** Place *Task Name*, required identifiers (like SMILES or file uploads), and Demo Examples here.
+- **Section 1: Input Data:** *Task Name* is the **first row**, then the required identifiers (SMILES, sequence, file upload, a plain number — whatever the tool takes) with their Demo Examples nested under the input each one fills. Every tool has the Task Name row and every tool has it first; it is required — `validate_*` keeps the Run button disabled until it has a value (see `write-callback` §4) — and it is what labels the job in the My Tasks table and on the results page.
+- **Demo Examples prefill the Task Name too:** every example dict carries a `task_name` next to its `label`/`value`, and the tool's `populate_example_*` callback returns it **verbatim** as its **last** output, into `f"id-input-{TOOL_DEF['slug']}-task-name"`. Task Name is the one field that blocks submit, so an example that leaves it blank is not runnable in one click. **Never prepend the tool slug** — the My Tasks table already has a Tool column right beside Task Name, so a prefix only repeats the neighbouring cell and, since the Task Name column has no `max-width` and the table no `table-layout: fixed`, a long name widens it and squeezes the other eight. Keep the `task_name` short and kebab-case, identifiers in their own casing (`DEHP-MEHP`, `A0A009IHW8`, `1AKI-lysozyme-structure`); it shares that column with names the user types. A selection overwrites a name the user already typed, exactly as it overwrites every other field. `test_every_example_prefills_a_task_name` in `tests/test_tools.py` walks the live dropdowns and enforces a non-blank name for every tool.
 - **Section 2: Tool Configurations:** Place optional tuning parameters, Algorithm selections, external Database selections, and Limits (Top-N) here in a single vertical tracking stack (avoid multi-column grids unless absolutely constrained for space).
 - **Database selection is always multi-select:** build the label column with `create_modal_databases_label(TOOL_DEF["slug"], "<one sentence naming what the databases hold>")` — it supplies the "Databases" label, the info icon and its tooltip, so never hand-inline `dbc.Col(dbc.Label("Databases", ...), width=3)`. The sentence describes the *contents* (columns or payload, e.g. "Entry, Sequence and EC number columns, plus any metadata the file carries."), never selection mechanics. Give the dropdown `multi=True` with the id `f"id-dropdown-{TOOL_DEF['slug']}-databases"` (plural), and pre-select **every** option (`value=[opt["value"] for opt in db_options]`) — the broadest search is the default. Even a directory holding one file gets a multi-select. Build the options with the matching `get_*_database_options()` helper and never re-label them — an option's `label` and `value` are both the exact name on disk (the full filename, extension included, or the folder name for FoldSeek). See `.claude/agents/create-tool.md` §3b for the rest of the contract (validation, merging, skipped-database stat cards) and §3c for the naming rule.
 
@@ -179,7 +180,9 @@ create_modal_submission_results(TOOL_DEF["slug"])
 This empty div is populated by the submit callback with a job-ID confirmation or validation error.
 
 ## 10. Canonical Reference
-The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.py`. When in doubt, mirror its structure, docstring, and commenting style exactly.
+The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.py`, and it is a real one — it follows every rule above with nothing tool-specific in the way: the §1 docstring in full, Task Name as the first row of Section 1, the example picker (`dcc.Dropdown` with id `f"id-dropdown-{TOOL_DEF['slug']}-example"`, `searchable=False`, under the `ICON_MODAL_EXAMPLE` + "Try an example:" `html.Small`) nested beneath the input it fills, both section headers, the results placeholder and the shared footer. When in doubt, mirror its structure, docstring, and commenting style exactly.
+
+The single thing it cannot demonstrate is `create_modal_databases_label()` — it has no databases. Take that row from §7 and `create-tool` §3b.
 
 ---
 

@@ -49,16 +49,18 @@ def _get_example_entries():
     """Return example entries for the FoldSeek similarity search.
 
     Each entry has a ``value`` (used as dropdown value), a display
-    ``label``, the protein ``sequence``, and an optional
+    ``label``, a ``task_name`` (the name the example picker prefills into
+    the Task Name field), the protein ``sequence``, and an optional
     ``structure_file`` name (relative to ``data/structures/``).
 
     Returns:
-        List of dicts with keys: value, label, sequence, structure_file.
+        List of dicts with keys: value, label, task_name, sequence, structure_file.
     """
     return [
         {
             "value": "A0A009IHW8-seq",
             "label": "A0A009IHW8 — DNA glycosylase (sequence only)",
+            "task_name": "A0A009IHW8-sequence",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -70,6 +72,7 @@ def _get_example_entries():
         {
             "value": "A0A009IHW8-struct",
             "label": "A0A009IHW8 — DNA glycosylase (sequence + structure)",
+            "task_name": "A0A009IHW8-structure",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -81,6 +84,7 @@ def _get_example_entries():
         {
             "value": "A0A067CMC7-seq",
             "label": "A0A067CMC7 — Nuclease (sequence only)",
+            "task_name": "A0A067CMC7-sequence",
             "sequence": (
                 "MLEVPVWIPILAFAVGLGLGLLIPHLQKPFQRFSTVNDIPKEFFEHERTLRGKVVS"
                 "VTDGDTIRVRHVPWLANGDGDFKGKLTETTLQLRVAGVDCPETAKFGRTGQPFGEE"
@@ -92,6 +96,7 @@ def _get_example_entries():
         {
             "value": "1AKI-struct",
             "label": "1AKI — Lysozyme (sequence + structure)",
+            "task_name": "1AKI-lysozyme-structure",
             "sequence": (
                 "KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINS"
                 "RWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQ"

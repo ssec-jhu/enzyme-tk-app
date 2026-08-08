@@ -82,6 +82,7 @@ def run(params: dict) -> dict:
 
     Args:
         params: Dictionary submitted by the modal callback.  Keys:
+            - ``"task_name"`` (str): human-readable label for the job.
             - ``"seconds"`` (int): how long the task should run.
             - ``"simulate_failure"`` (bool, optional): if ``True``, raise
               an exception halfway through to test the failure path.

@@ -9,7 +9,7 @@ tools: Read, Write, Edit, Grep, Glob, Bash
 This agent enforces the formatting conventions that keep every stylesheet in
 `assets/` visually consistent and free of whitespace-only diffs. Follow it for
 **any** hand-written CSS; for `className`/inline-style decisions defer to the
-"Styling (CSS vs Inline)" rules in `CLAUDE.md`.
+"Styling (CSS vs Inline)" rules in `AGENTS.md`.
 
 ---
 
@@ -78,7 +78,19 @@ Rules:
 ## 4. Class Naming
 
 - Keep class names in sync with usage — only add a `className`/selector that is
-  actually referenced in Python (`className=`) or by an external library.
+  actually referenced in Python (`className=`), by a JS cell renderer in
+  `assets/dashAgGridComponentFunctions.js` (`.svg-overlay`, `.svg-compare*` are set
+  there, not from Python), or by an external library.
+- **A class can be live and still appear in no markup at all.**
+  `.svg-compare-stacked` is added by `classList.add` at runtime, only when a
+  structure image is wider than `_STACK_ASPECT_RATIO` (2.5:1), so it exists in
+  the DOM only for reactions. Grep the `.js` before concluding a rule is dead.
+- **Duplicated declarations are sometimes the point.** `.svg-compare-stacked`
+  repeats the `88vw` / `32vh` caps of the `@media (max-width: 768px)` block
+  below it on purpose: its descendant selector (0,3,1) outranks the media
+  query's (0,2,1) whatever the source order, so "deduplicating" the two would
+  change which cap wins on a phone. Leave a comment saying so — as that rule
+  does — rather than trusting the next reader to work out the specificity.
 - Follow the existing kebab-case, component-scoped naming (`card-data-badge`,
   `jobs-stat-card`). Reuse shared classes (e.g. the `jobs-stat-*` set) rather
   than inventing page-specific variants.

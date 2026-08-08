@@ -2,7 +2,7 @@
 
 This guide walks through how to add a new tool to the EnzymeTK Tool Suite, from folder creation to results rendering. It covers the conventions you must follow, which shared components to reuse, and what custom code you write. The [Reaction Similarity](../enzyme_tk_app/app/tools/reaction_similarity/) tool is used as the running example throughout.
 
-> **Minimal skeleton:** For the simplest possible tool with no custom UI, see [`timer_tool_template/`](../enzyme_tk_app/app/tools/timer_tool_template/).
+> **Minimal skeleton:** [`timer_tool_template/`](../enzyme_tk_app/app/tools/timer_tool_template/) is the smallest tool that still follows the *whole* shared paradigm — Task Name, example picker, all four callbacks, an AG Grid results layout — over a `compute.py` that only sleeps. Mirror it; it is the canonical reference, not a reduced special case.
 
 
 ## How Do I Add a New Tool?
@@ -128,10 +128,11 @@ Skip this if your tool computes from user input alone. If it reads databases, mo
 | `FOLDSEEK_WEIGHTS_DIR` | `foldseek_models/weights/` | Sequence and Structure-Based Similarity |
 | `SEQUENCE_EMBEDDINGS_DIR` | `sequence_embeddings/` | Func-E |
 | `FUNCE_MODELS_DIR` | `funce_models/` | Func-E |
+| `UNIMOL_WEIGHTS_DIR` | `unimol_weights/` | Func-E (reaction encoding). `funce/compute.py` passes it to the UniMol step as `weights_dir` |
 
 **What belongs in `paths.py` and what does not.** A path goes here when it is large, versioned independently of any single tool, or plausibly reusable by a future one. A path used only inside one tool module stays in that module and derives from `DATA_DIR` itself.
 
-**A shared directory is named for its data, not for its reader.** `sequence_embeddings/` holds protein embedding tables — it is not `funce_db/` just because Func-E is today's only consumer, and its option builder is `get_sequence_embedding_database_options()`. A directory takes a tool's name only when the tool genuinely owns it: `foldseek_db/` and `foldseek_models/` (foldseek's own identifiers) and `funce_models/` (Func-E's EC checkpoints).
+**A shared directory is named for its data, not for its reader.** `sequence_embeddings/` holds protein embedding tables — it is not `funce_db/` just because Func-E is today's only consumer, and its option builder is `get_sequence_embedding_database_options()`. `unimol_weights/` is the same case for model weights: it holds the UniMol checkpoint that Func-E's reaction encoder loads, so it is named for the model rather than `funce_unimol/`. A directory takes a tool's name only when the tool genuinely owns it: `foldseek_db/` and `foldseek_models/` (foldseek's own identifiers) and `funce_models/` (Func-E's EC checkpoints).
 
 **The data is not in the repository.** The large sets are gitignored and `docker-compose.yml` bind-mounts the directory **read-only** at `/app-data`. Two consequences: your code may never write into `DATA_DIR`, and your tests must build their own fixture files rather than reading `data/` (see [Tests](#tests)). Adding a directory means adding a row to the Data Directories table in [README](../README.md#data-directories) — link to it, don't copy it here.
 
@@ -282,13 +283,13 @@ See [reaction_similarity/modal.py](../enzyme_tk_app/app/tools/reaction_similarit
 
 ## 3. Callbacks — `callbacks.py`
 
-Callbacks wire the modal to the backend. Most tools need four callbacks:
+Callbacks wire the modal to the backend. Every tool — the timer template included — has the same four:
 
 | Callback | Trigger | What it does |
 |----------|---------|-------------|
 | `toggle_<slug>_modal` | Launch button / Cancel button | Opens or closes the modal |
-| `validate_<slug>_form` | Any form field change | Enables/disables submit based on validation |
-| `populate_example_<type>` | Example dropdown selection | Fills the input field with demo data |
+| `validate_<slug>_form` | Any form field change (**no** `prevent_initial_call`) | Enables submit once every required field has a value — omitting `prevent_initial_call` is what makes the Run button start disabled on an empty form |
+| `populate_example_<type>` | Example dropdown selection | Fills the input field with demo data **and the Task Name** (the example's `task_name` verbatim, returned last) |
 | `submit_<slug>_job` | Submit button / Launch button | Submits job to scheduler; clears stale results on reopen |
 
 ### 3.1 What you reuse
@@ -300,9 +301,9 @@ Callbacks wire the modal to the backend. Most tools need four callbacks:
 
 ### 3.2 What you add
 
-- **Validation logic** specific to your form fields.
+- **Validation logic** specific to your form fields — check **presence, not validity**. A `dbc.Input(type="number", min=…, max=…)` hands the callback `None` when the browser rejects what was typed, so an out-of-range entry already disables the button; the range check in the submit callback is the server-side backstop for a request that bypasses the UI (see the **`write-callback`** agent §4).
 - **Job parameter assembly** — build the `params` dict from form `State` values.
-- **Example data population** — if your tool has demo examples.
+- **Example data population** — if your tool has demo examples. Each example dict carries a `task_name` alongside its `label`/`value`, and the callback prefills the Task Name field with it verbatim so an example run is submittable in one click. Don't prepend the tool slug — the My Tasks table already shows the tool in the neighbouring column.
 
 ### 3.3 Example — the submit callback
 
@@ -407,7 +408,7 @@ These are rendered automatically by `my_tasks_view_results.py` — you do NOT bu
 |-----------|--------|---------------|
 | **Job info header** | `_build_job_info_header()` | Tool name, status badge, submitted/completed timestamps, duration, expiry |
 | **Stat cards** | `_build_job_info_header()` | The framework always renders **Duration** and **Expires In** cards first, then appends any tool-defined `_stat_cards` items from your compute return dict. |
-| **Input parameters table** | `build_result_input_params()` | Auto-rendered from `job.params`, one row per key **in insertion order** — so the `params` dict in your submit callback must list keys in the same order the fields appear in your `modal.py`. SMILES values get inline structure previews; list values (`databases`, `algorithms`, the filters) keep their repr, e.g. `['protein.csv', 'Funce_pairs.pkl']`. Use `_params_exclude` to hide internal keys. |
+| **Input parameters table** | `build_result_input_params()` | Auto-rendered from `job.params`, one row per key **in insertion order** — so the `params` dict in your submit callback must list keys in the same order the fields appear in your `modal.py`. SMILES values get inline structure previews — and that preview image is also what the results grid's compare lightbox shows as the **query** panel (§4.2); list values (`databases`, `algorithms`, the filters) keep their repr, e.g. `['protein.csv', 'Funce_pairs.pkl']`. Use `_params_exclude` to hide internal keys. |
 | **Status-dependent rendering** | Framework | PENDING/STARTED: progress banner with auto-refresh. FAILURE/REVOKED/TIMEOUT: error details. SUCCESS: your `results_layout()` is called. |
 
 ### 4.2 What you add
@@ -434,12 +435,16 @@ Your `results_layout(job: JobInfo) -> html.Div` function receives the completed 
 | Column type | `autoHeight` | `filter` | `sortable` | Notes |
 |-------------|-------------|----------|------------|-------|
 | Short text / number | — | `True` or `agNumberColumnFilter` | `True` | Default — fastest rendering |
-| SVG / image | `True` | `False` | `False` | Row expands to fit image. Set `cellRenderer: "SvgRenderer"`; fill the column in `compute.py` with `generate_cached_svg_uris(df[smiles_col], reaction_to_svg_data_uri, height=200)` from `utils/smiles_rendering.py`, which renders each unique SMILES once |
+| SVG / image | `True` | `False` | `False` | Row expands to fit image. Set `cellRenderer: "SvgRenderer"` and `cellRendererParams: {"smilesField": <the row's SMILES column>}` (captions the image in the compare lightbox below); fill the column in `compute.py` with `generate_cached_svg_uris(df[smiles_col], reaction_to_svg_data_uri, height=200)` from `utils/smiles_rendering.py`, which renders each unique SMILES once. Keep the `height=200` — the lightbox's stacking threshold is calibrated to that canvas (below) |
 | Long text (wrap) | `True` | `True` | `True` | Add `cellClass: "cell-wrap-dash-ag-grid"` |
 
 **Performance note:** Only enable `autoHeight` on columns that truly need it. Fixed-height rows render significantly faster.
 
 **CSV export comes with the grid.** `build_ag_grid()` renders a "Download CSV" button and a Filtered/Unfiltered scope selector above the table, so **do not add a per-tool download button** — Filtered exports the rows left by the column filters in the current sort order, Unfiltered exports every row, and the file is named `enzymetk-<job_id[:6]>-<scope>.csv` (the same 6-char task prefix the My Tasks table shows). Two consequences for your column defs: any column with `cellRenderer: "SvgRenderer"` is left **out** of the CSV (each cell is a ~20 KB base64 data URI), so keep the source SMILES in a text column if the image must be reproducible from the download; and only one results grid may exist per page, because the grid and toolbar use static IDs (see the `create-ag-grid` agent for the two-grid upgrade path).
+
+**Clicking an image compares it against the query.** `SvgRenderer` opens a full-screen lightbox holding the job's query structure and the clicked row's, each labelled and captioned with its SMILES — side by side for a compact structure, stacked query-over-result for a wide one (see below) — the backdrop, the `×` and Escape close it, a click inside the panels does not (SMILES stay selectable). Only one thing is yours to wire: `cellRendererParams: {"smilesField": ...}` on the SVG column, naming the row column that holds *that* structure's SMILES; `props.data` is the whole row, so it need not be a visible column, and omitting it costs only the caption. The **query** panel needs no wiring at all — `_openSvgOverlay` reads it out of the page, looking up `img.jobs-params-preview` (the preview `build_result_input_params()` already renders for any `smiles` param, §4.1) and taking its SMILES from `data-smiles`. Those two anchors are `QUERY_PREVIEW_CLASS` / `QUERY_SMILES_ATTR` in `results_helpers.py`; rename either and `assets/dashAgGridComponentFunctions.js` must change in the same edit — `test_query_preview_anchors_match_the_compare_lightbox` pins both sides. Two caveats: draw your result images on the **same canvas as the query preview** (`_render_smiles_preview()` uses `width=500, height=300` for a molecule and `height=200` for a reaction, matching what the two tools pass to `generate_cached_svg_uris`) or the panels sit at different stroke weights — and, since orientation is measured off the images themselves, in a layout chosen by whichever of the two is wider; and a tool with no query image — no `smiles` param, or RDKit could not draw it — simply falls back to the single-image overlay.
+
+**Wide structures stack instead of sitting side by side.** Orientation is read off the image, not the viewport: `_stackWideImages()` adds `.svg-compare-stacked` to the wrapper as soon as one panel's `naturalWidth / naturalHeight` clears `_STACK_ASPECT_RATIO = 2.5`, putting QUERY above RESULT and widening each from ~46vw to ~88vw — at 1400x900 a reaction goes from 644 px wide to 1232 px, while `substrate_product_similarity`'s molecules stay side by side at 532 px. The two canvases the app draws fall either side of that number: a molecule is 500x300 (**1.67**), a reaction is `max(400, n_templates * 250)` x 200, so even the narrowest real one — one reactant, one product, 750x200 — is **3.75** (a 2x2 reaction, 1250x200, is 6.25). **The threshold therefore depends on the 200 px reaction height both call sites pass:** draw reactions taller and a 1→1 reaction drops below 2.5 and silently stops stacking. `test_stack_threshold_separates_reactions_from_molecules` in `test_smiles_rendering.py` re-renders both canvases and asserts `molecule < threshold < reaction` against the constant it reads out of the JS source, so if you change a canvas size, re-measure and move the constant in the same edit. Narrow viewports remain CSS's job — the `@media (max-width: 768px)` block in `09-ag-grid.css` stacks everything below tablet, because the JS never adds the class for a 1.67 molecule.
 
 **Write every column out in full:** `_get_column_defs()` is the one place a reader can see what the table contains, so every column gets its own visible line with its field name spelled out literally — never a loop, comprehension, or f-string that builds `field` from another list. `build_ag_grid()` renders only fields that have a def, so a generated name both hides the column at the call site and silently drops any column the generating list fails to name (no error, no log). Share *rules* freely — `numeric_col_def`, `sequence_col_def`, `shared_col_defs()`, and `col.COL_*` from `utils/columns.py` for anything cross-tool (`col.COL_ENTRY`, `col.COL_DATABASE`, `col.COL_SEQUENCE`) — but spell out *identity*. A bare literal is right only when the name is one library's output contract, as Func-E's `enzymetk`-named `Funce_*` columns are.
 
@@ -541,7 +546,7 @@ One file per tool, named for the tool: `enzyme_tk_app/app/tests/test_tools_<name
 | Compute — databases | One unreadable selection is skipped and named in the **Databases Skipped** card; *every* selection unreadable raises. Both halves matter (§3.4) |
 | Compute — stat cards | The labels and values in `_stat_cards`, since the results header renders them verbatim |
 | Compute — serialisability | That the returned dict survives `json.dumps` (§5.1). A tool that returns a numpy type passes every other test and then fails the job at persist time |
-| Callbacks | Each branch of the validation callback, that `toggle_` opens on launch and closes on cancel, that submit clears stale results on reopen, and that submit returns the validator's message rather than raising |
+| Callbacks | Each branch of the validation callback, that `toggle_` opens on launch and closes on cancel, that submit clears stale results on reopen, and that submit returns the validator's message rather than raising. For `populate_example_*`, unpack the tuple (Task Name last) and pin the `no_update` branch — a value that is not a shipped example fills the input but leaves the Task Name alone. That every example prefills a name is checked for all tools at once by `test_every_example_prefills_a_task_name` in `test_tools.py`, so don't repeat it per tool |
 | Modal | That `modal()` returns a `dbc.Modal` carrying the expected id |
 
 ### Shared helpers in `conftest.py`
@@ -574,7 +579,7 @@ Every existing compute test does this.
 
 1. **`tox run -e format`** — formats, sorts imports, and removes unused ones (F401). If an import exists for its side effect, mark it `# noqa: F401` with a reason. It also formats Python blocks inside `.md` files, so keep every snippet in `AGENTS.md` or `.claude/agents/` a valid statement — `docs/` is excluded from ruff, so snippets in *this* file are neither formatted nor linted.
 2. **`tox`** — the default envlist: `check-style`, `check-security`, `format`, `test`, `test-docker-dependent`, `build-docs`, `build-dist`. The Docker-dependent env fails harmlessly when no daemon is running. Both commands together are the **`verify`** agent, which every code-generating change ends with.
-3. **`verify-ui`** — if the change is visible in a browser (`pages/`, `components/`, `tools/*/modal.py`, `tools/*/results.py`, `assets/*.css`), also run this skill against the running app. `verify` proves the code is clean; only `verify-ui` proves the button works. Never hand the manual check back to the user.
+3. **`verify-ui`** — if the change is visible in a browser (`pages/`, `components/`, `tools/*/modal.py`, `tools/*/results.py`, `assets/*.css`, `assets/*.js`), also run this skill against the running app. `verify` proves the code is clean; only `verify-ui` proves the button works. Never hand the manual check back to the user.
 4. **`sync-docs`** — the last step. It audits `AGENTS.md`, `README.md`, and the agent sources against what you changed.
 
 The app runs in Docker — see [README → Quickstart](../README.md#quickstart).
@@ -583,7 +588,7 @@ The app runs in Docker — see [README → Quickstart](../README.md#quickstart).
 docker compose up --build
 ```
 
-**A new dependency is not just a badge.** The `libraries` field in `TOOL_DEF` renders monospace badges on the tool card and installs nothing. A new Python package goes in `requirements/prd.txt`; system packages and binaries go through the **`edit-dockerfile`** agent, which covers the `linux/amd64` + `linux/arm64` rules.
+**A new dependency is not just a badge.** The `libraries` field in `TOOL_DEF` renders monospace badges on the tool card and installs nothing; list what actually runs in the worker at query time, not what produced the bundled data offline (Func-E lists `torch`, `rxnfp`, `unimol` — its reaction encoder runs those three — but not the ESM3 that embedded the protein database). A new Python package goes in `requirements/prd.txt`; system packages and binaries go through the **`edit-dockerfile`** agent, which covers the `linux/amd64` + `linux/arm64` rules. The one exception is a package needing per-package pip flags, which a requirements file cannot express — `rxnfp` is installed in the `Dockerfile` with `--no-deps` because its metadata hard-pins 2020 releases. Pin it there just as tightly, and note it in the requirements file that would otherwise have held it.
 
 ## Request Flow
 

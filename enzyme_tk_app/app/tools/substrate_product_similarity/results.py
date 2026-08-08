@@ -28,6 +28,8 @@ def _get_column_defs() -> list[dict]:
             # The "molecule_svg" column displays an inline SVG image of the molecule.
             "field": COL_MOL_SVG,
             "cellRenderer": "SvgRenderer",
+            # Captions this molecule under its image in the compare lightbox.
+            "cellRendererParams": {"smilesField": COL_MOL_SMILES},
             "width": 200,
             # autoHeight tells AG Grid to automatically expand the row height
             # to fit the cell's content. Without it, content that doesn't fit in

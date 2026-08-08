@@ -51,19 +51,24 @@ from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 def _get_example_reactions():
     """Return a list of example reaction SMILES from the enzymemap database.
 
-    These are simplified, shorter examples suitable for demonstration.
+    These are simplified, shorter examples suitable for demonstration.  The
+    ``task_name`` is the name the example picker prefills into the Task Name
+    field (see ``callbacks.populate_example_reaction``).
     """
     return [
         {
             "label": "Hydrolysis: Lactone ring opening",
             "value": "CCCC(=O)N[C@H]1CCOC1=O.O>>CCCC(=O)N[C@@H](CCO)C(=O)O",
+            "task_name": "lactone-hydrolysis",
         },
         {
             "label": "Phosphate transfer",
             "value": "O=P(O)(O)OCC1OC(O)C(O)C(O)C1O.O>>O=P(O)(O)O.OCC1OC(O)C(O)C(O)C1O",
+            "task_name": "phosphate-transfer",
         },
         {
             "label": "Glutathione conjugation",
+            "task_name": "glutathione-conjugation",
             "value": (
                 "N[C@@H](CCC(=O)N[C@@H](CS)C(=O)NCC(=O)O)C(=O)O."
                 "O=[N+]([O-])c1ccc(Cl)c([N+](=O)[O-])c1>>"

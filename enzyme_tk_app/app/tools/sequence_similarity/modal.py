@@ -46,10 +46,13 @@ def _get_example_sequences():
     """Return a list of example protein sequences from the protein database.
 
     These are real entries from ``protein.csv`` covering diverse EC classes.
+    The ``task_name`` is the name the example picker prefills into the Task
+    Name field (see ``callbacks.populate_example_sequence``).
     """
     return [
         {
             "label": "A0A009IHW8 — DNA glycosylase (EC 3.2.2.-)",
+            "task_name": "A0A009IHW8",
             "value": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -59,6 +62,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A024SC78 — Esterase (EC 3.1.1.74)",
+            "task_name": "A0A024SC78",
             "value": (
                 "MRSLAILTTLLAGHAFAYPKPAPQSVNRRDWPSINEFLSELAKVMPIGDTITAACD"
                 "LISDGEDAAASLFGISETENDPCGDVTVLFARGTCDPGNVGVLVGPWFFDSLQTALGSRTLGVKGVPYPASVQ"
@@ -68,6 +72,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A059TC02 — Cinnamyl-alcohol dehydrogenase (EC 1.2.1.44)",
+            "task_name": "A0A059TC02",
             "value": (
                 "MRSVSGQVVCVTGAGGFIASWLVKILLEKGYTVRGTVRNPDDPKNGHLRELEGAKE"
                 "RLTLCKADLLDYQSLREAINGCDGVFHTASPVTDDPEQMVEPAVIGTKNVINAAAEANVRRVVFTSSIGAVYM"
@@ -78,6 +83,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A067CMC7 — Nuclease (EC 3.1.31.-)",
+            "task_name": "A0A067CMC7",
             "value": (
                 "MLEVPVWIPILAFAVGLGLGLLIPHLQKPFQRFSTVNDIPKEFFEHERTLRGKVVS"
                 "VTDGDTIRVRHVPWLANGDGDFKGKLTETTLQLRVAGVDCPETAKFGRTGQPFGEEAKAWLKGELQDQVVSF"
@@ -87,6 +93,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A075D5I4 — Methyltransferase (EC 2.1.1.-)",
+            "task_name": "A0A075D5I4",
             "value": (
                 "MAEKQQAVAEFYDNSTGAWEVFFGDHLHDGFYDPGTTATIAGSRAAVVRMIDEALRF"
                 "ANISDDPAKKPKTMLDVGCGIGGTCLHVAKKYGIQCKGITISSEQVKCAQGFAEEQGLEKKVSFDVGDALDMP"

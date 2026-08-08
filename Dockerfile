@@ -11,10 +11,16 @@ FROM python:3.12-slim
 # These small runtime deps are needed on slim but absent from the full image.
 # ------------------------------
 # -y assumes yes to all prompts
+# libsm6 / libglib2.0-0 are for unimol_tools (Func-E reaction encoding): it imports
+# rdkit.Chem.PandasTools at module load, which pulls in rdkit.Chem.Draw and links
+# against glib and X11.  Without them the import dies on
+# "libSM.so.6: cannot open shared object file" before any code runs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libxrender1 \
     libxext6 \
     libexpat1 \
+    libsm6 \
+    libglib2.0-0 \
     wget \
     git \
     && rm -rf /var/lib/apt/lists/*
@@ -77,9 +83,46 @@ RUN ARCH=$(uname -m) && \
 
 WORKDIR /app
 
+# ── PyTorch (CPU by default) ──────────────────────────────────────
+# MUST come before the requirements install.  enzymetk depends on unpinned `torch`,
+# so if requirements go first pip resolves the CUDA build from PyPI (~2.9 GB of
+# nvidia-cu* wheels on amd64) and this line degrades to "Requirement already
+# satisfied".  In this order the CPU wheel is already present and *satisfies* that
+# unpinned dependency, so pip leaves it alone — measured 6.41 GB -> 2.2 GB.
+#
+# --extra-index-url is not optional: --index-url alone *replaces* PyPI, and pip then
+# silently backtracks to torch 2.5.1 — below the >=2.6 floor transformers enforces
+# before it will torch.load a .bin checkpoint (CVE-2025-32434).  rxnfp's BERT weights
+# are .bin, so that failure would surface at runtime inside the rxnfp subprocess
+# rather than here at build time.
+#
+# GPU: rebuild with --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+# (PyPI ships no CUDA torch for arm64, so on Apple Silicon this is already CPU-only.)
+ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
+RUN pip3 install --no-cache-dir "torch>=2.6" \
+    --index-url "$TORCH_INDEX_URL" \
+    --extra-index-url https://pypi.org/simple
+
 COPY requirements/prd.txt requirements.txt
 
 RUN pip3 install --no-cache-dir -r requirements.txt
+
+# ── rxnfp (Func-E reaction fingerprints) ──────────────────────────
+# --no-deps is deliberate.  rxnfp's metadata hard-pins scipy==1.4.1,
+# scikit-learn==0.23.1 and matplotlib==3.2.2 — 2020 releases with no wheels for this
+# Python, so a plain install fails building them from source.  0.23.1 would also
+# clobber the scikit-learn that unpickles the Func-E MinMaxScalers.  Nothing is lost:
+# its BERT weights ship inside the wheel, and its only conda-only import (tmap) lives
+# in the minhash generator we never construct.
+#
+# setuptools is installed alongside it for `pkg_resources`, which rxnfp imports at
+# module load to locate its bundled bert_ft weights.  Python 3.12 dropped the
+# implicit setuptools that used to make that work, so without this the import fails
+# with ModuleNotFoundError.  Capped below 81 because pkg_resources is being removed
+# from setuptools — the deprecation warning rxnfp triggers says to pin exactly this.
+# It still warns at 80.x; the cap buys working code, not a quiet log.
+RUN pip3 install --no-cache-dir "setuptools<81" && \
+    pip3 install --no-cache-dir --no-deps rxnfp==0.1.0
 
 COPY . .
 

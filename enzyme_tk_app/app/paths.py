@@ -46,3 +46,9 @@ SEQUENCE_EMBEDDINGS_DIR: Path = DATA_DIR / "sequence_embeddings"
 
 # Func-E ensemble checkpoints — one model per EC level (~1.5 GB total).
 FUNCE_MODELS_DIR: Path = DATA_DIR / "funce_models"
+
+# UniMol molecule-embedding checkpoint (~660 MB).  Named for the model, like
+# foldseek_models/ above.  Passed to enzymetk's UniMol step as ``weights_dir``, the
+# same way FoldSeek takes ``prostt5_weights_path``; the step resolves the checkpoint
+# under it and fails if it is absent, rather than downloading a replacement.
+UNIMOL_WEIGHTS_DIR: Path = DATA_DIR / "unimol_weights"
