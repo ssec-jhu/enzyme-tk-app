@@ -207,6 +207,39 @@ def test_build_ag_grid_wraps_grid_with_export_toolbar():
 
 
 # ---------------------------------------------------------------------------
+# build_ag_grid — columns share out any leftover width
+# ---------------------------------------------------------------------------
+
+
+def test_build_ag_grid_floors_every_column_at_its_declared_width():
+    """responsiveSizeToFit may only grow columns — so each one's width becomes its minWidth."""
+    source_defs = [
+        {"field": "a", "width": 100},
+        # Dropped — not in the payload — so it must never reach the grid.
+        {"field": "gone", "width": 999},
+        # No width: AG Grid renders it at 200, so that is the floor it must not go below.
+        {"field": "b"},
+    ]
+    payload = {"columns": ["a", "b"], "data": [{"a": 1, "b": 2}]}
+
+    grid = find_components(build_ag_grid(source_defs, payload), dag.AgGrid)[0]
+
+    assert grid.columnSize == "responsiveSizeToFit", "Without this the floors do nothing"
+    assert [cd["field"] for cd in grid.columnDefs] == ["a", "b"]
+    assert grid.columnDefs[0] == {"field": "a", "width": 100, "minWidth": 100, "tooltipField": "a"}
+    assert grid.columnDefs[1]["minWidth"] == 200
+    # build_ag_grid copies defs; a tool's module-level list must survive being rendered.
+    assert source_defs[0] == {"field": "a", "width": 100}
+
+
+def test_build_ag_grid_keeps_an_explicit_min_width():
+    """A def that sets its own minWidth is left alone — the floor is a default, not an override."""
+    grid = find_components(build_ag_grid([{"field": "a", "width": 300, "minWidth": 80}], _PAYLOAD), dag.AgGrid)[0]
+
+    assert grid.columnDefs[0]["minWidth"] == 80
+
+
+# ---------------------------------------------------------------------------
 # _csv_export_params
 # ---------------------------------------------------------------------------
 

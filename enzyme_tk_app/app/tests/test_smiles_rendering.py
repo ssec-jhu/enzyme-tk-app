@@ -5,10 +5,16 @@ Covers ``_svg_to_data_uri``, ``smiles_to_svg_data_uri``, and
 plus ``_render_smiles_preview`` from ``enzyme_tk_app.app.components.results_helpers``.
 """
 
+import base64
+import re
+from pathlib import Path
+
 import pytest
 from dash import html
 
 from enzyme_tk_app.app.components.results_helpers import (
+    QUERY_PREVIEW_CLASS,
+    QUERY_SMILES_ATTR,
     _render_smiles_preview,
     build_ag_grid,
     build_result_input_params,
@@ -129,6 +135,62 @@ def test_render_smiles_preview_returns_none_for_invalid_smiles():
     """_render_smiles_preview must return None when RDKit cannot parse the input."""
     # Completely unparseable string — the except branch catches the failure
     assert _render_smiles_preview("NOT_A_VALID_SMILES!!!@#$%") is None
+
+
+def test_query_preview_anchors_match_the_compare_lightbox():
+    """Pin both ends of the JS↔Python contract the compare lightbox rides on.
+
+    ``_openSvgOverlay`` in ``assets/dashAgGridComponentFunctions.js`` finds the
+    query-structure image by class and reads its SMILES off the data attribute
+    so it can show the query beside the clicked result.  Renaming either on the
+    Python side alone fails silently — the lightbox still opens, just with one
+    image and no comparison.
+    """
+    preview = _render_smiles_preview("  CCO  ")
+
+    assert preview.className == QUERY_PREVIEW_CLASS
+    # Dash stores a data-* wildcard prop under its literal hyphenated name.
+    assert getattr(preview, QUERY_SMILES_ATTR) == "CCO"
+
+    js_path = Path(__file__).resolve().parents[1] / "assets" / "dashAgGridComponentFunctions.js"
+    js_source = js_path.read_text(encoding="utf-8")
+
+    assert f'_QUERY_PREVIEW_CLASS = "{QUERY_PREVIEW_CLASS}"' in js_source
+    assert f'_QUERY_SMILES_ATTR = "{QUERY_SMILES_ATTR}"' in js_source
+
+
+def _svg_aspect(data_uri: str) -> float:
+    """Width / height of the canvas behind a base64 SVG data URI."""
+    svg = base64.b64decode(data_uri.split(",", 1)[1]).decode("utf-8")
+    width, height = re.search(r"width='([0-9.]+)px' height='([0-9.]+)px'", svg).groups()
+    return float(width) / float(height)
+
+
+def test_stack_threshold_separates_reactions_from_molecules():
+    """The compare lightbox stacks on shape, so the threshold must sit inside the real gap.
+
+    ``_stackWideImages`` flips the panels to a column when an image is wider than
+    ``_STACK_ASPECT_RATIO``.  It measures canvases drawn here, so widening the reaction
+    canvas or reshaping the molecule one moves a tool to the wrong side of the threshold
+    with no visible failure — the lightbox just lays out badly.
+    """
+    js_path = Path(__file__).resolve().parents[1] / "assets" / "dashAgGridComponentFunctions.js"
+    js_source = js_path.read_text(encoding="utf-8")
+
+    match = re.search(r"_STACK_ASPECT_RATIO = ([0-9.]+);", js_source)
+    assert match, "_STACK_ASPECT_RATIO must stay a literal this test can read"
+    threshold = float(match.group(1))
+
+    # Narrowest real reaction (one reactant, one product) against the molecule canvas
+    # both compute.py and _render_smiles_preview draw on.
+    molecule = _svg_aspect(smiles_to_svg_data_uri("CCO", width=500, height=300))
+    reaction = _svg_aspect(reaction_to_svg_data_uri("CCO>>CC=O"))
+    assert molecule < threshold < reaction, f"{molecule:.2f} / {threshold} / {reaction:.2f}"
+
+    # The class the JS adds must exist in the stylesheet that acts on it.
+    css_path = Path(__file__).resolve().parents[1] / "assets" / "09-ag-grid.css"
+    assert "svg-compare-stacked" in js_source
+    assert ".svg-compare-stacked {" in css_path.read_text(encoding="utf-8")
 
 
 # ── build_ag_grid — validation ──────────────────────────────────────────────

@@ -10,7 +10,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from dash import html
+from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server  # noqa: F401 — register pages
@@ -22,6 +22,7 @@ from enzyme_tk_app.app.tools.reaction_similarity.callbacks import (
     toggle_reaction_similarity_modal,
     validate_reaction_form,
 )
+from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_reactions
 from enzyme_tk_app.app.tools.reaction_similarity.results import _get_column_defs, results_layout
 from enzyme_tk_app.app.utils.columns import COL_RXN_SVG, COL_UNMAPPED_SMILES
 
@@ -435,9 +436,21 @@ def test_toggle_reaction_similarity_modal(triggered_id, expected):
 
 
 def test_populate_example_reaction_returns_value():
-    """Selecting an example populates the SMILES textarea."""
-    smiles = "A.B>>C.D"
-    assert populate_example_reaction(smiles) == smiles
+    """Selecting a shipped example populates the SMILES textarea and the Task Name."""
+    example = _get_example_reactions()[0]
+
+    smiles, task_name = populate_example_reaction(example["value"])
+
+    assert smiles == example["value"]
+    assert task_name == "lactone-hydrolysis"
+
+
+def test_populate_example_reaction_leaves_task_name_for_unknown_smiles():
+    """A SMILES that is not a shipped example fills the textarea but not the Task Name."""
+    smiles, task_name = populate_example_reaction("A.B>>C.D")
+
+    assert smiles == "A.B>>C.D"
+    assert task_name is no_update
 
 
 @pytest.mark.parametrize("empty_value", [None, "", 0], ids=["none", "empty-string", "zero"])

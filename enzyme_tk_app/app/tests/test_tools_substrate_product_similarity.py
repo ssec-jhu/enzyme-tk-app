@@ -531,24 +531,39 @@ def test_subprod_toggle_modal_closes_on_cancel_click():
 
 
 def test_subprod_populate_example_sets_smiles_and_role():
-    """Selecting an example must populate both the SMILES field and the role selector."""
+    """Selecting an example must populate the SMILES field, the role selector and the Task Name."""
     from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
 
     # Encoded as "role||smiles"
-    smiles, role = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
+    smiles, role, task_name = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
 
     assert smiles == "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
     assert role == "substrate"
+    assert task_name == "glucose"
 
 
 def test_subprod_populate_example_sets_product_role():
     """A product example must set the role to 'product'."""
     from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
 
-    smiles, role = populate_example_smiles("product||CCO")
+    smiles, role, task_name = populate_example_smiles("product||CCO")
 
     assert smiles == "CCO"
     assert role == "product"
+    assert task_name == "ethanol"
+
+
+def test_subprod_populate_example_leaves_task_name_for_unknown_smiles():
+    """A SMILES that is not a shipped example fills the form but not the Task Name."""
+    from dash import no_update
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role, task_name = populate_example_smiles("substrate||C1=CC=CC=C1")
+
+    assert smiles == "C1=CC=CC=C1"
+    assert role == "substrate"
+    assert task_name is no_update
 
 
 def test_subprod_populate_example_returns_defaults_for_none():
@@ -689,7 +704,13 @@ def test_subprod_results_layout_shows_fallback_for_missing_or_empty_data(result_
 
 
 def test_subprod_get_example_smiles_returns_non_empty_list():
-    """_get_example_smiles must return a non-empty list of label/value/role dicts."""
+    """_get_example_smiles must return a non-empty list of label/value/role dicts.
+
+    Every example SMILES must also parse — a typo, or a mangled backslash escape in a
+    stereo bond marker, would otherwise ship a picker entry that crashes the search.
+    """
+    from rdkit import Chem
+
     from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
 
     examples = _get_example_smiles()
@@ -698,6 +719,7 @@ def test_subprod_get_example_smiles_returns_non_empty_list():
     for ex in examples:
         assert "label" in ex and "value" in ex and "role" in ex
         assert len(ex["value"]) > 0, "Example SMILES must not be empty"
+        assert Chem.MolFromSmiles(ex["value"]) is not None, f"Example {ex['label']!r} has invalid SMILES"
 
 
 def test_subprod_modal_returns_dbc_modal():

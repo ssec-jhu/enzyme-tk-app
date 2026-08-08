@@ -283,6 +283,34 @@ def test_callbacks_importable():
             pass  # No callbacks.py — that's fine
 
 
+def test_every_example_prefills_a_task_name():
+    """Selecting any example must prefill a non-blank Task Name.
+
+    Task Name is the one field that blocks submit, so an example that leaves it
+    blank is not runnable in one click — the whole point of the example picker.
+    Walking the live dropdowns rather than listing the example dicts here means
+    a newly added example, or a whole new tool, is checked the moment it shows
+    up.  Every ``populate_example_*`` callback returns the Task Name last.
+
+    The name carries no tool prefix — the My Tasks table already has a Tool
+    column beside Task Name — so there is no shape to assert beyond non-blank.
+    """
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        dropdowns = [d for d in find_components(modal, dcc.Dropdown) if str(getattr(d, "id", "")).endswith("-example")]
+        if not dropdowns:
+            continue  # Tool ships no examples.
+
+        module = importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+        populate = next(fn for name, fn in vars(module).items() if name.startswith("populate_example"))
+
+        for option in dropdowns[0].options:
+            task_name = populate(option["value"])[-1]
+            label = option["label"]
+            assert isinstance(task_name, str), f"{slug}: example '{label}' prefilled no Task Name"
+            assert task_name.strip(), f"{slug}: example '{label}' prefilled a blank Task Name"
+
+
 # ---------------------------------------------------------------------------
 # Regression guards — protect against common mistakes
 # ---------------------------------------------------------------------------

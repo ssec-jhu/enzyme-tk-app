@@ -10,7 +10,7 @@ import pytest
 
 from enzyme_tk_app.app.tools import CHECK_DATA
 from enzyme_tk_app.app.tools.funce import check_data as funce_check
-from enzyme_tk_app.app.tools.funce.check_data import _CHECKPOINT_STEM
+from enzyme_tk_app.app.tools.funce.check_data import _CHECKPOINT_STEM, _UNIMOL_CHECKPOINT
 from enzyme_tk_app.app.tools.reaction_similarity import check_data as reaction_check
 from enzyme_tk_app.app.tools.sequence_similarity import check_data as sequence_check
 from enzyme_tk_app.app.tools.sequence_structure_similarity import check_data as struct_check
@@ -204,7 +204,11 @@ def test_struct_check_ignores_hidden_entries(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Func-E: two independent items — one database pickle + the four-model ensemble.
+# Func-E: three independent items — one database pickle, the four-model
+# ensemble, and the UniMol checkpoint that embeds the query reaction.
+# Every test patches all three constants, even the ones it is not varying: the
+# real data/ directory is git-ignored, so an unpatched check would answer from
+# whatever the developer happens to have downloaded.
 # ---------------------------------------------------------------------------
 
 
@@ -223,13 +227,42 @@ def _write_funce_ensemble(models_dir, ec_levels, without_checkpoint=()):
             (models_dir / f"{stem}_checkpoint.pth").write_bytes(b"x")
 
 
-def test_funce_check_reports_both_missing(monkeypatch, tmp_path):
-    monkeypatch.setattr(funce_check, "SEQUENCE_EMBEDDINGS_DIR", tmp_path / "missing-db")
-    monkeypatch.setattr(funce_check, "FUNCE_MODELS_DIR", tmp_path / "missing-models")
+def _write_database_pickle(db_dir):
+    """Create the one ``.pkl`` the database check looks for; only its name matters."""
+    db_dir.mkdir(exist_ok=True)
+    (db_dir / "pairs.pkl").write_bytes(b"x")
+
+
+def _write_unimol_checkpoint(unimol_dir):
+    """Put the checkpoint where unimol_tools looks for it.
+
+    The sub-path comes from the source constant, so a move inside
+    ``unimol_weights/`` shows up as a failure in the check rather than as a
+    fixture that quietly stopped matching.
+    """
+    checkpoint = unimol_dir.joinpath(*_UNIMOL_CHECKPOINT)
+    checkpoint.parent.mkdir(parents=True)
+    checkpoint.write_bytes(b"x")
+
+
+def _patch_funce_dirs(monkeypatch, *, databases, models, unimol):
+    """Point Func-E's three data-directory constants at the given test paths."""
+    monkeypatch.setattr(funce_check, "SEQUENCE_EMBEDDINGS_DIR", databases)
+    monkeypatch.setattr(funce_check, "FUNCE_MODELS_DIR", models)
+    monkeypatch.setattr(funce_check, "UNIMOL_WEIGHTS_DIR", unimol)
+
+
+def test_funce_check_reports_every_missing_item(monkeypatch, tmp_path):
+    _patch_funce_dirs(
+        monkeypatch,
+        databases=tmp_path / "missing-db",
+        models=tmp_path / "missing-models",
+        unimol=tmp_path / "missing-unimol",
+    )
     missing = funce_check.check_data()
-    assert len(missing) == 2
-    # Two different items, not one of them reported twice.
-    assert len(set(missing)) == 2
+    assert len(missing) == 3
+    # Three different items, not one of them reported three times.
+    assert len(set(missing)) == 3
 
 
 @pytest.mark.parametrize(
@@ -251,8 +284,9 @@ def test_funce_check_reports_only_db_missing(monkeypatch, tmp_path, db_dir_state
 
     models_dir = tmp_path / "funce_models"
     _write_funce_ensemble(models_dir, funce_check.EC_LEVELS)
-    monkeypatch.setattr(funce_check, "SEQUENCE_EMBEDDINGS_DIR", db_dir)
-    monkeypatch.setattr(funce_check, "FUNCE_MODELS_DIR", models_dir)
+    unimol_dir = tmp_path / "unimol_weights"
+    _write_unimol_checkpoint(unimol_dir)
+    _patch_funce_dirs(monkeypatch, databases=db_dir, models=models_dir, unimol=unimol_dir)
 
     missing = funce_check.check_data()
     assert len(missing) == 1
@@ -279,26 +313,54 @@ def test_funce_check_reports_a_partial_ensemble_as_missing(
     absent level.
     """
     db_dir = tmp_path / "sequence_embeddings"
-    db_dir.mkdir()
-    (db_dir / "pairs.pkl").write_bytes(b"x")  # only its name matters here
+    _write_database_pickle(db_dir)
 
     models_dir = tmp_path / "funce_models"
     _write_funce_ensemble(models_dir, ec_levels_present, without_checkpoint)
-    monkeypatch.setattr(funce_check, "SEQUENCE_EMBEDDINGS_DIR", db_dir)
-    monkeypatch.setattr(funce_check, "FUNCE_MODELS_DIR", models_dir)
+    unimol_dir = tmp_path / "unimol_weights"
+    _write_unimol_checkpoint(unimol_dir)
+    _patch_funce_dirs(monkeypatch, databases=db_dir, models=models_dir, unimol=unimol_dir)
 
     missing = funce_check.check_data()
     assert len(missing) == 1
     assert "funce_models" in missing[0]
 
 
-def test_funce_check_passes_when_all_present(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    "unimol_layout",
+    ["absent", "checkpoint-at-the-root"],
+    ids=["weights-dir-absent", "checkpoint-in-the-wrong-place"],
+)
+def test_funce_check_reports_only_unimol_missing(monkeypatch, tmp_path, unimol_layout):
+    """The exact checkpoint is what counts, not a directory with something in it.
+
+    The data mount is read-only, so unimol_tools cannot download a replacement.
+    A wrongly laid-out ``unimol_weights/`` that passed here would look fine on
+    the home page and then fail once the job is already running.
+    """
     db_dir = tmp_path / "sequence_embeddings"
-    db_dir.mkdir()
-    (db_dir / "pairs.pkl").write_bytes(b"x")
+    _write_database_pickle(db_dir)
     models_dir = tmp_path / "funce_models"
     _write_funce_ensemble(models_dir, funce_check.EC_LEVELS)
-    monkeypatch.setattr(funce_check, "SEQUENCE_EMBEDDINGS_DIR", db_dir)
-    monkeypatch.setattr(funce_check, "FUNCE_MODELS_DIR", models_dir)
+
+    unimol_dir = tmp_path / "unimol_weights"
+    if unimol_layout == "checkpoint-at-the-root":
+        unimol_dir.mkdir()
+        (unimol_dir / _UNIMOL_CHECKPOINT[-1]).write_bytes(b"x")
+    _patch_funce_dirs(monkeypatch, databases=db_dir, models=models_dir, unimol=unimol_dir)
+
+    missing = funce_check.check_data()
+    assert len(missing) == 1
+    assert "unimol_weights" in missing[0]
+
+
+def test_funce_check_passes_when_all_present(monkeypatch, tmp_path):
+    db_dir = tmp_path / "sequence_embeddings"
+    _write_database_pickle(db_dir)
+    models_dir = tmp_path / "funce_models"
+    _write_funce_ensemble(models_dir, funce_check.EC_LEVELS)
+    unimol_dir = tmp_path / "unimol_weights"
+    _write_unimol_checkpoint(unimol_dir)
+    _patch_funce_dirs(monkeypatch, databases=db_dir, models=models_dir, unimol=unimol_dir)
 
     assert funce_check.check_data() == []

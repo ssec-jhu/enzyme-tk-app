@@ -6,7 +6,8 @@ from unittest.mock import MagicMock, patch
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pytest
-from dash import html
+from dash import dcc, html, no_update
+from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
@@ -32,14 +33,23 @@ def test_modal_contains_duration_input():
     assert duration_inputs[0].type == "number"
 
 
-def test_modal_contains_radio_items():
-    """The modal must contain RadioItems for quick-select."""
+def test_modal_contains_task_name_input():
+    """The modal must contain a Task Name text input — it gates submission."""
     m = _build_modal()
-    radios = find_components(m, dbc.RadioItems)
-    quick_radios = [r for r in radios if r.id == f"id-radio-{TOOL_DEF['slug']}-quick"]
-    assert len(quick_radios) == 1
-    # Must have at least 2 quick-select options
-    assert len(quick_radios[0].options) >= 2
+    inputs = find_components(m, dbc.Input)
+    name_inputs = [inp for inp in inputs if inp.id == f"id-input-{TOOL_DEF['slug']}-task-name"]
+    assert len(name_inputs) == 1
+    assert name_inputs[0].type == "text"
+
+
+def test_modal_contains_example_dropdown():
+    """The modal must offer its examples through the shared -example dropdown."""
+    m = _build_modal()
+    dropdowns = find_components(m, dcc.Dropdown)
+    example_dropdowns = [d for d in dropdowns if d.id == f"id-dropdown-{TOOL_DEF['slug']}-example"]
+    assert len(example_dropdowns) == 1
+    # Must have at least 2 examples to be worth a picker.
+    assert len(example_dropdowns[0].options) >= 2
 
 
 def test_modal_contains_checkbox():
@@ -73,12 +83,67 @@ def test_toggle_modal(trigger_id, expected):
         assert toggle_timer_modal(1, 0) is expected
 
 
-@pytest.mark.parametrize("quick_value", [5, 15, 30, 60])
-def test_sync_quick_select_to_input(quick_value):
-    """Selecting a quick duration must set the duration input to the same value."""
-    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import sync_quick_select_to_input  # noqa: PLC0415
+def test_populate_example_duration():
+    """Selecting an example must set the duration and prefill the Task Name."""
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import populate_example_duration  # noqa: PLC0415
 
-    assert sync_quick_select_to_input(quick_value) == quick_value
+    duration, task_name = populate_example_duration(30)
+
+    assert duration == 30
+    assert task_name == "30-seconds"
+
+
+def test_populate_example_leaves_task_name_for_unknown_duration():
+    """A duration that is not a shipped example fills the input but not the Task Name."""
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import populate_example_duration  # noqa: PLC0415
+
+    duration, task_name = populate_example_duration(42)
+
+    assert duration == 42
+    assert task_name is no_update
+
+
+@pytest.mark.parametrize("empty_value", [None, "", 0], ids=["none", "empty-string", "zero"])
+def test_populate_example_raises_prevent_update(empty_value):
+    """Clearing the example dropdown must leave every field alone."""
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import populate_example_duration  # noqa: PLC0415
+
+    with pytest.raises(PreventUpdate):
+        populate_example_duration(empty_value)
+
+
+@pytest.mark.parametrize(
+    "task_name, duration, expected_disabled",
+    [
+        ("smoke test", 5, False),
+        (None, 5, True),
+        ("", 5, True),
+        ("   ", 5, True),
+        # The browser rejects an out-of-range number, so Dash sends None —
+        # this is what typing 0 or 500 actually looks like to the callback.
+        ("smoke test", None, True),
+        # A bare 0 is *present*, just out of range. Unreachable through the
+        # UI, but it pins presence-not-truthiness so nobody "simplifies"
+        # has_duration to bool(duration).
+        ("smoke test", 0, False),
+    ],
+    ids=["all-valid", "no-name", "blank-name", "whitespace-name", "out-of-range-or-empty", "zero-is-present"],
+)
+def test_validate_timer_form(task_name, duration, expected_disabled):
+    """The Run button must be disabled until every required field has a value."""
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import validate_timer_form  # noqa: PLC0415
+
+    assert validate_timer_form(task_name, duration) is expected_disabled
+
+
+def test_submit_requires_a_task_name():
+    """A submission with no task name must be refused server-side."""
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        with pytest.raises(PreventUpdate):
+            submit_timer_job(1, 0, "   ", 5, False)
 
 
 def test_submit_clears_results_on_launch():
@@ -92,7 +157,7 @@ def test_submit_clears_results_on_launch():
         ) as mock_get_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_timer_job(0, 1, 5, False)
+        result = submit_timer_job(0, 1, "smoke test", 5, False)
     assert result == ""
     mock_get_sched.assert_not_called()
 
@@ -111,12 +176,16 @@ def test_submit_clears_results_on_launch():
     ids=["non-numeric", "empty-string", "none", "zero", "negative", "over-max", "way-over-max"],
 )
 def test_submit_rejects_bad_duration(duration, expected_fragment):
-    """Invalid or out-of-range durations must produce a validation error."""
+    """Invalid or out-of-range durations must produce a validation error.
+
+    The task name is valid throughout — these cases must reach the duration
+    validator's message, not the task-name ``PreventUpdate`` guard above it.
+    """
     from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_timer_job(1, 0, duration, False)
+        result = submit_timer_job(1, 0, "smoke test", duration, False)
     assert expected_fragment in result
 
 
@@ -141,12 +210,13 @@ def test_submit_calls_scheduler():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, 10, False)
+            result = submit_timer_job(1, 0, "  smoke test  ", 10, False)
 
-    # Verify the scheduler was called with the right arguments
+    # Verify the scheduler was called with the right arguments — task_name is
+    # stripped, and comes first so it heads the Input Parameters table.
     mock_scheduler.submit_job.assert_called_once_with(
         tool_slug=TOOL_DEF["slug"],
-        params={"seconds": 10, "simulate_failure": False},
+        params={"task_name": "smoke test", "seconds": 10, "simulate_failure": False},
         session_id="sess-test",
     )
     assert "job-123" in result
@@ -173,7 +243,7 @@ def test_submit_with_simulate_failure_flag():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, 5, True)
+            result = submit_timer_job(1, 0, "smoke test", 5, True)
 
     assert "simulate failure" in result
     # Verify simulate_failure=True was passed through to the scheduler.
@@ -422,7 +492,7 @@ def test_submit_accepts_boundary_duration(duration, job_id):
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, duration, False)
+            result = submit_timer_job(1, 0, "smoke test", duration, False)
 
     assert job_id in result
     mock_scheduler.submit_job.assert_called_once()

@@ -21,7 +21,7 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pandas as pd
 import pytest
-from dash import dcc, html
+from dash import dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
@@ -35,6 +35,7 @@ from enzyme_tk_app.app.tools.sequence_similarity.callbacks import (
     toggle_sequence_similarity_modal,
     validate_sequence_form,
 )
+from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
 from enzyme_tk_app.app.utils.columns import (
     COL_BITSCORE,
     COL_EC_NUMBER,
@@ -1159,8 +1160,21 @@ def test_toggle_modal_closes_for_unknown_trigger():
 
 
 def test_populate_example_sequence_returns_value():
-    """Selecting an example must populate the sequence textarea."""
-    assert populate_example_sequence("MKTAYIAKQR") == "MKTAYIAKQR"
+    """Selecting a shipped example populates the sequence textarea and the Task Name."""
+    example = _get_example_sequences()[0]
+
+    sequence, task_name = populate_example_sequence(example["value"])
+
+    assert sequence == example["value"]
+    assert task_name == "A0A009IHW8"
+
+
+def test_populate_example_sequence_leaves_task_name_for_unknown_sequence():
+    """A sequence that is not a shipped example fills the textarea but not the Task Name."""
+    sequence, task_name = populate_example_sequence("MKTAYIAKQR")
+
+    assert sequence == "MKTAYIAKQR"
+    assert task_name is no_update
 
 
 def test_populate_example_sequence_raises_for_none():

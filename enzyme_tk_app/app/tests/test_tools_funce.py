@@ -1,6 +1,6 @@
 """Tests for the Func-E Activity Prediction tool.
 
-Three things are pinned here:
+Four things are pinned here:
 
 * **The results grid** — every column header must be the raw enzymetk
   dataframe column name, never a friendlier display label.  A relabelled
@@ -10,8 +10,11 @@ Three things are pinned here:
 * **The dropped columns** — ``compute.DROPPED_COLS`` names what is stripped
   from the Funce output before it is JSON-encoded.  Dropping too much silently
   loses results; dropping an embedding short breaks the payload.
-* **Compute** — which databases are loaded, which are skipped, which reactions
-  are refused, and what the stat cards say about all of it.
+* **Compute** — which reactions are refused, how the accepted ones are encoded,
+  which databases are loaded, which are skipped, and what the stat cards say
+  about all of it.
+* **The example picker** — selecting an example fills the Task Name as well as
+  the SMILES, since the Task Name is the one field that otherwise blocks submit.
 
 Nothing here touches ``data/sequence_embeddings/``.  That directory is git-ignored (the
 shipped pickle and the ~3 GB checkpoint ensemble are not in the repository), so
@@ -19,34 +22,46 @@ every compute test writes the database pickles it needs into ``tmp_path`` and
 repoints ``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
 machine that happens to have the real data.
 
-``compute.py`` imports ``torch``/``enzymetk`` inside ``run()`` rather than at
-module scope, so importing it here is cheap: only the ``run()`` tests need the
-stand-in modules, and they install them in ``sys.modules`` for one test at a
-time.
+``compute.py`` imports ``torch``/``enzymetk`` inside the functions that use them
+rather than at module scope, so importing it here is cheap: only the tests that
+run the pipeline need the stand-in modules, and they install them in
+``sys.modules`` for one test at a time.  RDKit is the exception — it is a real
+dependency, small, and the whole point of the validation tests, so those run
+against it unstubbed.
 """
 
 import json
+import multiprocessing
+import os
 import pickle
 import re
 import sys
 import types
+from pathlib import Path
 
 import dash_ag_grid as dag
 import numpy as np
 import pandas as pd
 import pytest
-from dash import html
+from dash import html, no_update
+from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.tests.conftest import find_components, make_job
-from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES
+from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, EXAMPLE_REACTIONS
+from enzyme_tk_app.app.tools.funce.callbacks import populate_example_reaction
 from enzyme_tk_app.app.tools.funce.compute import (
     DROPPED_COLS,
     PRED_COL,
     RXN_COLS,
+    UNIMOL_WEIGHTS_DIR,
+    _allow_forking,
     _encode_reaction,
+    _ensure_python_on_path,
     _load_databases,
     _resolve_database,
+    _split_reaction,
     run,
+    validate_reaction_smiles,
 )
 from enzyme_tk_app.app.tools.funce.results import _get_column_defs, results_layout
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
@@ -250,14 +265,27 @@ BAD_DB = "bogus.pkl"
 # Three proteins: enough for ranking and for a top_n cut to be visible.
 GOOD_DB_ENTRIES = ["P00001", "P00002", "P00003"]
 
+# Vector widths the trained Func-E checkpoints require: RxnFP's reaction
+# fingerprint and UniMol's per-molecule embedding.  The stand-in steps below
+# emit these widths so the arrays flowing through ``_encode_reaction`` have the
+# shape the real ones would.
+RXNFP_WIDTH = 256
+UNIMOL_WIDTH = 768
+
+# The directory holding the interpreter running these tests, and a stand-in for
+# any other PATH entry — the two ingredients of the PATH tests below.
+INTERPRETER_BIN_DIR = str(Path(sys.executable).parent)
+UNRELATED_BIN_DIR = "/somewhere/else/bin"
+
 
 def _make_funce_frame(entries: list[str]) -> pd.DataFrame:
-    """Build a minimal but valid pre-encoded Func-E database frame.
+    """Build a pre-encoded Func-E database frame, stale reaction vectors and all.
 
-    Carries exactly what compute needs: the identity and protein embedding a
-    database must supply, plus the three reaction embeddings
-    ``_encode_reaction`` reads back out.  The vectors are stand-ins — no test
-    looks at their contents, only that they are present and not NaN.
+    Carries what compute requires of a database — the identity and the protein
+    embedding — plus the three reaction embeddings that shipped pickles such as
+    ``Funce_pairs.pkl`` were built with.  Those are exactly what
+    ``_load_databases`` must strip, so the fixture keeps them; the values are
+    stand-ins that no test reads.
     """
     row_count = len(entries)
     frame = pd.DataFrame(
@@ -290,14 +318,20 @@ def embeddings_db_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def stub_funce_step(monkeypatch):
-    """Stand in for ``enzymetk`` and ``torch`` for the duration of one test.
+def stub_enzymetk_steps(monkeypatch):
+    """Stand in for the three ``enzymetk`` steps and ``torch`` for one test.
 
-    ``run()`` imports both inside its body, so replacing their ``sys.modules``
-    entries is enough — and it is also necessary: torch is a multi-gigabyte
-    dependency, and the enzymetk build installed here does not export ``Funce``
-    at all, so a test relying on the real package could never run.
+    ``run()`` and ``_encode_reaction`` import them inside their bodies, so
+    replacing the ``sys.modules`` entries is enough — and it is also necessary:
+    torch is a multi-gigabyte dependency, the enzymetk build installed here does
+    not export ``Funce`` at all, and each embedding step loads a checkpoint of
+    several hundred megabytes.
+
+    Returns:
+        A recorder holding what the UniMol step was built with — currently
+        just its ``weights_dir``.
     """
+    recorded = types.SimpleNamespace(unimol_weights_dir=None)
 
     class StubFunce:
         """The prediction step, reduced to what ``run()`` actually calls."""
@@ -312,24 +346,73 @@ def stub_funce_step(monkeypatch):
             scored[PRED_COL] = [round(0.1 * (position + 1), 4) for position in range(len(scored))]
             return scored
 
-    # The stub is a module so ``from enzymetk import Funce`` works, and the
-    # class is a nested attribute so ``Funce(...)`` works.
+    class StubRxnFP:
+        """The reaction fingerprinter, reduced to the column it writes.
+
+        The signature mirrors the real one, so a change to how
+        ``_encode_reaction`` constructs the step fails here instead of passing
+        silently.
+        """
+
+        def __init__(self, reaction_col, num_threads=1, env_name=None, tmp_dir=None):
+            self.reaction_col = reaction_col
+            self.num_threads = num_threads
+            self.env_name = env_name
+            self.tmp_dir = tmp_dir
+
+        def execute(self, frame):
+            """Add one flat fingerprint per reaction row."""
+            fingerprinted = frame.copy()
+            fingerprinted["rxnfp"] = [[0.5] * RXNFP_WIDTH] * len(frame)
+            return fingerprinted
+
+    class StubUniMol:
+        """The molecule embedder, reduced to the nested column it writes.
+
+        The signature mirrors the real one, so dropping ``weights_dir`` — or passing
+        it positionally into some other parameter — fails here rather than silently
+        letting unimol_tools download its own checkpoint.
+        """
+
+        def __init__(self, smiles_col, weights_dir=None):
+            self.smiles_col = smiles_col
+            recorded.unimol_weights_dir = weights_dir
+
+        def execute(self, frame):
+            """Embed every molecule in the frame."""
+            embedded = frame.copy()
+            # Real UniMol nests its cls_repr one level deep ([[...768 floats...]]),
+            # which compute has to flatten.  Each vector is filled with the length of
+            # the molecule it came from, so a test can tell substrate from product.
+            embedded["unimol_repr"] = [[[float(len(smiles))] * UNIMOL_WIDTH] for smiles in frame[self.smiles_col]]
+            return embedded
+
+    # One module per import in compute.  The two embedding steps need real
+    # submodule entries — a single flat ``enzymetk`` stub fails with
+    # "'enzymetk' is not a package" the moment one of them is imported.
     enzymetk_stub = types.ModuleType("enzymetk")
     enzymetk_stub.Funce = StubFunce
-    monkeypatch.setitem(sys.modules, "enzymetk", enzymetk_stub)
+    rxnfp_stub = types.ModuleType("enzymetk.embedchem_rxnfp_step")
+    rxnfp_stub.RxnFP = StubRxnFP
+    unimol_stub = types.ModuleType("enzymetk.embedchem_unimol_step")
+    unimol_stub.UniMol = StubUniMol
+    for module_name, module in [
+        ("enzymetk", enzymetk_stub),
+        ("enzymetk.embedchem_rxnfp_step", rxnfp_stub),
+        ("enzymetk.embedchem_unimol_step", unimol_stub),
+    ]:
+        monkeypatch.setitem(sys.modules, module_name, module)
 
     # torch is used for exactly one thing: naming the device on a stat card.
     torch_stub = types.ModuleType("torch")
     torch_stub.cuda = types.SimpleNamespace(is_available=lambda: False)
     monkeypatch.setitem(sys.modules, "torch", torch_stub)
 
+    return recorded
+
 
 def _run_params(**overrides) -> dict:
-    """Return a valid ``run()`` params dict.
-
-    ``smiles`` defaults to the one pre-encoded reaction — anything else is
-    refused by ``_encode_reaction`` before the prediction step is reached.
-    """
+    """Return a valid ``run()`` params dict, overridable field by field."""
     params = {
         "task_name": "funce-test",
         "smiles": DEHP_MEHP_SMILES,
@@ -405,6 +488,23 @@ def test_load_databases_merges_every_selection(embeddings_db_dir):
     assert list(frame[COL_DATABASE]) == [GOOD_DB] * len(GOOD_DB_ENTRIES) + [OTHER_DB]
 
 
+def test_load_databases_drops_the_reaction_vectors_the_pickle_carries(embeddings_db_dir):
+    """A database's own reaction embeddings must not survive the load.
+
+    Shipped pickles such as ``Funce_pairs.pkl`` were built with one reaction
+    already broadcast across every row.  ``run()`` writes the query's vectors
+    afterwards, so a stale column left in place would be scored for any row that
+    broadcast does not reach — a confident prediction for the wrong reaction.
+    """
+    # Guard the fixture: without the stale columns on disk there is nothing to strip.
+    assert set(RXN_COLS) <= set(_make_funce_frame(GOOD_DB_ENTRIES).columns)
+
+    frame, _ = _load_databases([GOOD_DB])
+
+    survivors = [column for column in RXN_COLS if column in frame.columns]
+    assert survivors == [], f"Stale reaction embeddings reached the scorer: {survivors}"
+
+
 @pytest.mark.parametrize(
     ("databases", "expected_fragment"),
     [
@@ -444,69 +544,230 @@ def test_resolve_database_rejects_anything_but_a_file_inside_its_directory(embed
         _resolve_database(database)
 
 
-# ── Compute — encoding the reaction ──────────────────────────────────────────
+# ── Compute — reading the reaction ───────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("smiles", "expected"),
+    [
+        ("CCO>>CC=O", ("CCO", "CC=O")),
+        # A multi-arrow string is a route, not a reaction: the last segment is the
+        # product and everything between is intermediate.
+        ("CCO>>CC=O>>CC(=O)O", ("CCO", "CC(=O)O")),
+        ("  CCO >> CC=O\n", ("CCO", "CC=O")),
+    ],
+    ids=["one-arrow", "multi-arrow-keeps-the-last-product", "padded-with-whitespace"],
+)
+def test_split_reaction_returns_the_substrate_and_the_final_product(smiles, expected):
+    """Whatever the user pasted, the two sides come back trimmed and in order."""
+    assert _split_reaction(smiles) == expected
+
+
+# ── Compute — validating the reaction ────────────────────────────────────────
+# Real RDKit here, no stand-ins: whether RDKit itself can read the string is the
+# whole question.  The modal's submit callback shares this one answer, so a
+# reaction accepted here is a reaction the worker will be asked to encode.
 
 
 @pytest.mark.parametrize(
     "smiles",
-    [DEHP_MEHP_SMILES, f"  {DEHP_MEHP_SMILES}\n"],
-    ids=["exact", "padded-with-whitespace"],
+    [
+        "CCO>>CC=O",
+        # A dot-joined side is one multi-component reaction, not two reactions —
+        # it is embedded whole, so it must not be refused.
+        "CCO.O>>CC(=O)O",
+        # Pasted out of a paper, trailing newline and all.
+        "  CCO>>CC=O \n",
+    ],
+    ids=["one-molecule-a-side", "dot-joined-multi-component", "padded-with-whitespace"],
 )
-def test_encode_reaction_reads_vectors_from_the_first_row_that_has_them(smiles):
-    """The vectors come from the first row that carries them, not from row zero.
-
-    A database without the reaction embeddings contributes NaN rows once the
-    selections are concatenated, and those rows may well come first.
-    """
-    with_vectors = _make_funce_frame(["Q00001"])
-    without_vectors = _make_funce_frame(["P00001"]).assign(**dict.fromkeys(RXN_COLS, np.nan))
-    concatenated = pd.concat([without_vectors, with_vectors], ignore_index=True)
-
-    vectors = _encode_reaction(smiles, concatenated)
-
-    assert sorted(vectors) == sorted(RXN_COLS)
-    for column in RXN_COLS:
-        np.testing.assert_array_equal(vectors[column], with_vectors[column].iloc[0])
+def test_validate_reaction_smiles_accepts_a_usable_reaction(smiles):
+    """A parseable substrate and product either side of ``>>`` is usable."""
+    assert validate_reaction_smiles(smiles) is None
 
 
 @pytest.mark.parametrize(
-    ("smiles", "frame", "expected_fragment"),
+    ("smiles", "expected_fragment"),
     [
-        # The SMILES is refused before the frame is read at all, so a perfectly
-        # good database is passed here.  Names the example the user must pick
-        # instead — the label of the only entry in the modal's examples dropdown.
-        ("CCO>>CC=O", _make_funce_frame(GOOD_DB_ENTRIES), "'DEHP → MEHP'"),
-        # A database that never carried the reaction embeddings at all; the
-        # message names the columns it lacks, built from the source constant.
-        (
-            DEHP_MEHP_SMILES,
-            _make_funce_frame(GOOD_DB_ENTRIES).drop(columns=RXN_COLS),
-            f"(missing {', '.join(RXN_COLS)})",
-        ),
-        # The embedding columns are present but empty on every row.
-        (
-            DEHP_MEHP_SMILES,
-            _make_funce_frame(GOOD_DB_ENTRIES).assign(**dict.fromkeys(RXN_COLS, np.nan)),
-            "reaction embeddings.",
-        ),
+        # ``None`` as the fragment means any message will do — for these cases the
+        # point is only that the string is refused, not how the refusal is worded.
+        ("", None),
+        ("   ", None),
+        (None, None),
+        ("CCO", "'>>'"),
+        (">>CCO", None),
+        ("CCO>>", None),
+        # RDKit returns None rather than raising on these, so the check is easy to
+        # lose; the message has to name the side the user must fix.
+        ("XYZ>>CCO", "substrate"),
+        ("CCO>>XYZ", "product"),
     ],
-    ids=["reaction-is-not-pre-encoded", "database-lacks-the-columns", "columns-are-all-nan"],
+    ids=[
+        "empty",
+        "whitespace-only",
+        "not-a-string",
+        "no-arrow",
+        "no-substrate",
+        "no-product",
+        "unparseable-substrate",
+        "unparseable-product",
+    ],
 )
-def test_encode_reaction_refuses_what_it_cannot_encode(smiles, frame, expected_fragment):
-    """Each refusal must say which of the three causes it hit.
+def test_validate_reaction_smiles_rejects_what_cannot_be_encoded(smiles, expected_fragment):
+    """Every unusable string comes back as a message — never ``None``, never an exception.
 
-    Until the reaction encoder is wired up, only the pre-encoded example
-    resolves, and only from a database that carries its vectors.  The last two
-    messages share a long prefix, so each assertion deliberately targets the
-    part that differs — matching the shared prefix would pass either way.
+    Encoding takes about ten seconds inside the worker, so a typo caught here
+    saves a job that would otherwise fail a minute later, deep inside UniMol.
     """
-    with pytest.raises(ValueError) as excinfo:
-        _encode_reaction(smiles, frame)
+    message = validate_reaction_smiles(smiles)
 
-    assert expected_fragment in str(excinfo.value)
+    assert isinstance(message, str) and message.strip(), "An unusable reaction must be reported, not accepted"
+    if expected_fragment:
+        assert expected_fragment in message
+
+
+@pytest.mark.parametrize(
+    "smiles",
+    [example["value"] for example in EXAMPLE_REACTIONS],
+    ids=[example["label"].split()[0] for example in EXAMPLE_REACTIONS],
+)
+def test_every_example_reaction_offered_in_the_modal_is_accepted(smiles):
+    """An example the modal hands the user must not be refused when they submit it.
+
+    Read out of ``EXAMPLE_REACTIONS`` rather than listed here, so a newly added
+    example is checked the moment it appears in the dropdown.
+    """
+    assert validate_reaction_smiles(smiles) is None
+
+
+# ── Compute — encoding the reaction ──────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("path_before", "expected_path_after"),
+    [
+        ([UNRELATED_BIN_DIR], [INTERPRETER_BIN_DIR, UNRELATED_BIN_DIR]),
+        ([UNRELATED_BIN_DIR, INTERPRETER_BIN_DIR], [UNRELATED_BIN_DIR, INTERPRETER_BIN_DIR]),
+    ],
+    ids=["interpreter-missing-from-path", "interpreter-already-on-path"],
+)
+def test_ensure_python_on_path_makes_a_bare_python_resolvable(monkeypatch, path_before, expected_path_after):
+    """A bare ``python`` must find the interpreter this process is running on.
+
+    RxnFP shells out to ``python`` rather than ``sys.executable``, so on a machine
+    that only ships ``python3`` the step dies with ``FileNotFoundError``.  Adding
+    the directory a second time would be harmless but would grow PATH on every
+    call, so an entry that is already there is left where it is.
+    """
+    monkeypatch.setenv("PATH", os.pathsep.join(path_before))
+
+    _ensure_python_on_path()
+
+    assert os.environ["PATH"].split(os.pathsep) == expected_path_after
+
+
+def test_encode_reaction_returns_one_flat_vector_per_column_the_step_reads(stub_enzymetk_steps):
+    """The keys must be exactly ``RXN_COLS``, each holding a flat float32 vector.
+
+    ``_encode_reaction`` writes those three names out as literals, so this is
+    what keeps them in step with ``RXN_COLS`` — the list ``run()`` broadcasts and
+    ``_load_databases`` strips.  Flatness is a real transformation, not a
+    formality: UniMol nests its output one level and the Funce step reads one
+    vector per cell.
+    """
+    smiles = "CCO>>CC=O"
+    substrate, product = _split_reaction(smiles)
+
+    vectors = _encode_reaction(smiles)
+
+    assert set(vectors) == set(RXN_COLS)
+    for column, vector in vectors.items():
+        assert vector.ndim == 1, f"'{column}' is still nested; the Funce step reads one vector per cell"
+        assert vector.dtype == np.float32
+
+    # The stand-in embedder fills each vector with the length of the molecule it
+    # came from, so substrate and product swapped over would show up right here.
+    assert vectors["substrate_unimol_repr"][0] == len(substrate)
+    assert vectors["product_unimol_repr"][0] == len(product)
+
+    # The two stand-in steps emit the widths their real counterparts do, so a
+    # crossed wire — the fingerprint read off the molecule embedder, say — comes
+    # back the wrong length.
+    assert len(vectors["rxnfp"]) == RXNFP_WIDTH
+
+
+def test_encode_reaction_points_unimol_at_the_bundled_weights(stub_enzymetk_steps):
+    """The UniMol step must be given the app's weights directory.
+
+    Without ``weights_dir`` the step falls back to unimol_tools' own lookup, which
+    caches the ~660 MB checkpoint in its site-packages directory — re-downloading it
+    into every fresh container, onto a layer that is thrown away.
+    """
+    _encode_reaction(DEHP_MEHP_SMILES)
+
+    assert stub_enzymetk_steps.unimol_weights_dir == str(UNIMOL_WEIGHTS_DIR)
+
+
+def test_encode_reaction_refuses_an_embedding_unimol_could_not_produce(stub_enzymetk_steps, monkeypatch):
+    """A ``None`` from UniMol has to stop the job, not become a one-wide ``nan``.
+
+    UniMol catches its own failures, logs them, and writes ``None`` instead of
+    raising.  ``np.asarray(None).astype(np.float32)`` is ``array([nan])``, which
+    survives the broadcast and only surfaces as "mat1 and mat2 shapes cannot be
+    multiplied (10x1 and 768x1024)" inside Funce — and had the widths happened to
+    line up, it would have scored nonsense silently instead.  This is not
+    hypothetical: it is what a Celery worker did before ``_allow_forking``,
+    because a daemonic process may not create the Pool UniMol builds conformers
+    with.
+    """
+    unimol_step = sys.modules["enzymetk.embedchem_unimol_step"].UniMol
+
+    def execute_failing_to_embed(self, frame):
+        """Mimic UniMol swallowing an error: a None per molecule, no exception."""
+        unembedded = frame.copy()
+        unembedded["unimol_repr"] = [None] * len(frame)
+        return unembedded
+
+    monkeypatch.setattr(unimol_step, "execute", execute_failing_to_embed)
+
+    with pytest.raises(ValueError, match="UniMol could not embed"):
+        _encode_reaction(DEHP_MEHP_SMILES)
+
+
+@pytest.mark.parametrize("started_daemonic", [True, False], ids=["celery-worker", "plain-process"])
+def test_allow_forking_clears_the_daemon_flag_and_puts_it_back(monkeypatch, started_daemonic):
+    """The flag must be cleared for the call and restored after it.
+
+    Celery runs tasks in daemonic children, which may not have children of their
+    own — so UniMol's conformer ``Pool`` cannot be created without this.  Leaving
+    the flag cleared afterwards would extend that exemption past the one step
+    that needed it, to every later step in the same worker.
+    """
+    process = multiprocessing.current_process()
+    monkeypatch.setattr(process, "daemon", started_daemonic)
+
+    with _allow_forking():
+        assert process.daemon is False
+
+    assert process.daemon is started_daemonic
 
 
 # ── Compute — run() ──────────────────────────────────────────────────────────
+
+
+def test_run_refuses_a_bad_reaction_before_it_opens_a_database(embeddings_db_dir, stub_enzymetk_steps):
+    """The SMILES is checked first, so nothing slow happens on behalf of a typo.
+
+    The database named here does not exist — reading it would raise as well.
+    Getting the reaction message instead is what proves validation ran first, on
+    the replay path that reaches ``run()`` without going through the modal.
+    """
+    with pytest.raises(ValueError) as excinfo:
+        run(_run_params(smiles="CCO", databases=["no_such_database.pkl"]))
+
+    message = str(excinfo.value)
+    assert "'>>'" in message
+    assert "no_such_database.pkl" not in message, "A database was opened before the reaction was checked"
 
 
 @pytest.mark.parametrize(
@@ -517,7 +778,7 @@ def test_encode_reaction_refuses_what_it_cannot_encode(smiles, frame, expected_f
     ],
     ids=["clean-run-has-no-card", "one-skipped-is-named"],
 )
-def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_funce_step, databases, expected_skipped):
+def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_enzymetk_steps, databases, expected_skipped):
     """The "Databases Skipped" card appears only when a database was skipped.
 
     It is spliced into the card list conditionally, so both halves matter: a
@@ -532,7 +793,7 @@ def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_funce_step, dat
     assert cards["Databases Searched"] == "1"
 
 
-def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_funce_step):
+def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_enzymetk_steps):
     """Hits come back best-first and cut to ``top_n``; the Top Score card agrees."""
     result = run(_run_params(top_n=2))
 
@@ -546,7 +807,7 @@ def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_fu
     assert cards["Candidates Scored"] == str(len(GOOD_DB_ENTRIES))
 
 
-def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_dir, stub_funce_step):
+def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_dir, stub_enzymetk_steps):
     """Embeddings must not reach the payload — ``json.dumps`` cannot encode an ndarray.
 
     The backend stores the result as JSON, so an embedding left on the frame
@@ -561,3 +822,29 @@ def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_d
     # Dropping embeddings must not take the provenance column with it.
     assert COL_DATABASE in columns
     assert isinstance(json.dumps(result), str)
+
+
+# ── Populate example ─────────────────────────────────────────────────────────
+
+
+def test_populate_example_reaction_returns_value():
+    """Selecting a shipped example populates the SMILES textarea and the Task Name."""
+    smiles, task_name = populate_example_reaction(DEHP_MEHP_SMILES)
+
+    assert smiles == DEHP_MEHP_SMILES
+    assert task_name == "DEHP-MEHP"
+
+
+def test_populate_example_reaction_leaves_task_name_for_unknown_smiles():
+    """A SMILES that is not a shipped example fills the textarea but not the Task Name."""
+    smiles, task_name = populate_example_reaction("CCO>>CC=O")
+
+    assert smiles == "CCO>>CC=O"
+    assert task_name is no_update
+
+
+@pytest.mark.parametrize("empty_value", [None, "", 0], ids=["none", "empty-string", "zero"])
+def test_populate_example_reaction_raises_prevent_update(empty_value):
+    """Clearing the example dropdown must leave every field alone."""
+    with pytest.raises(PreventUpdate):
+        populate_example_reaction(empty_value)

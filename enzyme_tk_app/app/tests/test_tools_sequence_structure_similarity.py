@@ -184,24 +184,27 @@ def test_populate_example_raises_on_falsy_id(some_id):
 
 
 def test_populate_example_sequence_only():
-    """A sequence-only example returns (sequence, no_update, no_update)."""
+    """A sequence-only example returns (sequence, no_update, no_update, task_name)."""
     # "A0A009IHW8-seq" is a sequence-only example (structure_file is None)
-    seq, contents, filename = populate_example_sequence("A0A009IHW8-seq")
+    seq, contents, filename, task_name = populate_example_sequence("A0A009IHW8-seq")
 
     assert seq.startswith("MSLEQKKGADIIS")
     assert contents is no_update
     assert filename is no_update
+    assert task_name == "A0A009IHW8-sequence"
 
 
 def test_populate_example_with_structure():
     """An example with a structure file returns base64-encoded content."""
     # "A0A009IHW8-struct" ships with a .cif structure file
-    seq, contents, filename = populate_example_sequence("A0A009IHW8-struct")
+    seq, contents, filename, task_name = populate_example_sequence("A0A009IHW8-struct")
 
     assert seq.startswith("MSLEQKKGADIIS")
     # contents should be a data URI with base64-encoded CIF data
     assert contents.startswith("data:chemical/x-cif;base64,")
     assert filename == "A0A009IHW8-chai.cif"
+    # The two A0A009IHW8 examples differ only by the sequence/structure suffix.
+    assert task_name == "A0A009IHW8-structure"
 
 
 # ── display_uploaded_filename ─────────────────────────────────────────────────
