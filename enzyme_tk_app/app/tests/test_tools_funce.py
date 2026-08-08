@@ -32,12 +32,10 @@ against it unstubbed.
 
 import json
 import multiprocessing
-import os
 import pickle
 import re
 import sys
 import types
-from pathlib import Path
 
 import dash_ag_grid as dag
 import numpy as np
@@ -56,7 +54,6 @@ from enzyme_tk_app.app.tools.funce.compute import (
     UNIMOL_WEIGHTS_DIR,
     _allow_forking,
     _encode_reaction,
-    _ensure_python_on_path,
     _load_databases,
     _resolve_database,
     _split_reaction,
@@ -271,11 +268,6 @@ GOOD_DB_ENTRIES = ["P00001", "P00002", "P00003"]
 # shape the real ones would.
 RXNFP_WIDTH = 256
 UNIMOL_WIDTH = 768
-
-# The directory holding the interpreter running these tests, and a stand-in for
-# any other PATH entry — the two ingredients of the PATH tests below.
-INTERPRETER_BIN_DIR = str(Path(sys.executable).parent)
-UNRELATED_BIN_DIR = "/somewhere/else/bin"
 
 
 def _make_funce_frame(entries: list[str]) -> pd.DataFrame:
@@ -641,29 +633,6 @@ def test_every_example_reaction_offered_in_the_modal_is_accepted(smiles):
 
 
 # ── Compute — encoding the reaction ──────────────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    ("path_before", "expected_path_after"),
-    [
-        ([UNRELATED_BIN_DIR], [INTERPRETER_BIN_DIR, UNRELATED_BIN_DIR]),
-        ([UNRELATED_BIN_DIR, INTERPRETER_BIN_DIR], [UNRELATED_BIN_DIR, INTERPRETER_BIN_DIR]),
-    ],
-    ids=["interpreter-missing-from-path", "interpreter-already-on-path"],
-)
-def test_ensure_python_on_path_makes_a_bare_python_resolvable(monkeypatch, path_before, expected_path_after):
-    """A bare ``python`` must find the interpreter this process is running on.
-
-    RxnFP shells out to ``python`` rather than ``sys.executable``, so on a machine
-    that only ships ``python3`` the step dies with ``FileNotFoundError``.  Adding
-    the directory a second time would be harmless but would grow PATH on every
-    call, so an entry that is already there is left where it is.
-    """
-    monkeypatch.setenv("PATH", os.pathsep.join(path_before))
-
-    _ensure_python_on_path()
-
-    assert os.environ["PATH"].split(os.pathsep) == expected_path_after
 
 
 def test_encode_reaction_returns_one_flat_vector_per_column_the_step_reads(stub_enzymetk_steps):

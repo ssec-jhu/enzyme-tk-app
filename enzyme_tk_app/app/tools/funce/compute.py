@@ -14,9 +14,7 @@ activity.
 """
 
 import multiprocessing
-import os
 import pickle
-import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -218,20 +216,6 @@ def validate_reaction_smiles(smiles: object) -> str | None:
     return None
 
 
-def _ensure_python_on_path() -> None:
-    """Make a bare ``python`` resolve to the interpreter running this process.
-
-    ``RxnFP`` shells out with ``cmd[0] == "python"`` rather than ``sys.executable``,
-    so with ``env_name=None`` it runs on whatever ``python`` the PATH happens to
-    find — and an environment that only ships ``python3`` gets
-    ``FileNotFoundError: 'python'``.  A no-op in the Docker image, where ``python``
-    is already the right interpreter.
-    """
-    bindir = str(Path(sys.executable).parent)
-    if bindir not in os.environ.get("PATH", "").split(os.pathsep):
-        os.environ["PATH"] = bindir + os.pathsep + os.environ.get("PATH", "")
-
-
 @contextmanager
 def _allow_forking():
     """Let a step fork worker processes while inside Celery's prefork pool.
@@ -294,7 +278,6 @@ def _encode_reaction(smiles: str) -> dict:
     # env_name=None skips the `conda run -n rxnfp` wrapper; tmp_dir must be a real
     # path, because left None the step f-strings the TemporaryDirectory *object*
     # into a filename and breaks.
-    _ensure_python_on_path()
     with TemporaryDirectory() as tmp_dir:
         rxn_df = RxnFP("reaction", 1, env_name=None, tmp_dir=tmp_dir).execute(pd.DataFrame({"reaction": [smiles]}))
 
