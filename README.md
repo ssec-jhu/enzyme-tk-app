@@ -20,14 +20,16 @@ A web application for protein engineering workflows, built with [Dash](https://d
 | **Substrate/Product Similarity** | Molecular similarity search using Morgan circular fingerprints with Tanimoto, Russell, and Cosine scoring | `rdkit` |
 | **Sequence Similarity** | Protein sequence similarity search using DIAMOND BLASTp. Searches one or more reference sequence databases, merged into a single index so hits are ranked globally | `diamond-blastp` |
 | **Sequence and Structure-Based Similarity** | FoldSeek-powered similarity search using protein sequences (ProstT5) or structures (CIF/PDB). Searches across multiple databases including PDB and AlphaFold/Swiss-Prot | `foldseek`, `prostt5` |
-| **Func-E Activity Prediction** | Scores (enzyme, reaction) pairs with an ensemble of four attention models — one per EC level — and ranks a pre-encoded protein database by predicted activity | `torch` |
+| **Func-E Activity Prediction** | Scores (enzyme, reaction) pairs with an ensemble of four attention models — one per EC level. Encodes the query reaction at run time and ranks a pre-encoded protein embedding database by predicted activity | `torch`, `rxnfp`, `unimol` |
 | **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
 
-> **Func-E is prediction-only today.** The reaction-to-fingerprint encoder is not wired up
-> yet, so only the pre-encoded **DEHP → MEHP** example reaction can be scored; any other
-> reaction SMILES fails with an explanatory error. `compute._encode_reaction()` in
-> `enzyme_tk_app/app/tools/funce/` is the single seam to replace when RxnFP + UniMol
-> encoding lands.
+> **Func-E encodes the query reaction in the worker.** Any valid reaction SMILES can be
+> scored: RxnFP fingerprints the reaction and UniMol embeds its substrate and product
+> (`compute._encode_reaction()` in `enzyme_tk_app/app/tools/funce/`). The **protein** side is
+> still encoded offline — Func-E ranks only proteins already present in a
+> `data/sequence_embeddings/` pickle. Encoding needs the UniMol checkpoint under
+> `data/unimol_weights/`; without it the tool card shows a **"Missing data"** badge (see
+> [Data Directories](#data-directories)).
 
 ![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
 
@@ -94,8 +96,13 @@ still loads: its card shows a **"Missing data"** badge instead, and the app does
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | ProstT5 weights for sequence-to-structure prediction |
 | `sequence_embeddings/` | Func-E Activity Prediction | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
 | `funce_models/` | Func-E Activity Prediction | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
+| `unimol_weights/` | Func-E Activity Prediction | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. `unimol_tools` takes no path argument — Func-E points it here via the `UNIMOL_WEIGHT_DIR` environment variable. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
 
-A Func-E job needs ~1.1 GB RSS in the worker; the four checkpoints load in ~0.2 s warm and the job times out after 1800 s.
+A Func-E job peaks around **2 GB RSS** in the worker process, with a transient RxnFP subprocess of
+similar size earlier in the run — it loads its own torch and BERT, then exits before the worker
+reaches its own peak — so budget roughly **3 GB per concurrent Func-E job**. A 10-candidate job
+takes ~12 s of run time (~15 s wall clock), around 10 s of which is loading the RxnFP and UniMol
+checkpoints: a fixed cost, flat regardless of database size. Jobs time out after 1800 s.
 
 Every database-backed tool selects **multiple** databases at once (all of them by default)
 and merges the selections into one search, so a directory holding a single file makes the
@@ -108,12 +115,23 @@ unreadable.
 
 ### GPU (optional)
 
-Func-E selects its device with `torch.cuda.is_available()`, so it uses a GPU automatically
-once the worker container is given one — no code or requirements change. Uncomment the
-device reservation under the `worker` service's `deploy:` key in `docker-compose.yml` on a
-`linux/amd64` host with the NVIDIA driver and `nvidia-container-toolkit` installed. PyPI
-ships no CUDA build of torch for arm64, so this is a no-op on Apple Silicon (jobs run on
-CPU, reported in the job's **Device** stat card).
+The image installs the **CPU** build of PyTorch by default (`ARG TORCH_INDEX_URL` in the
+`Dockerfile`), so enabling a GPU takes **two** steps — both required, neither is enough alone:
+
+1. Rebuild against the CUDA wheels:
+
+   ```bash
+   docker compose build --build-arg TORCH_INDEX_URL=https://download.pytorch.org/whl/cu124
+   ```
+
+2. Uncomment the device reservation under the `worker` service's `deploy:` key in
+   `docker-compose.yml`, on a `linux/amd64` host with the NVIDIA driver and
+   `nvidia-container-toolkit` installed.
+
+Func-E then picks the GPU up on its own — it selects its device with
+`torch.cuda.is_available()`, so no code change is needed. PyPI ships no CUDA build of torch
+for arm64, so both steps are no-ops on Apple Silicon (jobs run on CPU, reported in the job's
+**Device** stat card).
 
 ### Shared Volume
 
