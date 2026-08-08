@@ -66,6 +66,9 @@ JOB_ID_SPAN_ID = "id-span-job-id"
 _BTN_DOWNLOAD_ID = "id-btn-results-download"
 _RADIO_SCOPE_ID = "id-radio-results-download-scope"
 
+# AG Grid's own fallback when a column def omits ``width``.
+_AG_GRID_DEFAULT_COL_WIDTH = 200
+
 # Export scopes offered by the toolbar radios.  The values double as the
 # filename suffix, so they read the same as the labels the user picked.
 SCOPE_FILTERED = "filtered"
@@ -145,6 +148,13 @@ _INTERNAL_KEYS = frozenset({"_stat_cards", "_params_exclude"})
 # Parameter keys that contain SMILES strings eligible for a structure preview.
 _SMILES_PARAM_KEYS = frozenset({"smiles"})
 
+# The query-structure <img> is the compare lightbox's only source for the query
+# side: assets/dashAgGridComponentFunctions.js finds it by class and reads the
+# SMILES off the data attribute.  Rename either and the JS must change in the
+# same edit — test_smiles_rendering pins both ends.
+QUERY_PREVIEW_CLASS = "jobs-params-preview"
+QUERY_SMILES_ATTR = "data-smiles"
+
 
 def _pretty_label(key: str) -> str:
     """Convert a snake_case or kebab-case key to a human-friendly label.
@@ -182,14 +192,18 @@ def _render_smiles_preview(smiles: str) -> html.Img | None:
         else:
             from enzyme_tk_app.app.utils.smiles_rendering import smiles_to_svg_data_uri  # noqa: PLC0415
 
-            uri = smiles_to_svg_data_uri(smiles.strip(), width=300, height=200)
+            # Same canvas the tools draw their result molecules on
+            # (substrate_product_similarity/compute.py), so the compare
+            # lightbox puts two structures side by side at one stroke weight.
+            uri = smiles_to_svg_data_uri(smiles.strip(), width=500, height=300)
     except Exception:  # noqa: BLE001 — graceful degradation
         return None
 
     if not uri:
         return None
 
-    return html.Img(src=uri, className="jobs-params-preview")
+    # The data attribute is what the lightbox captions the query panel with.
+    return html.Img(src=uri, className=QUERY_PREVIEW_CLASS, **{QUERY_SMILES_ATTR: smiles.strip()})
 
 
 def build_result_input_params(job: JobInfo) -> html.Div | None:
@@ -526,6 +540,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
     Non-field column defs (e.g. selection or row-number columns without
     a ``field`` key) are passed through unmodified.
 
+    Every column is floored at its declared ``width`` and the grid is sized
+    with ``responsiveSizeToFit``, so the columns share out any width a short
+    table leaves over; tools never set ``minWidth`` themselves.
+
     Cell text selection is enabled (``enableCellTextSelection`` +
     ``ensureDomOrder``) so users can copy/paste string content.
 
@@ -568,6 +586,14 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         if field is not None:
             cd.setdefault("tooltipField", field)
 
+    # Floor every column at the width its def asked for, so the responsiveSizeToFit
+    # pass below can only ever grow columns.  How wide a table ends up is decided by
+    # the data, not the def list: a tool names every column it *might* get and the
+    # filter above drops the rest, so Reaction Similarity offers 32 defs and renders
+    # the 7 ReactionDist returns.
+    for cd in filtered_defs:
+        cd.setdefault("minWidth", cd.get("width", _AG_GRID_DEFAULT_COL_WIDTH))
+
     grid = dag.AgGrid(
         id=GRID_ID,
         columnDefs=filtered_defs,
@@ -596,6 +622,13 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
             "enableCellTextSelection": True,
             "ensureDomOrder": True,
         },
+        # Spend leftover width on the columns instead of leaving a grey gutter to the
+        # right of a short table.  Paired with the minWidth floors above this only ever
+        # grows: a table wider than the page is already at its floor, so nothing shrinks
+        # and it keeps scrolling horizontally.  (``flex`` is the obvious alternative and
+        # does nothing here — dash-ag-grid 35.3.0 records it in the column state and
+        # never applies it.)
+        columnSize="responsiveSizeToFit",
         style={"width": "100%"},
         className="ag-theme-balham",
     )
