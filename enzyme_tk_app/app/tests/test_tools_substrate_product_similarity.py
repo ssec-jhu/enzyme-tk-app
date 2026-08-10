@@ -44,6 +44,10 @@ from enzyme_tk_app.app.utils.columns import (
 # All similarity column names produced by enzymetk — the core regression signal.
 _ALL_SIM_COLUMNS = [a["column"] for a in get_similarity_algorithms()]
 
+# A real, parseable molecule for the callback tests — the form validates the
+# structure now, so a placeholder like "A" would be rejected on its own merits.
+_GLUCOSE_SMILES = "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
+
 
 def _default_params(**overrides):
     """Return a valid ``run()`` params dict with sensible defaults.
@@ -586,40 +590,75 @@ def test_subprod_populate_example_returns_defaults_for_invalid_value():
         populate_example_smiles("no-separator-here")
 
 
-def test_subprod_validate_form_disabled_when_both_empty():
-    """Submit must be disabled when both fields are empty."""
+@pytest.mark.parametrize(
+    ("task_name", "smiles", "databases", "algorithms", "expected_disabled", "expected_invalid"),
+    [
+        ("Glucose search", _GLUCOSE_SMILES, ["db.csv"], ["tanimoto"], False, False),
+        ("", "", ["db.csv"], ["tanimoto"], True, False),
+        (None, None, ["db.csv"], ["tanimoto"], True, False),
+        ("", "CCO", ["db.csv"], ["tanimoto"], True, False),
+        ("My Query", "", ["db.csv"], ["tanimoto"], True, False),
+        ("   ", "   ", ["db.csv"], ["tanimoto"], True, False),
+        ("My Query", _GLUCOSE_SMILES, [], ["tanimoto"], True, False),
+        ("My Query", _GLUCOSE_SMILES, ["db.csv"], [], True, False),
+        # An unusable structure disables Run *and* marks the field, which an
+        # absent one deliberately does not — a blank form is not yet a mistake.
+        ("My Query", "XYZ", ["db.csv"], ["tanimoto"], True, True),
+        # This field takes one molecule; a reaction pasted in is its own mistake.
+        ("My Query", "CCO>>CC=O", ["db.csv"], ["tanimoto"], True, True),
+    ],
+    ids=[
+        "all-valid",
+        "both-empty",
+        "both-none",
+        "missing-name",
+        "missing-smiles",
+        "whitespace-only",
+        "no-databases",
+        "no-algorithms",
+        "unparseable-molecule",
+        "reaction-in-a-molecule-field",
+    ],
+)
+def test_subprod_validate_form(task_name, smiles, databases, algorithms, expected_disabled, expected_invalid):
+    """Run must be disabled unless the form is complete *and* the molecule parses."""
+    disabled, invalid, message = validate_substrate_product_form(task_name, smiles, databases, algorithms)
 
-    assert validate_substrate_product_form("", "", ["db.csv"], ["tanimoto"]) is True
-    assert validate_substrate_product_form(None, None, ["db.csv"], ["tanimoto"]) is True
+    assert disabled is expected_disabled
+    assert invalid is expected_invalid
+    # The message and the red border go together: a marked field always says why.
+    assert bool(message) is expected_invalid
 
 
-def test_subprod_validate_form_disabled_when_name_missing():
-    """Submit must be disabled when task name is empty."""
+@pytest.mark.parametrize(
+    "smiles",
+    ["", "   ", "XYZ", "c1ccccc", "CCO>>CC=O"],
+    ids=["empty", "whitespace-only", "unparseable", "unclosed-ring", "reaction-in-a-molecule-field"],
+)
+def test_subprod_submit_returns_error_when_smiles_invalid(smiles):
+    """A bad molecule must be reported in the modal, not handed to the scheduler.
 
-    assert validate_substrate_product_form("", "CCO", ["db.csv"], ["tanimoto"]) is True
-
-
-def test_subprod_validate_form_disabled_when_smiles_missing():
-    """Submit must be disabled when SMILES is empty."""
-
-    assert validate_substrate_product_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
-
-
-def test_subprod_validate_form_enabled_when_all_filled():
-    """Submit must be enabled when all fields have content."""
-
-    assert (
-        validate_substrate_product_form(
-            "Glucose search", "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O", ["db.csv"], ["tanimoto"]
+    The disabled Run button is client-side only, so this is the check that
+    actually stops a crafted request — and without it the string reaches
+    ``mfpgen.GetFingerprint(None)`` inside ``SubstrateDist``, which raises a C++
+    signature dump the user then meets as a traceback on the My Tasks page.
+    """
+    mock_scheduler = MagicMock()
+    slug = TOOL_DEF["slug"]
+    with (
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
+            return_value=mock_scheduler,
+        ),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{slug}-submit"
+        result = submit_substrate_product_similarity_job(
+            1, 0, "My Query", ["db.csv"], smiles, ["tanimoto"], 10, "substrate"
         )
-        is False
-    )
 
-
-def test_subprod_validate_form_disabled_when_whitespace_only():
-    """Submit must be disabled when fields contain only whitespace."""
-
-    assert validate_substrate_product_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
+    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    mock_scheduler.submit_job.assert_not_called()
 
 
 # ── Results layout ───────────────────────────────────────────────────────────
