@@ -30,7 +30,7 @@ import tempfile
 from pathlib import Path
 
 # ---- CONFIG: edit these ----
-INPUT_FILE = "enzymes_sample_100.tsv"  # CSV/TSV of sequences (.gz ok), relative to this file
+INPUT_FILE = "enzymes_sample_10.tsv"  # CSV/TSV of sequences (.gz ok), relative to this file
 OUTPUT_DIR = "output"  # both artifacts and the downloaded weights land here
 PROSTT5_WEIGHTS_DIR = ""  # existing ProstT5 weights dir; blank => download into OUTPUT_DIR
 LIMIT = 0  # 0 = every sequence; >0 = first N only (quick test)
@@ -100,15 +100,23 @@ def prostt5_weights_dir() -> Path:
     return (HERE / PROSTT5_WEIGHTS_DIR).resolve()  # an absolute setting wins on its own
 
 
-def ensure_prostt5_weights(weights_dir: Path) -> None:
-    """Download the ProstT5 weights unless they are already present (one-time, ~2 GB)."""
-    if (weights_dir / "prostt5-f16.gguf").exists():
-        print(f"ProstT5 weights: {weights_dir} (cached)")
+def download_or_reuse_prostt5_weights(weights_dir: Path) -> None:
+    """Reuse the ProstT5 weights if they are on disk, otherwise download them (~2 GB, once)."""
+    target = weights_dir / "prostt5-f16.gguf"
+    print(f"ProstT5 weights: looking for {target}")
+    if target.exists():
+        print("ProstT5 weights: FOUND - reusing, nothing to download")
         return
-    print(f"ProstT5 weights: downloading (~2 GB) -> {weights_dir}")
+
+    print(f"ProstT5 weights: NOT FOUND - downloading ~2 GB into {weights_dir} (one time only)")
     weights_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run(["foldseek", "databases", "ProstT5", str(weights_dir), tmp], check=True)
+    # Confirmed rather than assumed: foldseek exiting 0 without leaving the file here would
+    # otherwise be reported as a successful download and fail later inside createdb.
+    if not target.exists():
+        sys.exit(f"ERROR: foldseek reported success but {target} is not there.")
+    print(f"ProstT5 weights: downloaded to {target}")
 
 
 def build_enzyme_db_foldseek(records: list[tuple[str, str]]) -> None:
@@ -130,7 +138,7 @@ def build_enzyme_db_foldseek(records: list[tuple[str, str]]) -> None:
         return
 
     weights_dir = prostt5_weights_dir()
-    ensure_prostt5_weights(weights_dir)
+    download_or_reuse_prostt5_weights(weights_dir)
     db_prefix.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -151,25 +159,33 @@ def build_enzyme_db_foldseek(records: list[tuple[str, str]]) -> None:
 # ---- ESM3 embeddings ----
 
 ESM3_REPO = "EvolutionaryScale/esm3-sm-open-v1"
+ESM3_WEIGHTS_FILE = "data/weights/esm3_sm_open_v1.pth"  # the checkpoint ESM3.from_pretrained loads
 CHECKPOINT_EVERY = 250  # sequences per pickle rewrite; an interrupted run loses at most this many
 WORKER_FLAG = "--embed-worker"  # internal: re-runs this file as the child process holding the model
 
 
-def ensure_esm3_weights() -> None:
-    """Download the ESM3-open weights unless they are already cached (one-time, ~5.4 GB).
+def download_or_reuse_esm3_weights() -> None:
+    """Reuse the ESM3-open weights if they are cached, otherwise download them (~5.4 GB, once).
 
-    Inlined rather than imported from enzymetk's examples so this script depends only on
-    the installed package. No token and no login: the repo is ungated. Calling this before
-    constructing the step turns a 5.4 GB stall inside a constructor into a resumable step.
-
-    The cache location is HF_HOME's business, set in the Dockerfile so the download lands
-    on the mount and survives ``docker run --rm``; snapshot_download re-fetches nothing when
-    the snapshot is already complete, and returns where it put it.
+    Returning early really does skip the network: ESM3.from_pretrained reaches data_root(),
+    which runs its own snapshot_download, so anything missing beyond this checkpoint is still
+    fetched by the constructor and a complete cache needs no request at all. No token and no
+    login either -- the repo is ungated. Where the cache lives is HF_HOME's business, set in
+    the Dockerfile so the download lands on the mount and survives ``docker run --rm``.
     """
-    from huggingface_hub import snapshot_download
+    from huggingface_hub import snapshot_download, try_to_load_from_cache
+    from huggingface_hub.constants import HF_HUB_CACHE
 
-    print(f"ESM3 weights: resolving {ESM3_REPO} (~5.4 GB on the first run)...")
-    print(f"ESM3 weights: {snapshot_download(repo_id=ESM3_REPO)}")
+    # The checkpoint itself, not the folder holding it: an interrupted download leaves the
+    # folder behind, which would read as "found" right up until the model constructor failed.
+    print(f"ESM3 weights: looking for {ESM3_REPO}/{ESM3_WEIGHTS_FILE} under {HF_HUB_CACHE}")
+    cached = try_to_load_from_cache(ESM3_REPO, filename=ESM3_WEIGHTS_FILE)  # path, or None
+    if isinstance(cached, str):
+        print(f"ESM3 weights: FOUND - reusing {cached}")
+        return
+
+    print(f"ESM3 weights: NOT FOUND - downloading {ESM3_REPO} (~5.4 GB) into {HF_HUB_CACHE}")
+    print(f"ESM3 weights: downloaded to {snapshot_download(repo_id=ESM3_REPO)}")
 
 
 def select_pending(records: list[tuple[str, str]], done_ids: set[str]) -> list[tuple[str, str]]:
@@ -306,7 +322,7 @@ def embed_worker() -> None:
     if not pending:
         return
 
-    ensure_esm3_weights()
+    download_or_reuse_esm3_weights()
     from enzymetk.embedprotein_esm3_step import EmbedESM3
 
     # Constructed once, outside the loop: the model loads in __init__ (several GB resident),
@@ -353,7 +369,7 @@ def main() -> None:
     records = read_sequences(HERE / INPUT_FILE)
     print(f"Read {len(records)} sequences from {INPUT_FILE}")
 
-    #build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database
+    # build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database
     build_enzyme_db_esm3(records)  # comment out to skip the ESM3 embeddings
 
 

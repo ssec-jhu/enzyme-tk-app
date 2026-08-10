@@ -122,7 +122,7 @@ def test_limit_truncates_the_input(script, tmp_path):
     [
         ("enzymes.tsv.gz", "enzymes"),  # both suffixes go, which Path.stem alone gets wrong
         ("protein.csv.gz", "protein"),
-        ("enzymes_10.tsv", "enzymes_10"),
+        ("enzymes_sample_10.tsv", "enzymes_sample_10"),
         ("protein.csv", "protein"),
     ],
 )

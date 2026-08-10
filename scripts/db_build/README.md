@@ -13,7 +13,7 @@ these itself. This is how you rebuild one you have lost, or add one for a new se
 
 Input is a **CSV or TSV, plain or gzipped**, with an `Entry` column and a `Sequence` column — the same
 contract the app applies to `data/sequences/`. Every other column is ignored, so the full 17-column
-`enzymes.tsv` works as-is. `enzymes_10.tsv` ships here as a 10-sequence sample: use it for a first run.
+`enzymes.tsv` works as-is. `enzymes_sample_10.tsv` ships here as a 10-sequence sample: use it for a first run.
 
 ## Run
 
@@ -52,7 +52,7 @@ Edit the CONFIG block at the top of [`build_enzyme_db.py`](build_enzyme_db.py):
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `INPUT_FILE` | `enzymes_10.tsv` | CSV/TSV of sequences (`.gz` fine), relative to this folder |
+| `INPUT_FILE` | `enzymes_sample_10.tsv` | CSV/TSV of sequences (`.gz` fine), relative to this folder |
 | `OUTPUT_DIR` | `output` | Where both artifacts and the downloaded weights land |
 | `PROSTT5_WEIGHTS_DIR` | `""` | Existing ProstT5 weights directory; blank downloads into `OUTPUT_DIR` |
 | `LIMIT` | `0` | `0` = every sequence; `>0` = first N only, for a quick test |
@@ -90,7 +90,7 @@ The embedding step processes **one sequence at a time** — `EmbedESM3` does no 
 is fine for hundreds of sequences and impractical for hundreds of thousands (`enzymes.tsv` has
 575,503, roughly a month of CPU). Two consequences:
 
-- **Start small.** Run the shipped `enzymes_10.tsv` first, or set `LIMIT = 20` on your own file, and
+- **Start small.** Run the shipped `enzymes_sample_10.tsv` first, or set `LIMIT = 20` on your own file, and
   check the result before committing to a long run.
 - **Use a GPU if you have one.** Build with a CUDA wheel and run with `--gpus all`:
 
@@ -137,14 +137,14 @@ Copy the artifact into the app's data directory and restart the stack — the to
 next page load:
 
 ```bash
-cp -r scripts/db_build/output/foldseek_db/enzymes_10 enzyme_tk_app/app/data/foldseek_db/
+cp -r scripts/db_build/output/foldseek_db/enzymes_sample_10 enzyme_tk_app/app/data/foldseek_db/
 ```
 
 ```bash
-cp scripts/db_build/output/sequence_embeddings/enzymes_10.pkl enzyme_tk_app/app/data/sequence_embeddings/
+cp scripts/db_build/output/sequence_embeddings/enzymes_sample_10.pkl enzyme_tk_app/app/data/sequence_embeddings/
 ```
 
-A database is named on screen exactly as it is named on disk, extension included — `enzymes_10.pkl`
+A database is named on screen exactly as it is named on disk, extension included — `enzymes_sample_10.pkl`
 appears in Func-E's Databases dropdown under that name.
 
 ## Notes
