@@ -325,6 +325,24 @@ def test_run_invalid_databases_raise(databases, _patch_rxn_data_dir):
         run(_default_params(databases=databases))
 
 
+@pytest.mark.parametrize(
+    "smiles",
+    ["", "XYZ>>CCO", "CCO", ">>", "CCO>>"],
+    ids=["empty", "unparseable-substrate", "no-arrow", "arrow-only", "no-product"],
+)
+def test_run_refuses_a_bad_reaction_before_it_opens_a_database(smiles, _patch_rxn_data_dir):
+    """A replayed job never touches the modal, so ``run()`` re-checks the query.
+
+    Without this, ``ReactionDist`` reads the last three as SMARTS and returns a
+    grid of scores against a degenerate fingerprint — a job that says SUCCESS
+    and means nothing.
+    """
+    from enzyme_tk_app.app.tools.reaction_similarity.compute import run
+
+    with pytest.raises(ValueError):
+        run(_default_params(smiles=smiles))
+
+
 def test_run_non_csv_databases_raise(_patch_rxn_data_dir):
     """Every selection being non-.csv is a total wipeout, so it must raise."""
     from enzyme_tk_app.app.tools.reaction_similarity.compute import run
@@ -464,15 +482,22 @@ def test_populate_example_reaction_raises_prevent_update(empty_value):
 
 
 @pytest.mark.parametrize(
-    ("task_name", "smiles", "databases", "algorithms", "expected"),
+    ("task_name", "smiles", "databases", "algorithms", "expected_disabled", "expected_invalid"),
     [
-        ("My Task", "A>>B", ["db.csv"], ["tanimoto"], False),
-        ("", "A>>B", ["db.csv"], ["tanimoto"], True),
-        ("My Task", "", ["db.csv"], ["tanimoto"], True),
-        ("My Task", "A>>B", [], ["tanimoto"], True),
-        ("My Task", "A>>B", ["db.csv"], [], True),
-        ("   ", "   ", ["db.csv"], ["tanimoto"], True),
-        (None, None, None, None, True),
+        ("My Task", _RXN_SMILES_3, ["db.csv"], ["tanimoto"], False, False),
+        ("", _RXN_SMILES_3, ["db.csv"], ["tanimoto"], True, False),
+        ("My Task", "", ["db.csv"], ["tanimoto"], True, False),
+        ("My Task", _RXN_SMILES_3, [], ["tanimoto"], True, False),
+        ("My Task", _RXN_SMILES_3, ["db.csv"], [], True, False),
+        ("   ", "   ", ["db.csv"], ["tanimoto"], True, False),
+        (None, None, None, None, True, False),
+        # An unusable structure disables Run *and* marks the field, which an
+        # absent one deliberately does not — a blank form is not yet a mistake.
+        ("My Task", "XYZ>>CCO", ["db.csv"], ["tanimoto"], True, True),
+        ("My Task", "CCO", ["db.csv"], ["tanimoto"], True, True),
+        # enzymetk reads the query as SMARTS and scores every row against this
+        # one happily, so nothing downstream would have caught it.
+        ("My Task", ">>", ["db.csv"], ["tanimoto"], True, True),
     ],
     ids=[
         "all-valid",
@@ -482,11 +507,19 @@ def test_populate_example_reaction_raises_prevent_update(empty_value):
         "no-algorithms",
         "whitespace-only",
         "all-none",
+        "unparseable-substrate",
+        "no-arrow",
+        "arrow-only",
     ],
 )
-def test_validate_reaction_form(task_name, smiles, databases, algorithms, expected):
-    """Submit button disabled state must match form completeness."""
-    assert validate_reaction_form(task_name, smiles, databases, algorithms) is expected
+def test_validate_reaction_form(task_name, smiles, databases, algorithms, expected_disabled, expected_invalid):
+    """Run must be disabled unless the form is complete *and* the reaction parses."""
+    disabled, invalid, message = validate_reaction_form(task_name, smiles, databases, algorithms)
+
+    assert disabled is expected_disabled
+    assert invalid is expected_invalid
+    # The message and the red border go together: a marked field always says why.
+    assert bool(message) is expected_invalid
 
 
 # ── Submit job ───────────────────────────────────────────────────────────────
@@ -499,10 +532,38 @@ def test_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{SLUG}"
-        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], "A>>B", ["tanimoto"], 10)
+        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], 10)
 
     assert result == ""
     mock_sched.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "smiles",
+    ["", "   ", "XYZ>>CCO", "CCO", ">>", "CCO>>"],
+    ids=["empty", "whitespace-only", "unparseable-substrate", "no-arrow", "arrow-only", "no-product"],
+)
+def test_submit_returns_error_when_smiles_invalid(smiles):
+    """A bad reaction must be reported in the modal, not handed to the scheduler.
+
+    The disabled Run button is client-side only, so this is the check that
+    actually stops a crafted request — and the last four of these would
+    otherwise run to completion, scored against a degenerate fingerprint.
+    """
+    mock_scheduler = MagicMock()
+
+    with (
+        patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_task_scheduler",
+            return_value=mock_scheduler,
+        ),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], smiles, ["tanimoto"], 10)
+
+    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    mock_scheduler.submit_job.assert_not_called()
 
 
 def test_submit_returns_error_when_top_n_invalid():
@@ -517,7 +578,7 @@ def test_submit_returns_error_when_top_n_invalid():
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
-        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], "A>>B", ["tanimoto"], None)
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], None)
 
     assert isinstance(result, str) and len(result) > 0, "Expected a non-empty error message string"
     mock_scheduler.submit_job.assert_not_called()
@@ -545,11 +606,11 @@ def test_submit_returns_job_id():
         ):
             mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
             result = submit_reaction_similarity_job(
-                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], "  A>>B  ", ["tanimoto"], 10
+                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10
             )
 
     assert "job-rxn-123" in result
     # Verify the scheduler was called with stripped values
     call_kwargs = mock_scheduler.submit_job.call_args.kwargs
     assert call_kwargs["params"]["task_name"] == "Glucose search"
-    assert call_kwargs["params"]["smiles"] == "A>>B"
+    assert call_kwargs["params"]["smiles"] == _RXN_SMILES_3

@@ -10,11 +10,16 @@ Four things are pinned here:
 * **The dropped columns** — ``compute.DROPPED_COLS`` names what is stripped
   from the Funce output before it is JSON-encoded.  Dropping too much silently
   loses results; dropping an embedding short breaks the payload.
-* **Compute** — which reactions are refused, how the accepted ones are encoded,
-  which databases are loaded, which are skipped, and what the stat cards say
-  about all of it.
+* **Compute** — how an accepted reaction is encoded, which databases are loaded,
+  which are skipped, and what the stat cards say about all of it.
 * **The example picker** — selecting an example fills the Task Name as well as
   the SMILES, since the Task Name is the one field that otherwise blocks submit.
+
+What makes a reaction acceptable in the first place is not pinned here: that
+lives in ``utils/smiles_validation.py`` and is tested in
+``test_smiles_validation.py``, since Reaction Similarity shares it.  This file
+only pins that Func-E *applies* it — in the form callback, on submit, and in
+``run()``.
 
 Nothing here touches ``data/sequence_embeddings/``.  That directory is git-ignored (the
 shipped pickle and the ~3 GB checkpoint ensemble are not in the repository), so
@@ -26,8 +31,8 @@ machine that happens to have the real data.
 rather than at module scope, so importing it here is cheap: only the tests that
 run the pipeline need the stand-in modules, and they install them in
 ``sys.modules`` for one test at a time.  RDKit is the exception — it is a real
-dependency, small, and the whole point of the validation tests, so those run
-against it unstubbed.
+dependency and a small one, so the tests that reject a reaction run against it
+unstubbed.
 """
 
 import json
@@ -36,6 +41,7 @@ import pickle
 import re
 import sys
 import types
+from unittest.mock import MagicMock, patch
 
 import dash_ag_grid as dag
 import numpy as np
@@ -45,8 +51,12 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.tests.conftest import find_components, make_job
-from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, EXAMPLE_REACTIONS
-from enzyme_tk_app.app.tools.funce.callbacks import populate_example_reaction
+from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, TOOL_DEF
+from enzyme_tk_app.app.tools.funce.callbacks import (
+    populate_example_reaction,
+    submit_funce_job,
+    validate_funce_form,
+)
 from enzyme_tk_app.app.tools.funce.compute import (
     DROPPED_COLS,
     PRED_COL,
@@ -56,12 +66,11 @@ from enzyme_tk_app.app.tools.funce.compute import (
     _encode_reaction,
     _load_databases,
     _resolve_database,
-    _split_reaction,
     run,
-    validate_reaction_smiles,
 )
 from enzyme_tk_app.app.tools.funce.results import _get_column_defs, results_layout
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
+from enzyme_tk_app.app.utils.smiles_validation import split_reaction
 
 # Every column the Func-E grid is expected to define, spelled out rather than
 # generated: this list is the contract with enzymetk's output, so a change on
@@ -536,102 +545,6 @@ def test_resolve_database_rejects_anything_but_a_file_inside_its_directory(embed
         _resolve_database(database)
 
 
-# ── Compute — reading the reaction ───────────────────────────────────────────
-
-
-@pytest.mark.parametrize(
-    ("smiles", "expected"),
-    [
-        ("CCO>>CC=O", ("CCO", "CC=O")),
-        # A multi-arrow string is a route, not a reaction: the last segment is the
-        # product and everything between is intermediate.
-        ("CCO>>CC=O>>CC(=O)O", ("CCO", "CC(=O)O")),
-        ("  CCO >> CC=O\n", ("CCO", "CC=O")),
-    ],
-    ids=["one-arrow", "multi-arrow-keeps-the-last-product", "padded-with-whitespace"],
-)
-def test_split_reaction_returns_the_substrate_and_the_final_product(smiles, expected):
-    """Whatever the user pasted, the two sides come back trimmed and in order."""
-    assert _split_reaction(smiles) == expected
-
-
-# ── Compute — validating the reaction ────────────────────────────────────────
-# Real RDKit here, no stand-ins: whether RDKit itself can read the string is the
-# whole question.  The modal's submit callback shares this one answer, so a
-# reaction accepted here is a reaction the worker will be asked to encode.
-
-
-@pytest.mark.parametrize(
-    "smiles",
-    [
-        "CCO>>CC=O",
-        # A dot-joined side is one multi-component reaction, not two reactions —
-        # it is embedded whole, so it must not be refused.
-        "CCO.O>>CC(=O)O",
-        # Pasted out of a paper, trailing newline and all.
-        "  CCO>>CC=O \n",
-    ],
-    ids=["one-molecule-a-side", "dot-joined-multi-component", "padded-with-whitespace"],
-)
-def test_validate_reaction_smiles_accepts_a_usable_reaction(smiles):
-    """A parseable substrate and product either side of ``>>`` is usable."""
-    assert validate_reaction_smiles(smiles) is None
-
-
-@pytest.mark.parametrize(
-    ("smiles", "expected_fragment"),
-    [
-        # ``None`` as the fragment means any message will do — for these cases the
-        # point is only that the string is refused, not how the refusal is worded.
-        ("", None),
-        ("   ", None),
-        (None, None),
-        ("CCO", "'>>'"),
-        (">>CCO", None),
-        ("CCO>>", None),
-        # RDKit returns None rather than raising on these, so the check is easy to
-        # lose; the message has to name the side the user must fix.
-        ("XYZ>>CCO", "substrate"),
-        ("CCO>>XYZ", "product"),
-    ],
-    ids=[
-        "empty",
-        "whitespace-only",
-        "not-a-string",
-        "no-arrow",
-        "no-substrate",
-        "no-product",
-        "unparseable-substrate",
-        "unparseable-product",
-    ],
-)
-def test_validate_reaction_smiles_rejects_what_cannot_be_encoded(smiles, expected_fragment):
-    """Every unusable string comes back as a message — never ``None``, never an exception.
-
-    Encoding takes about ten seconds inside the worker, so a typo caught here
-    saves a job that would otherwise fail a minute later, deep inside UniMol.
-    """
-    message = validate_reaction_smiles(smiles)
-
-    assert isinstance(message, str) and message.strip(), "An unusable reaction must be reported, not accepted"
-    if expected_fragment:
-        assert expected_fragment in message
-
-
-@pytest.mark.parametrize(
-    "smiles",
-    [example["value"] for example in EXAMPLE_REACTIONS],
-    ids=[example["label"].split()[0] for example in EXAMPLE_REACTIONS],
-)
-def test_every_example_reaction_offered_in_the_modal_is_accepted(smiles):
-    """An example the modal hands the user must not be refused when they submit it.
-
-    Read out of ``EXAMPLE_REACTIONS`` rather than listed here, so a newly added
-    example is checked the moment it appears in the dropdown.
-    """
-    assert validate_reaction_smiles(smiles) is None
-
-
 # ── Compute — encoding the reaction ──────────────────────────────────────────
 
 
@@ -645,7 +558,7 @@ def test_encode_reaction_returns_one_flat_vector_per_column_the_step_reads(stub_
     vector per cell.
     """
     smiles = "CCO>>CC=O"
-    substrate, product = _split_reaction(smiles)
+    substrate, product = split_reaction(smiles)
 
     vectors = _encode_reaction(smiles)
 
@@ -817,3 +730,73 @@ def test_populate_example_reaction_raises_prevent_update(empty_value):
     """Clearing the example dropdown must leave every field alone."""
     with pytest.raises(PreventUpdate):
         populate_example_reaction(empty_value)
+
+
+# ── Validate form ────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("task_name", "smiles", "databases", "expected_disabled", "expected_invalid"),
+    [
+        ("My Task", DEHP_MEHP_SMILES, ["db.pkl"], False, False),
+        ("", DEHP_MEHP_SMILES, ["db.pkl"], True, False),
+        ("My Task", "", ["db.pkl"], True, False),
+        ("My Task", DEHP_MEHP_SMILES, [], True, False),
+        ("   ", "   ", ["db.pkl"], True, False),
+        (None, None, None, True, False),
+        # An unusable reaction disables Run *and* marks the field, which an absent
+        # one deliberately does not — a blank form is not yet a mistake.
+        ("My Task", "XYZ>>CCO", ["db.pkl"], True, True),
+        ("My Task", "CCO", ["db.pkl"], True, True),
+    ],
+    ids=[
+        "all-valid",
+        "missing-name",
+        "missing-smiles",
+        "no-databases",
+        "whitespace-only",
+        "all-none",
+        "unparseable-substrate",
+        "no-arrow",
+    ],
+)
+def test_validate_funce_form(task_name, smiles, databases, expected_disabled, expected_invalid):
+    """Run must be disabled unless the form is complete *and* the reaction parses.
+
+    Encoding takes about a minute in the worker, so the button is the cheapest
+    place to stop a typo — the user never gets as far as clicking it.
+    """
+    disabled, invalid, message = validate_funce_form(task_name, smiles, databases)
+
+    assert disabled is expected_disabled
+    assert invalid is expected_invalid
+    # The message and the red border go together: a marked field always says why.
+    assert bool(message) is expected_invalid
+
+
+# ── Submit job ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "smiles",
+    ["", "   ", "XYZ>>CCO", "CCO", ">>"],
+    ids=["empty", "whitespace-only", "unparseable-substrate", "no-arrow", "arrow-only"],
+)
+def test_submit_returns_error_when_smiles_invalid(smiles):
+    """A bad reaction must be reported in the modal, not handed to the scheduler.
+
+    The disabled Run button is client-side only, so this is the check that
+    actually stops a crafted request from starting a minute-long encode that
+    would die inside UniMol.
+    """
+    mock_scheduler = MagicMock()
+
+    with (
+        patch("enzyme_tk_app.app.tools.funce.callbacks.ctx") as mock_ctx,
+        patch("enzyme_tk_app.app.tools.funce.callbacks.get_task_scheduler", return_value=mock_scheduler),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10)
+
+    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    mock_scheduler.submit_job.assert_not_called()

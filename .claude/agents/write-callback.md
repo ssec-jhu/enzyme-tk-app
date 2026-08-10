@@ -82,14 +82,43 @@ def submit_job(submit_clicks, launch_clicks, ...):
 
 ### 4. Submit Callbacks Re-Validate Everything Server-Side
 
-**The `validate_*` callback checks presence, not validity, and carries no
-`prevent_initial_call`** — it must fire at page load so the Run button starts *disabled* on an
-empty form. Validity is the browser's job for anything it can express: `dbc.Input(type="number",
-min=1, max=300)` makes the browser mark an out-of-range entry invalid and **Dash then passes
-`None` to the callback**, so typing `0` or `500` disables the button through the plain
-presence check and never reaches the submit callback's range message at all. Test presence with
-`value is not None` rather than `bool(value)` — a bare `0` is present, just out of range — and
-leave the range message where it is: it is the server-side backstop below, not UI feedback.
+**The `validate_*` callback checks presence, and carries no `prevent_initial_call`** — it
+must fire at page load so the Run button starts *disabled* on an empty form. Validity is the
+browser's job for anything it can express: `dbc.Input(type="number", min=1, max=300)` makes the
+browser mark an out-of-range entry invalid and **Dash then passes `None` to the callback**, so
+typing `0` or `500` disables the button through the plain presence check and never reaches the
+submit callback's range message at all. Test presence with `value is not None` rather than
+`bool(value)` — a bare `0` is present, just out of range — and leave the range message where it
+is: it is the server-side backstop below, not UI feedback.
+
+**A SMILES field is the exception: the browser cannot express "is this a molecule", so
+`validate_*` runs the real validator and marks the field.** The callback gains two outputs
+beside `disabled` — the textarea's `invalid` and the `dbc.FormFeedback`'s `children` — and a
+present-but-unparseable structure disables Run *and* turns the field red with the reason
+underneath. A **blank** field still only disables Run: an empty form is not yet a mistake, so it
+must not be marked. All three SMILES tools share the shape:
+
+```python
+@callback(
+    Output(f"id-btn-{TOOL_DEF['slug']}-submit", "disabled"),
+    Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "invalid"),
+    Output(f"id-feedback-{TOOL_DEF['slug']}-smiles", "children"),
+    ...,
+)
+def validate_reaction_form(task_name, smiles, selected_databases, selected_algorithms):
+    smiles_error = validate_reaction_smiles(smiles)
+    # A blank field is not a mistake yet — it disables Run without turning red.
+    show_error = bool(smiles and smiles.strip() and smiles_error)
+    disabled = not (task_name and task_name.strip() and not smiles_error and selected_databases)
+    return disabled, show_error, smiles_error if show_error else ""
+```
+
+**The textarea must carry `debounce=300`** (`create-modal` §6) — a *number* of milliseconds, so the
+value is sent once the user stops typing. Validating on every keystroke puts several round-trips in
+flight at once and the field ends up showing whichever verdict landed last: reproducibly, an
+earlier keystroke's, so a corrected structure stays marked invalid until something else fires the
+callback. `debounce=True` is not the fix — it defers to blur and can leave Run disabled under a
+click that arrives first. `test_every_smiles_field_debounces` in `tests/test_tools.py` pins it.
 
 The client-side `validate_*` callback only disables the submit button — a crafted request
 still reaches the submit callback with whatever payload it likes. **Every** `submit_*`
@@ -138,15 +167,21 @@ modal, since the app installs no Dash `on_error` handler.
 
 `validate_db_names` already reports an empty selection, so do not also test `not databases`
 in the `PreventUpdate` guard above — that would swallow the message the user should see. This
-applies to every message-returning validator that handles its own empty case:
-`funce/callbacks.py` calls `validate_reaction_smiles(smiles)` the same way, so its
-`PreventUpdate` guard tests only the task name and deliberately leaves the SMILES alone.
+applies to every message-returning validator that handles its own empty case: all three SMILES
+tools call `validate_reaction_smiles(smiles)` / `validate_smiles(smiles)` the same way, so their
+`PreventUpdate` guards test only the task name (and algorithms/role) and deliberately leave the
+SMILES alone.
 
-A validator may live in the tool's own `compute.py` when the rule is the tool's rather than
-shared — `validate_reaction_smiles` does, so the submit callback and `run()` cannot drift on
-what "valid" means. Importing it into `callbacks.py` at module scope is safe **only** because
-`compute.py` keeps its heavy imports (enzymetk, torch, rdkit) function-local; a module-level
-heavy import there would load them into the web process on every boot.
+**A structure is validated in three places, and all three are load-bearing.** The form callback
+gates the Run button, the submit callback repeats the check because the client gate is
+bypassable, and `run()` repeats it again because a replayed job never touches the modal. They
+share one definition of "valid" — `utils/smiles_validation.py` — so they cannot drift.
+
+Importing that module into `callbacks.py` at module scope is safe **only** because it imports
+rdkit inside its functions; a module-level heavy import there would load rdkit into the web
+process on every boot. The same discipline is what lets `utils/smiles_rendering.py` be imported
+anywhere. (Do not put a shared validator in a tool's `compute.py` — `validate_reaction_smiles`
+lived in `funce/compute.py` until Reaction Similarity needed it too.)
 
 ### 5. Naming & Placement
 

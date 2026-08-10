@@ -162,6 +162,14 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **Controls:** Attach the `themed-control` class to all interactable input components (e.g. `dbc.Input`, `dcc.Dropdown`, `dbc.RadioItems`). This ensures they hook correctly into the custom CSS themes or Dash 4.0 Checkbox UI structures.
 - **Row layout:** Use `dbc.Row([dbc.Col(label, width=3), dbc.Col(control, width=9)], className="mb-2", align="center")` for label ↔ control alignment.
 - **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the `write-css` subagent for banner/section-comment style and 4-space indentation.
+- **A SMILES `dbc.Textarea` gets `debounce=300`** — a *number* of milliseconds, never `True`. Validating on every keystroke puts several callback round-trips in flight at once and the field ends up showing whichever verdict landed last, so a corrected structure stays marked invalid; `True` would defer to blur and strand Run disabled under a click. See `write-callback` §4.
+- **A SMILES field carries a `dbc.FormFeedback` directly after its `dbc.Textarea`**, inside the same `dbc.Col`:
+
+  ```python
+  (dbc.FormFeedback(id=f"id-feedback-{TOOL_DEF['slug']}-smiles", type="invalid"),)
+  ```
+
+  **The position is load-bearing, not cosmetic.** Bootstrap reveals the message with `.is-invalid ~ .invalid-feedback`, a *following-sibling* selector, so a feedback placed before the textarea — or nested one level deeper, e.g. inside the "Try an example" `html.Div` — silently never shows. The `validate_*` callback writes its `children` and flips the textarea's `invalid` (see `write-callback` §4); `07-modals.css` restates the red border because `.modal-body .themed-control` ties Bootstrap's `.form-control.is-invalid` on specificity and wins on source order.
 
 ## 7. Required vs Default Sections
 - **Section 1: Input Data:** *Task Name* is the **first row**, then the required identifiers (SMILES, sequence, file upload, a plain number — whatever the tool takes) with their Demo Examples nested under the input each one fills. Every tool has the Task Name row and every tool has it first; it is required — `validate_*` keeps the Run button disabled until it has a value (see `write-callback` §4) — and it is what labels the job in the My Tasks table and on the results page.

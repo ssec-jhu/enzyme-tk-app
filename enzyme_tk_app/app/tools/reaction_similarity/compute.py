@@ -18,6 +18,7 @@ from enzyme_tk_app.app.utils.data_loading import (
     load_and_clean_data,
 )
 from enzyme_tk_app.app.utils.formatting import round_column_values
+from enzyme_tk_app.app.utils.smiles_validation import validate_reaction_smiles
 
 
 def run(params: dict) -> dict:
@@ -69,6 +70,14 @@ def run(params: dict) -> dict:
 
     if not databases:
         raise ValueError("At least one database must be selected.")
+
+    # The modal validates too, but a replayed job reaches this function directly —
+    # and ReactionDist reads the query as SMARTS, so an unusable string like ">>"
+    # would otherwise score every row against a degenerate fingerprint and finish
+    # as a success.
+    invalid = validate_reaction_smiles(query_smiles_string)
+    if invalid:
+        raise ValueError(invalid)
 
     run_time_start = time.monotonic()
 

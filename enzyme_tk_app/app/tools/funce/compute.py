@@ -24,6 +24,7 @@ import pandas as pd
 
 from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR, UNIMOL_WEIGHTS_DIR
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
+from enzyme_tk_app.app.utils.smiles_validation import split_reaction, validate_reaction_smiles
 
 # Reaction-side embedding columns the Funce step reads — enzymetk's own
 # defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_encode_reaction``
@@ -171,51 +172,6 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
     return pd.concat(frames, ignore_index=True), skipped
 
 
-def _split_reaction(smiles: str) -> tuple[str, str]:
-    """Split a reaction SMILES into ``(substrate, product)`` on ``>>``.
-
-    The product is the *last* segment, so a multi-arrow string like ``A>>B>>C``
-    yields ``(A, C)``.  Each side may be dot-joined (``A.B>>C``); it is embedded
-    whole, exactly as the reference example does.
-    """
-    parts = smiles.strip().split(">>")
-    return parts[0].strip(), parts[-1].strip()
-
-
-def validate_reaction_smiles(smiles: object) -> str | None:
-    """Return an error message for an unusable reaction SMILES, or ``None``.
-
-    Message-or-``None`` matches ``validate_db_names`` and ``validate_top_n``, so the
-    modal callback and :func:`run` can share one definition of "valid".  The string
-    is typed by the user and encoding is slow, so a typo rejected here saves a
-    minute-long job that would otherwise die deep inside UniMol.
-
-    Args:
-        smiles: The reaction SMILES from the modal.
-
-    Returns:
-        A human-readable error message, or ``None`` when *smiles* is usable.
-    """
-    from rdkit.Chem import MolFromSmiles  # noqa: PLC0415
-
-    if not isinstance(smiles, str) or not smiles.strip():
-        return "Enter a reaction SMILES."
-
-    if ">>" not in smiles:
-        return "Reaction SMILES must separate substrate from product with '>>'."
-
-    substrate, product = _split_reaction(smiles)
-    if not substrate or not product:
-        return "Reaction SMILES needs a substrate before '>>' and a product after it."
-
-    # RDKit returns None rather than raising on an unparseable molecule.
-    for label, side in (("substrate", substrate), ("product", product)):
-        if MolFromSmiles(side) is None:
-            return f"The {label} is not a valid SMILES: {side}"
-
-    return None
-
-
 @contextmanager
 def _allow_forking():
     """Let a step fork worker processes while inside Celery's prefork pool.
@@ -271,7 +227,7 @@ def _encode_reaction(smiles: str) -> dict:
     from enzymetk.embedchem_rxnfp_step import RxnFP  # noqa: PLC0415
     from enzymetk.embedchem_unimol_step import UniMol  # noqa: PLC0415
 
-    substrate, product = _split_reaction(smiles)
+    substrate, product = split_reaction(smiles)
 
     # RxnFP round-trips the frame through to_csv/read_csv in a subprocess, so it must
     # see no array columns — hence this bare one-row frame, before anything is merged.

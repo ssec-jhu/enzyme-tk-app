@@ -17,6 +17,10 @@ from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_react
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
+# Safe at module scope: smiles_validation imports rdkit inside its functions, so
+# nothing heavy loads until the user actually types into the SMILES field.
+from enzyme_tk_app.app.utils.smiles_validation import validate_reaction_smiles
+
 # Build lookup dict: example SMILES (the dropdown value) -> task name.
 _TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in _get_example_reactions()}
 
@@ -75,16 +79,21 @@ def populate_example_reaction(example_value):
 
 @callback(
     Output(f"id-btn-{TOOL_DEF['slug']}-submit", "disabled"),
+    Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "invalid"),
+    Output(f"id-feedback-{TOOL_DEF['slug']}-smiles", "children"),
     Input(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
 )
 def validate_reaction_form(task_name, smiles, selected_databases, selected_algorithms):
-    """Enable/disable the submit button based on form validation.
+    """Enable/disable the submit button and mark an unusable reaction SMILES.
 
-    Requires a non-empty task name, SMILES string, at least one
-    selected database, and at least one selected algorithm.
+    Requires a non-empty task name, a reaction SMILES that actually parses, at
+    least one selected database, and at least one selected algorithm.  The
+    structure is checked here, not just on submit, because ``ReactionDist``
+    reads the query as SMARTS and scores nonsense like ``">>"`` without
+    complaint — see ``utils.smiles_validation``.
 
     Args:
         task_name: The task name input value.
@@ -93,15 +102,18 @@ def validate_reaction_form(task_name, smiles, selected_databases, selected_algor
         selected_algorithms: List of selected algorithm values.
 
     Returns:
-        Boolean indicating whether submit should be disabled.
+        Tuple of (submit disabled, textarea invalid, feedback message).
     """
+    smiles_error = validate_reaction_smiles(smiles)
+    # A blank field is not a mistake yet — it disables Run without turning red.
+    show_error = bool(smiles and smiles.strip() and smiles_error)
+
     has_name = task_name and task_name.strip()
-    has_smiles = smiles and smiles.strip()
     has_databases = selected_databases and len(selected_databases) > 0
     has_algorithms = selected_algorithms and len(selected_algorithms) > 0
-    if has_name and has_smiles and has_databases and has_algorithms:
-        return False
-    return True
+    disabled = not (has_name and not smiles_error and has_databases and has_algorithms)
+
+    return disabled, show_error, smiles_error if show_error else ""
 
 
 @callback(
@@ -143,8 +155,16 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
 
     # Server-side validation — the client disables the submit button when
     # fields are empty, but a crafted request could bypass that.
-    if not task_name or not task_name.strip() or not smiles or not smiles.strip() or not algorithms:
+    if not task_name or not task_name.strip() or not algorithms:
         raise PreventUpdate
+
+    # Reject a malformed reaction here rather than in the worker, where it either
+    # dies in a traceback or scores nonsense.  Reports the empty case itself, like
+    # validate_db_names, so the guard above must not test the SMILES and swallow
+    # that message.
+    error = validate_reaction_smiles(smiles)
+    if error:
+        return error
 
     # Database names become file paths on the backend.
     error = validate_db_names(databases, get_reaction_database_options())

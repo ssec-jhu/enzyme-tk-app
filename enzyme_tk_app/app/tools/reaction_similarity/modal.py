@@ -168,6 +168,20 @@ def modal():
                                                 rows=3,
                                                 className="themed-control",
                                                 style={"fontFamily": "monospace", "fontSize": "0.9rem"},
+                                                # Milliseconds, not True.  Validating every keystroke
+                                                # puts several round-trips in flight at once and the
+                                                # field ends up showing whichever verdict landed last
+                                                # — reproducibly, an earlier keystroke's.  True would
+                                                # defer to blur and strand Run disabled under a click.
+                                                debounce=300,
+                                            ),
+                                            # Why the reaction was rejected.  Bootstrap reveals it via
+                                            # `.is-invalid ~ .invalid-feedback`, so it must stay a
+                                            # sibling *after* the textarea; validate_reaction_form
+                                            # fills it and flips the textarea's `invalid`.
+                                            dbc.FormFeedback(
+                                                id=f"id-feedback-{TOOL_DEF['slug']}-smiles",
+                                                type="invalid",
                                             ),
                                             html.Div(
                                                 className="mt-1",

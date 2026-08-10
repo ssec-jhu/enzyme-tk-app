@@ -311,6 +311,92 @@ def test_every_example_prefills_a_task_name():
             assert task_name.strip(), f"{slug}: example '{label}' prefilled a blank Task Name"
 
 
+def _smiles_tools():
+    """Yield ``(slug, modal, callbacks module)`` for every tool that takes a structure.
+
+    A SMILES tool is one whose modal carries an ``id-textarea-<slug>-smiles``;
+    the sequence tools use ``-sequence``, so they are skipped and their protein
+    examples are never handed to a SMILES parser.
+    """
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        textareas = [t for t in find_components(modal, dbc.Textarea) if str(getattr(t, "id", "")).endswith("-smiles")]
+        if not textareas:
+            continue
+
+        yield slug, modal, importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+
+
+def test_every_smiles_field_is_validated():
+    """A tool that takes a structure must import a validator into its callbacks.
+
+    The Run button is only as good as the check behind it: without one, a typo
+    is accepted, submitted, and either dies in the worker or — for the reaction
+    tools, whose enzymetk step reads the query as SMARTS — comes back as a
+    successful job full of meaningless scores.  Walking the live modals means a
+    new SMILES tool is held to this the moment it appears.
+    """
+    checked = 0
+    for slug, _modal, module in _smiles_tools():
+        validator = getattr(module, "validate_reaction_smiles", None) or getattr(module, "validate_smiles", None)
+        assert validator is not None, (
+            f"{slug}: has a SMILES field but its callbacks.py imports no validator "
+            "from utils.smiles_validation — the Run button cannot be gating on it"
+        )
+        checked += 1
+
+    assert checked, "No SMILES tool was found — the id-textarea-<slug>-smiles convention must have changed"
+
+
+def test_every_smiles_field_debounces():
+    """A SMILES textarea must send its value on a pause, not on every keystroke.
+
+    Validating per keystroke puts several callback round-trips in flight at once,
+    and the field ends up showing whichever verdict landed last — reproducibly, an
+    earlier keystroke's, so a corrected structure stays marked invalid.  The value
+    must be a **number** of milliseconds: ``True`` would defer to blur and leave
+    Run disabled under a click that arrives first.
+
+    A unit test cannot catch the race itself; it can stop the fix being removed.
+    """
+    checked = 0
+    for slug, modal, _module in _smiles_tools():
+        for textarea in find_components(modal, dbc.Textarea):
+            if not str(getattr(textarea, "id", "")).endswith("-smiles"):
+                continue
+            debounce = getattr(textarea, "debounce", None)
+            assert isinstance(debounce, int | float) and not isinstance(debounce, bool), (
+                f"{slug}: SMILES textarea has debounce={debounce!r}; it must be a number of "
+                "milliseconds so a burst of keystrokes cannot strand an earlier verdict"
+            )
+            assert debounce > 0
+            checked += 1
+
+    assert checked, "No SMILES textarea was found — the id-textarea-<slug>-smiles convention must have changed"
+
+
+def test_every_example_smiles_passes_its_own_tools_validator():
+    """An example the modal offers must survive the gate that tool puts on Run.
+
+    Read off the live dropdowns and through the tool's own
+    ``populate_example_*`` callback — which returns the SMILES first — so an
+    example is checked exactly as the user's click delivers it.  Otherwise a
+    shipped example could leave Run disabled with no way to tell why.
+    """
+    for slug, modal, module in _smiles_tools():
+        validator = getattr(module, "validate_reaction_smiles", None) or getattr(module, "validate_smiles", None)
+        dropdowns = [d for d in find_components(modal, dcc.Dropdown) if str(getattr(d, "id", "")).endswith("-example")]
+        if not dropdowns:
+            continue  # Tool ships no examples.
+
+        populate = next(fn for name, fn in vars(module).items() if name.startswith("populate_example"))
+
+        for option in dropdowns[0].options:
+            smiles = populate(option["value"])[0]
+            message = validator(smiles)
+            assert message is None, f"{slug}: example '{option['label']}' is rejected by its own validator: {message}"
+
+
 # ---------------------------------------------------------------------------
 # Regression guards — protect against common mistakes
 # ---------------------------------------------------------------------------

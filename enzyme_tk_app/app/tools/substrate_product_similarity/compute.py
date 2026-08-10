@@ -33,6 +33,7 @@ from enzyme_tk_app.app.utils.data_loading import (
 )
 from enzyme_tk_app.app.utils.formatting import round_column_values
 from enzyme_tk_app.app.utils.smiles_rendering import generate_cached_svg_uris, smiles_to_svg_data_uri
+from enzyme_tk_app.app.utils.smiles_validation import validate_smiles
 
 # Temporary column name used as the join key for SubstrateDist.
 _ROW_ID = "_row_id"
@@ -143,6 +144,13 @@ def run(params: dict) -> dict:
     if not databases:
         raise ValueError("At least one database must be selected.")
 
+    # The modal validates too, but a replayed job reaches this function directly —
+    # and an unparseable query reaches mfpgen.GetFingerprint(None) inside
+    # SubstrateDist, which raises a C++ signature dump rather than a message.
+    invalid = validate_smiles(smiles)
+    if invalid:
+        raise ValueError(invalid)
+
     # Start a timer to measure total run time of the function.
     run_time_start = time.monotonic()
 
@@ -200,8 +208,8 @@ def run(params: dict) -> dict:
             smiles_column_name=COL_MOL_SMILES,
             smiles_string=smiles,
         )
-        # This may raise an exception if the input SMILES is invalid or
-        # if enzymetk encounters an error.
+        # The query already passed validate_smiles above; anything raised here is
+        # enzymetk's own failure and propagates to run_tool_task as a traceback.
         result_df = sd.execute(sim_input)
 
         # Join EnzymeTK output back to expanded metadata.

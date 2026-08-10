@@ -13,12 +13,12 @@ from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
-
-# Safe at module scope: compute.py's own imports are all light — the enzymetk,
-# torch and rdkit ones are function-local.
-from enzyme_tk_app.app.tools.funce.compute import validate_reaction_smiles
 from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+
+# Safe at module scope: smiles_validation imports rdkit inside its functions, so
+# nothing heavy loads until the user actually types into the SMILES field.
+from enzyme_tk_app.app.utils.smiles_validation import validate_reaction_smiles
 
 # Build lookup dict: example SMILES (the dropdown value) -> task name.
 _TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in EXAMPLE_REACTIONS}
@@ -78,15 +78,18 @@ def populate_example_reaction(example_value):
 
 @callback(
     Output(f"id-btn-{TOOL_DEF['slug']}-submit", "disabled"),
+    Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "invalid"),
+    Output(f"id-feedback-{TOOL_DEF['slug']}-smiles", "children"),
     Input(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
 )
 def validate_funce_form(task_name, smiles, databases):
-    """Enable/disable the submit button based on form validation.
+    """Enable/disable the submit button and mark an unusable reaction SMILES.
 
-    Requires a non-empty task name, reaction SMILES, and at least one
-    selected protein database.
+    Requires a non-empty task name, a reaction SMILES that actually parses, and
+    at least one selected protein database.  Rejecting the structure here rather
+    than on submit spares the user a minute-long job that would die inside UniMol.
 
     Args:
         task_name: The task name input value.
@@ -94,14 +97,17 @@ def validate_funce_form(task_name, smiles, databases):
         databases: List of selected database filenames.
 
     Returns:
-        Boolean indicating whether submit should be disabled.
+        Tuple of (submit disabled, textarea invalid, feedback message).
     """
+    smiles_error = validate_reaction_smiles(smiles)
+    # A blank field is not a mistake yet — it disables Run without turning red.
+    show_error = bool(smiles and smiles.strip() and smiles_error)
+
     has_name = task_name and task_name.strip()
-    has_smiles = smiles and smiles.strip()
     has_databases = databases and len(databases) > 0
-    if has_name and has_smiles and has_databases:
-        return False
-    return True
+    disabled = not (has_name and not smiles_error and has_databases)
+
+    return disabled, show_error, smiles_error if show_error else ""
 
 
 @callback(

@@ -104,6 +104,25 @@ own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
    would surface as an HTTP 500 on `/_dash-update-component` (the app installs no Dash
    `on_error` handler).
    Names come from the browser and become filesystem paths — this is the trust boundary.
+2b. **A SMILES field gets the same treatment, from `utils/smiles_validation.py`.**
+   `validate_reaction_smiles(smiles)` for a reaction, `validate_smiles(smiles)` for a single
+   molecule — same message-or-`None` contract, so it sits next to the two calls above and
+   reads identically:
+   ```python
+   from enzyme_tk_app.app.utils.smiles_validation import validate_reaction_smiles
+
+   error = validate_reaction_smiles(smiles)
+   if error:
+       return error
+   ```
+   Unlike a database name, a structure is checked in **three** places, and all three matter:
+   the `validate_*` form callback (gates the Run button and marks the field — `create-modal`
+   §6, `write-callback` §4), the submit callback above, and the top of `run()` (a replayed job
+   never touches the modal). Never write a per-tool SMILES check: the validators are
+   deliberately stricter than the parsers downstream, because `enzymetk`'s `ReactionDist`
+   reads the query as SMARTS and would otherwise score `">>"` against every row and call it a
+   success. Since the validator handles its own empty case, the `PreventUpdate` guard above
+   must **not** also test the SMILES — that would swallow its message.
 3. **`params["databases"]` is a `list[str]`.** Never a `"database"` string key.
 4. **Merge, do not loop-and-append per database.** Load each selection, tag its rows with
    the `database` column (`COL_DATABASE` from `utils.columns`, value `csv_path.name` —
