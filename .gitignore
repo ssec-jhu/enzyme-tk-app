@@ -168,6 +168,10 @@ cython_debug/
 # File system
 .DS_Store
 
+# Standalone enzyme DB builder: generated DB + embeddings pickle + downloaded weights.
+# The glob also catches Finder-style duplicates ("output copy"), which hold gigabytes of
+# model weights and would otherwise be staged by `git add -A`.
+/scripts/db_build/output*/
 # Standalone foldseek DB builder: generated DB + downloaded ProstT5 weights
 /scripts/foldseek_db_build/output/
 # App data: large downloaded/generated sets — ignore all except the sample structures/
