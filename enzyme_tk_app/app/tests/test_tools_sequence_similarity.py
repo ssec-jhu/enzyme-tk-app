@@ -671,11 +671,18 @@ def test_run_expected_column_present(column):
 @_skip_no_diamond
 @pytest.mark.parametrize(
     "column",
-    [COL_QUERY, COL_ENTRY, COL_RESIDUE_0INDEX],
-    ids=["query", "entry", "residue-0index"],
+    [COL_QUERY, COL_ENTRY],
+    ids=["query", "entry"],
 )
 def test_run_internal_column_stripped(column):
-    """Internal columns must not leak into the consumer-facing output."""
+    """Only the join artifacts are stripped — everything else is database metadata.
+
+    ``Residue_0index`` is deliberately absent from this list.  It was dropped by
+    name until the database refactor, which made every non-required column ride
+    through into the grid (``AGENTS.md`` → "Adding a New Tool"); it now has its own
+    column def in ``results.py``, and
+    ``test_run_mocked_blast_keeps_all_database_metadata`` asserts it survives.
+    """
     from enzyme_tk_app.app.tools.sequence_similarity.compute import run
 
     result = run(_default_params())

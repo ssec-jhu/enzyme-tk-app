@@ -51,7 +51,7 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.tests.conftest import find_components, make_job
-from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, TOOL_DEF
+from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, EXAMPLE_REACTIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.funce.callbacks import (
     populate_example_reaction,
     submit_funce_job,
@@ -704,6 +704,35 @@ def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_d
     # Dropping embeddings must not take the provenance column with it.
     assert COL_DATABASE in columns
     assert isinstance(json.dumps(result), str)
+
+
+# ── Example reactions ────────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    "example",
+    EXAMPLE_REACTIONS,
+    ids=[example["task_name"] for example in EXAMPLE_REACTIONS],
+)
+def test_every_example_reaction_has_one_molecule_per_side(example):
+    """Each side of a shipped example must be a single molecule, never dot-joined.
+
+    ``compute._encode_reaction`` splits the reaction on ``>>`` and hands each
+    *whole* side to UniMol as one molecule to build a 3D conformer from, so a
+    dot-joined side is embedded as one nonsense structure.  It does not fail
+    loudly either: unimol_tools runs in ``mode='fast'``, where a failed
+    ``AllChem.EmbedMolecule`` silently falls back to ``Compute2DCoords`` — and
+    Func-E returns a complete, successful-looking ranking built on a meaningless
+    vector.  The constraint is Func-E's alone; tools such as Reaction Similarity
+    use dot-joined sides freely because RDKit fingerprints do not care.
+    """
+    substrate, product = split_reaction(example["value"])
+
+    for side_name, side in [("substrate", substrate), ("product", product)]:
+        assert "." not in side, (
+            f"Example '{example['task_name']}' has a dot-joined {side_name} ({side}) — "
+            f"UniMol would embed those molecules as one structure"
+        )
 
 
 # ── Populate example ─────────────────────────────────────────────────────────

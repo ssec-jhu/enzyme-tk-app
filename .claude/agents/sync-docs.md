@@ -40,6 +40,7 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
 | admin login / session token / secret key | defer to `admin-page` (owns `docs/admin-login.md`) |
 | a `.claude/agents/*.md` (non-`gsd-*`) **added** | create the matching symlink: `ln -s ../../.claude/agents/<name>.md .github/agents/<name>.agent.md` |
 | a `.claude/agents/*.md` (non-`gsd-*`) **removed** | delete the dangling `.github/agents/<name>.agent.md` symlink (edits need nothing — the link auto-reflects) |
+| a `.claude/skills/*/SKILL.md` **added or removed** | nothing to symlink (Copilot has no skills), but the skill is tracked: add/remove its bullet in `AGENTS.md` → Agents and its routing line in Formatting & Linting |
 
 ## Workflow
 
@@ -57,10 +58,11 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
 4. **Copilot agents**: `.github/agents/*.agent.md` are symlinks to the `.claude/agents/*.md`
    sources, so edits need nothing. Only when an agent is **added** create its symlink
    (`ln -s ../../.claude/agents/<name>.md .github/agents/<name>.agent.md`), or when one is
-   **removed** delete the dangling link.
+   **removed** delete the dangling link. Skills have no Copilot counterpart and no link.
 5. **Gitignore hygiene**: confirm the shared files are tracked, not ignored — `AGENTS.md`,
-   `CLAUDE.md`, `docs/`, and `.claude/agents/*.md` (except `gsd-*`). Local/session files
-   (`.claude/settings.local.json`, `.claude/worktrees/`, `.planning/`) stay ignored.
+   `CLAUDE.md`, `docs/`, `.claude/agents/*.md` (except `gsd-*`), and `.claude/skills/*/`.
+   Local/session files (`.claude/settings.local.json`, `.claude/worktrees/`, `.planning/`)
+   stay ignored.
 6. **Flag new-doc needs**: if the change introduces a concept with no doc home — a new
    service, subsystem, operational procedure, or a wired-up feature (e.g. a "Redis memory
    alert" banner) — recommend a specific new `.md` and say where (e.g. a new

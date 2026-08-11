@@ -178,10 +178,13 @@ cython_debug/
 /enzyme_tk_app/app/data/*
 !/enzyme_tk_app/app/data/structures/
 
-# .claude/ is local tooling (GSD, settings, worktrees); track only the project agent sources
+# .claude/ is local tooling (GSD, settings, worktrees); track only the project
+# agent sources and skills — AGENTS.md documents both as project conventions, so
+# a clone without them would follow instructions pointing at files it doesn't have.
 /.claude/*
 !/.claude/agents/
 /.claude/agents/gsd-*.md
+!/.claude/skills/
 
 # .planning/ is GSD's local working directory (roadmaps, codebase maps, reviews) — regenerated, not shared
 /.planning/
