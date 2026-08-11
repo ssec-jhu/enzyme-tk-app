@@ -17,6 +17,14 @@ param location string = resourceGroup().location
 @description('Base name used to derive resource names')
 param appName string = 'enzyme-tk'
 
+// Container Apps only cuts a new revision when the template section
+// (image, env, resources, scale, volumes) changes — a secret *value* change
+// alone (e.g. rotating REDIS_URL) doesn't, so already-running replicas keep
+// stale env vars. utcNow() as a param default re-evaluates on every deploy
+// (unless overridden), forcing revisionSuffix to differ and guaranteeing a
+// fresh revision — and thus a real restart — every time.
+param deployId string = utcNow('yyyyMMddHHmmss')
+
 @description('GHCR image path as "<owner>/<repo>" — matches the github.repository value ci.yml publishes under')
 param imageRepository string = 'ssec-jhu/enzyme-tk-app'
 
@@ -141,8 +149,9 @@ resource appDataStorage 'Microsoft.App/managedEnvironments/storages@2024-03-01' 
 
 // ── Azure Cache for Redis — replaces the `redis` compose service ──
 // Broker + result backend for Celery, matching REDIS_URL's dual role
-// in celery_app.py. TLS-only (port 6380); no code change needed since
-// kombu/redis-py handle the `rediss://` scheme natively.
+// in celery_app.py. TLS-only (port 6380); kombu/redis-py handle the
+// `rediss://` scheme natively, but celery's redis backend refuses to start
+// unless `ssl_cert_reqs` is present on the URL — see redisUrl below.
 resource redisCache 'Microsoft.Cache/redis@2023-08-01' = {
   name: '${appName}-redis'
   location: location
@@ -161,7 +170,14 @@ resource redisCache 'Microsoft.Cache/redis@2023-08-01' = {
   }
 }
 
-var redisUrl = 'rediss://:${redisCache.listKeys().primaryKey}@${redisCache.properties.hostName}:${redisCache.properties.sslPort}/0'
+// ssl_cert_reqs=required verifies Azure's cert against the trusted CA bundle
+// — the secure default (Azure Cache for Redis certs are always CA-signed).
+// Lowercase specifically: celery's redis backend (celery/backends/redis.py)
+// accepts both "required" and "CERT_REQUIRED", but the app's own direct
+// redis.Redis.from_url() calls (tasks.py, task_scheduler_celery.py) go
+// through redis-py's own URL parsing, which only recognizes the lowercase
+// form and raises RedisError on "CERT_REQUIRED".
+var redisUrl = 'rediss://:${redisCache.listKeys().primaryKey}@${redisCache.properties.hostName}:${redisCache.properties.sslPort}/0?ssl_cert_reqs=required'
 
 // ── shared building blocks for web + worker ────────────────────────
 var sharedEnv = [
@@ -207,6 +223,7 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
     template: {
+      revisionSuffix: deployId
       containers: [
         {
           name: 'web'
@@ -250,6 +267,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
       ]
     }
     template: {
+      revisionSuffix: deployId
       containers: [
         {
           name: 'worker'
@@ -287,6 +305,7 @@ resource beat 'Microsoft.App/containerApps@2024-03-01' = {
       ]
     }
     template: {
+      revisionSuffix: deployId
       containers: [
         {
           name: 'beat'
