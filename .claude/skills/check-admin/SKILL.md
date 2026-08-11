@@ -73,7 +73,7 @@ Measured, not assumed — both matter here.
   redeclaring it dies with `Identifier 'x' has already been declared`. **Wrap
   every snippet in an IIFE** (`(() => { ... })()`) and the problem disappears.
 - **Because it is the page's world, a plain `window.confirm = ...` assignment
-  works.** No `<script>` injection needed (§5).
+  works.** No `<script>` injection needed (§6).
 
 Two more limits worth knowing before you hit them:
 
@@ -258,56 +258,34 @@ default that refuses:
 Then click `id-btn-admin-clear` / `id-btn-admin-purge` in a later call and read
 `document.body.dataset.confirmMsg`. A non-empty message proves the callback ran
 and set `displayed=True`; returning `false` sends `cancel_n_clicks`, so
-**nothing is destroyed**. Assert `#id-div-admin-action-result` stays empty and
-the job count is unchanged.
+**nothing is destroyed**. Assert `#id-div-admin-action-result` is *unchanged*
+(it still holds the cancel message from above — not empty) and that both grid
+row counts are unchanged.
 
 **Never set `confirmAnswer` to `"ok"`.** Purge revokes every running task and
 `rmtree`s the shared volume — including jobs belonging to real users of the
 stack you are sharing Redis with. The dialogs are what this skill verifies; the
 actions themselves are covered by `test_admin.py`.
 
-## 6. Several users, submitting real jobs
-
-`simulate_users.py` (next to this file) creates N independent anonymous
-sessions and submits a real Timer Tool job from each — no seeded Redis rows:
-
-```bash
-python3 .claude/skills/check-admin/simulate_users.py --users 3 --isolation-check
-```
-
-Each user is one cookie jar getting its own `etk_session_id` from the real
-`before_request`/`after_request` pair; the jobs run on the real Celery worker.
-The three profiles produce SUCCESS, FAILURE, and a 280 s job still STARTED when
-you read the dashboard — that last one is the safe target for §5's cancel.
-`--isolation-check` additionally asserts each user's My Tasks poll returns
-their own job and none of the others'. Exit code is non-zero on any failure.
-
-Two things it deliberately does not do: N browser tabs share one cookie jar, so
-tabs are **not** users; and cross-session *refusal* (`_owns_job`) is already
-covered by `tests/test_backend_multisession.py` at the layer where it lives.
-
-**Inspect state through the app, not redis-cli.** A `docker compose exec` inside
-a `while read` loop swallows the piped stdin and you get one silent, wrong row:
-
-```bash
-docker compose exec -T web-check python -c "
-from enzyme_tk_app.app.backend import get_task_scheduler
-for j in get_task_scheduler().admin_list_all_jobs():
-    print(j.status.value, j.job_id[:8], j.tool_slug, (j.params or {}).get('task_name',''))
-"
-```
-
 ## 7. Idle expiry, then teardown
 
-The side-car's TTL is 20 s. The poll only slides the window while `/admin` is
-mounted, so `navigate` to `http://localhost:8051/`, wait ~26 s, and navigate
-back: `id-input-admin-token` must be present and `id-div-admin-stats` `null`.
+Run this **last** — it is the one step that deliberately kills your session.
+
+The window only slides while `/admin` is mounted (§3), so `navigate` to
+`http://localhost:8051/`, wait a little longer than the TTL **in a shell
+command** (`javascript_tool` aborts near 30 s), then navigate back:
+`id-input-admin-token` must be present and `id-div-admin-stats` `null`.
+
+If you raised `ETK_CHECK_ADMIN_SESSION_TTL_SECONDS` for §4–§6, either re-create
+the side-car at 20 s for this step or wait out whatever you set.
 
 Finish with `read_console_messages { onlyErrors: true }` (must be empty) and one
-screenshot of the unlocked dashboard.
+screenshot of the unlocked dashboard — log back in first if §7 just expired you.
 
 Teardown, in this order — delete only what the run created, through the app's
-own delete path so nothing is left inconsistent:
+own delete path so nothing is left inconsistent. **Both commands need the
+`ETK_CHECK_ADMIN_TOKEN` prefix**: the `:?` guard in the compose file fires on
+*every* command that loads it, including `rm`, and the value is irrelevant here:
 
 ```bash
 docker compose exec -T web-check python -c "
@@ -316,7 +294,9 @@ s = get_task_scheduler()
 mine = [j for j in s.admin_list_all_jobs() if (j.params or {}).get('task_name','').startswith('check-admin-')]
 print('deleted', sum(1 for j in mine if s.delete_job(j.job_id, j.session_id)), 'of', len(mine))
 "
-docker compose -f docker-compose.yml -f docker-compose.check-admin.yml rm -sf web-check
+ETK_CHECK_ADMIN_TOKEN=unused \
+  docker compose -f docker-compose.yml -f docker-compose.check-admin.yml rm -sf web-check
+rm -f /tmp/check-admin-token
 ```
 
 Then confirm the real app was never touched: `curl -s -o /dev/null -w '%{http_code}'

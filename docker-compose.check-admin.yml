@@ -1,0 +1,56 @@
+# docker-compose.check-admin.yml — side-car web container for the
+# `check-admin` skill (.claude/skills/check-admin/SKILL.md).
+#
+# Adds ONE extra service, `web-check`, on port 8051. It joins the running
+# stack rather than replacing any part of it:
+#
+#   - Your real `web` on 8050 is never stopped, recreated, or reconfigured.
+#     An interrupted check therefore cannot leave the app you actually use
+#     sitting on a throwaway admin token.
+#   - It shares the SAME redis and the SAME job-outputs volume, so the
+#     dashboard it serves shows your real jobs — which is what makes the
+#     "Expires In" column worth cross-checking against real Redis TTLs.
+#   - It takes a disposable admin token from ETK_CHECK_ADMIN_TOKEN, a name
+#     .env never defines, so .env is never read and no real secret can reach
+#     an agent transcript. See the note on that variable below — using the
+#     obvious name instead would quietly leak the production token.
+#
+# Usage — always with BOTH files, and always naming the service explicitly
+# so `up` does not also recreate `web`:
+#
+#   ETK_CHECK_ADMIN_TOKEN=$(openssl rand -hex 16) \
+#     docker compose -f docker-compose.yml -f docker-compose.check-admin.yml \
+#     up -d --build web-check
+#
+#   docker compose -f docker-compose.yml -f docker-compose.check-admin.yml \
+#     rm -sf web-check      # teardown
+#
+# ETK_SECRET_KEY is deliberately NOT overridden — it resolves from .env
+# unread, which is what keeps the signed session cookie valid.
+
+services:
+  web-check:
+    build: .
+    ports:
+      # 8050 belongs to the real web service; this one answers on 8051.
+      - "8051:8050"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - JOB_OUTPUTS_PATH=${JOB_OUTPUTS_PATH:-/job-outputs}
+      - ETK_DATA_DIR=/app-data
+      # Deliberately read from ETK_CHECK_ADMIN_TOKEN, NOT ETK_ADMIN_TOKEN.
+      # Compose substitutes from .env automatically, so `${ETK_ADMIN_TOKEN:?}`
+      # would be satisfied by the REAL token the moment someone forgets the
+      # shell override — and the check types whatever token it is given into a
+      # browser, putting it in the transcript for good. scripts/template.env
+      # never defines this name, so the guard below can only be satisfied
+      # deliberately, from the shell.
+      - ETK_ADMIN_TOKEN=${ETK_CHECK_ADMIN_TOKEN:?set a disposable token, e.g. ETK_CHECK_ADMIN_TOKEN=$(openssl rand -hex 16)}
+      - ETK_SECRET_KEY=${ETK_SECRET_KEY:-}
+      # Short enough that the idle-expiry step is testable in one sitting.
+      - ETK_ADMIN_SESSION_TTL_SECONDS=${ETK_CHECK_ADMIN_SESSION_TTL_SECONDS:-20}
+    volumes:
+      - job-outputs:/job-outputs
+      - ./enzyme_tk_app/app/data:/app-data:ro
+    depends_on:
+      - redis

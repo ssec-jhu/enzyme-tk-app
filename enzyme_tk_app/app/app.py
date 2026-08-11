@@ -60,11 +60,15 @@ server.config["SESSION_COOKIE_HTTPONLY"] = True
 # Lax is a safe default that prevents the browser from sending the cookie on
 # cross-site POST requests, which helps block CSRF attacks.
 server.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-# Secure: This setting ensures that the cookie is only sent over HTTPS connections.
-# It is safe to force this on because the app is always deployed behind a TLS-terminating reverse proxy.
-# In local development (without a proxy), the built-in server uses HTTP, but the admin token is unset
-# anyway so the cookie is never created.
-# Never send this cookie over an unencrypted connection.
+# Secure: only ever send the cookie over an encrypted connection.  This key governs
+# BOTH cookies — backend/session.py reads it for the anonymous etk_session_id cookie
+# too — and it is forced on unconditionally, so neither is ever sent in the clear.
+# Browsers treat http://localhost as a trustworthy origin and accept Secure cookies
+# there, which is the only reason local Docker works without TLS.  Serve the app over
+# plain HTTP on any other origin (a LAN IP, a bare hostname) and both cookies are
+# silently dropped: admin login appears to succeed but the dashboard never populates,
+# and every anonymous request mints a fresh session id.  Deploy behind a
+# TLS-terminating reverse proxy.
 server.config["SESSION_COOKIE_SECURE"] = True
 
 # Register anonymous session-cookie management so every request gets a

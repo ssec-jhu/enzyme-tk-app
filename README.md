@@ -24,8 +24,11 @@ A web application for protein engineering workflows, built with [Dash](https://d
 | **Timer Tool Template** | A demo tool for testing the job scheduling backend | — |
 
 > **Func-E encodes the query reaction in the worker.** Any valid reaction SMILES can be
-> scored: RxnFP fingerprints the reaction and UniMol embeds its substrate and product
-> (`compute._encode_reaction()` in `enzyme_tk_app/app/tools/funce/`). The **protein** side is
+> scored — no pre-encoded pair needed: RxnFP fingerprints the reaction and UniMol embeds its
+> substrate and product (`compute._encode_reaction()` in `enzyme_tk_app/app/tools/funce/`).
+> Write **one molecule per side of `>>`** and leave out the leaving groups: each side is
+> embedded as a single 3D structure, so a dot-joined side (`A.B`) is not rejected — it is
+> scored as one nonsense molecule. The **protein** side is
 > still encoded offline — Func-E ranks only proteins already present in a
 > `data/sequence_embeddings/` pickle. Encoding needs the UniMol checkpoint under
 > `data/unimol_weights/`; without it the tool card shows a **"Missing data"** badge (see
@@ -71,7 +74,10 @@ commit `.env`.** If the secrets are left unset, the admin login fails closed.
 
 ### Environment Variables
 
-All configuration is via environment variables, set in `docker-compose.yml` for both the `web` and `worker` services:
+All configuration is via environment variables, read by `enzyme_tk_app/app/backend/config.py`.
+`docker-compose.yml` sets them **per service**, not globally: `web` and `worker` share the runtime
+variables, `beat` takes only the sweep interval, and the three admin variables go to **`web` alone**
+— nothing the worker runs serves `/admin`. Anything compose leaves unset falls back to the default below.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -80,6 +86,16 @@ All configuration is via environment variables, set in `docker-compose.yml` for 
 | `JOB_OUTPUTS_PATH` | `/job-outputs` | Directory for offloaded result + log files (shared volume between web + worker) |
 | `CELERY_SWEEP_INTERVAL_SECONDS` | `86400` (24 h) | How often Celery beat sweeps orphaned output dirs (clamped to ≥ 1) |
 | `ETK_DATA_DIR` | `enzyme_tk_app/app/data` (compose sets `/app-data`) | Root of the read-only tool data mount; every data directory below derives from it (`enzyme_tk_app/app/paths.py`) |
+| `ETK_ADMIN_TOKEN` | *(empty)* | Login token for `/admin`. Empty means the login **fails closed** and the dashboard is unreachable. `web` only |
+| `ETK_SECRET_KEY` | *(empty)* | Signs the admin session cookie. Required whenever `ETK_ADMIN_TOKEN` is set — the app refuses to start otherwise. Unset with no token: a random per-process key, so admins are logged out on restart. `web` only |
+| `ETK_ADMIN_SESSION_TTL_SECONDS` | `300` (5 min) | Sliding idle window for an unlocked admin session. Every authenticated check slides it forward, including the dashboard's 10 s poll, so an open tab never expires. `web` only |
+
+Both session cookies are always sent with `Secure`, `HttpOnly`, and
+`SameSite=Lax` — `SESSION_COOKIE_SECURE` is not configurable. Browsers accept
+`Secure` cookies over `http://localhost`, which is why local Docker works
+without TLS; **serve the app over plain HTTP on any other host and both
+cookies are dropped**, so every request mints a new session and users stop
+seeing their own jobs. Deploy behind a TLS-terminating reverse proxy.
 
 ### Data Directories
 
