@@ -457,3 +457,24 @@ without a redeploy:
 ```bash
 az containerapp show -g enzyme-tk-rg -n enzyme-tk-web --query properties.configuration.ingress.fqdn -o tsv
 ```
+
+### Updating reference data files
+
+Bundled reference data (`data/sequences/`, `data/reactions/`, etc. — see
+[`paths.py`](../enzyme_tk_app/app/paths.py)) is served from the **`app-data`**
+Azure Files share, mounted read-only at `/app-data` on web and worker. Files
+must be uploaded directly to the share; they are not part of the container
+image. The local `data/<subdir>/` path maps to the same `<subdir>/` path on
+the share (e.g. `data/sequences/protein.csv` → `sequences/protein.csv`).
+
+To add or update a file via the Azure Portal:
+
+1. Go to the **`enzyme-tk-rg`** resource group → the storage account (kind
+   `FileStorage`, name like `st<random>`).
+2. **Data storage → File shares** → open **`app-data`**.
+3. If the target subdirectory (`sequences`, `reactions`, ...) doesn't exist
+   yet, click **+ Add directory** to create it.
+4. Open that directory → **Upload** → select the local file. Uploading a
+   file with the same name overwrites the existing one.
+
+No redeploy is needed — web and worker read the share live on each request.
