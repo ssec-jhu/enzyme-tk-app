@@ -1,35 +1,42 @@
-"""Tests for scripts/db_build/build_enzyme_db.py — the sequence reader and the resume arithmetic.
+"""Tests for build_enzyme_db.py — the sequence reader, the resume arithmetic, and where the
+two artifacts land.
 
-The script lives outside the package (it ships standalone, with its own Docker image), so it
-is loaded by path rather than imported. Nothing here touches torch, foldseek or the network:
-the heavy work sits behind lazy imports inside the two build functions, which these tests
-never call.
+The script ships standalone, with its own Docker image, so it is loaded by path rather than
+imported — see ``load_db_build_script`` in conftest, which also puts this directory on
+``sys.path`` so the script's ``from download_data import ...`` resolves.
+
+Nothing here touches torch, foldseek or the network. Both build functions are entered only as
+far as the branch that returns before any of that starts, and ``subprocess.run`` is replaced
+where even that could spawn something. pandas is used for real: the app depends on it anyway.
 """
 
 import gzip
-import importlib.util
-from pathlib import Path
 
+import pandas as pd
 import pytest
-
-SCRIPT_PATH = Path(__file__).parents[3] / "scripts" / "db_build" / "build_enzyme_db.py"
+from conftest import load_db_build_script
 
 HEADER = ("Entry", "Sequence")
 ROWS = [("A0A009IHW8", "MKKLLF"), ("A0A023I7E1", "MHSKFF")]
 
 
-def load_script():
-    """Load build_enzyme_db.py by path — it is a standalone script, not part of the package."""
-    spec = importlib.util.spec_from_file_location("build_enzyme_db", SCRIPT_PATH)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
 @pytest.fixture
-def script():
-    """A freshly loaded copy of the script, so config edits in one test cannot leak into another."""
-    return load_script()
+def script(db_build_environment):
+    """A freshly loaded copy of the script, so config edits in one test cannot leak into another.
+
+    ``db_build_environment`` keeps the load from leaving anything behind: importing this
+    script imports download_data, which sets HF_HOME in the process it is running in.
+    """
+    return load_db_build_script("build_enzyme_db")
+
+
+def never_run(command, **kwargs):
+    """Stand in for ``subprocess.run`` where nothing should be spawned at all.
+
+    Both callers are testing a branch that returns before the work starts, and a test host
+    that happens to have foldseek installed would otherwise really start building.
+    """
+    raise AssertionError(f"nothing should have been run here, but got: {command}")
 
 
 def write_table(path, header=HEADER, rows=ROWS):
@@ -173,17 +180,152 @@ def test_pickle_columns_match_the_app_contract(script):
     assert script.PICKLE_COLUMNS == ["Entry", "Sequence", "esm3_mean"]
 
 
-def test_weights_only_skips_the_input_file(script, monkeypatch):
-    """--weights-only must run before any input file exists — the weights come first.
+# ── The models, which download_data.py now supplies ──────────────────────────
 
-    Patching the downloads keeps this off the network and past the foldseek guard, which
-    would otherwise exit on a host with no binary.
+
+@pytest.mark.parametrize(
+    "require_function",
+    ["require_prostt5_weights", "require_esm3_weights"],
+    ids=["prostt5", "esm3"],
+)
+def test_a_missing_model_names_the_script_that_downloads_it(script, tmp_path, monkeypatch, require_function):
+    """Neither model is downloaded here any more, so the message has to say where they come from.
+
+    A bare "not found" would leave someone with a half-built database and no next command.
     """
-    called = []
-    monkeypatch.setattr(script, "INPUT_FILE", "no-such-file.tsv")
-    monkeypatch.setattr(script, "download_or_reuse_prostt5_weights", lambda _: called.append("prostt5"))
-    monkeypatch.setattr(script, "download_or_reuse_esm3_weights", lambda: called.append("esm3"))
+    monkeypatch.setattr(script, "FOLDSEEK_WEIGHTS_DIR", tmp_path)  # empty, so ProstT5 is absent
+    monkeypatch.setattr(script, "esm3_is_cached", lambda: False)
 
-    script.download_weights_only()  # would SystemExit if it read INPUT_FILE
+    with pytest.raises(SystemExit) as excinfo:
+        getattr(script, require_function)()
 
-    assert called == ["prostt5", "esm3"]
+    assert "download_data.py" in str(excinfo.value)
+
+
+def test_require_prostt5_weights_returns_the_directory_holding_them(script, tmp_path, monkeypatch):
+    """The return value is handed to `foldseek createdb --prostt5-model`, which wants the directory.
+
+    It is the file that is checked, though: foldseek is given a folder and would fail much
+    later, mid-build, if the weights inside it were the thing missing.
+    """
+    monkeypatch.setattr(script, "FOLDSEEK_WEIGHTS_DIR", tmp_path)
+    (tmp_path / script.PROSTT5_WEIGHTS_FILE).write_bytes(b"")
+
+    assert script.require_prostt5_weights() == tmp_path
+
+
+def test_require_esm3_weights_passes_when_the_checkpoint_is_cached(script, monkeypatch):
+    """A populated Hugging Face cache is the whole check — this script never downloads ESM3 itself."""
+    monkeypatch.setattr(script, "esm3_is_cached", lambda: True)
+
+    assert script.require_esm3_weights() is None
+
+
+def test_weights_only_now_redirects_to_the_download_script(script):
+    """--weights-only moved to download_data.py, and saying so is the only reason the flag survives.
+
+    The dispatch at the bottom of the script falls through to `main()`, so a flag that
+    returned instead of exiting would start a full database build without a word.
+    """
+    with pytest.raises(SystemExit) as excinfo:
+        script.weights_only_redirect()
+
+    assert "download_data.py" in str(excinfo.value)
+
+
+# ── Where the artifacts land ─────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("path_function", "expected_name"),
+    [
+        ("embeddings_path", "enzymes.pkl"),
+        ("inflight_path", ".enzymes.inflight"),
+        ("ceiling_path", ".enzymes.ceiling"),
+    ],
+    ids=["pickle", "in-flight-marker", "ceiling-marker"],
+)
+def test_every_embedding_artifact_lands_in_the_apps_data_directory(
+    script, tmp_path, monkeypatch, path_function, expected_name
+):
+    """The pickle and its two markers sit in sequence_embeddings/, not in a local output/ folder.
+
+    That directory is the one Func-E's dropdown scans, so a finished build needs no copying;
+    the markers keep the pickle's name, so two inputs being built cannot overwrite each other's.
+    """
+    monkeypatch.setattr(script, "SEQUENCE_EMBEDDINGS_DIR", tmp_path)
+    monkeypatch.setattr(script, "INPUT_FILE", "enzymes.tsv.gz")
+
+    assert getattr(script, path_function)() == tmp_path / expected_name
+
+
+def test_the_foldseek_database_lands_in_the_apps_data_directory(script, tmp_path, monkeypatch, capsys):
+    """The database is built under foldseek_db/<name>/, which is where the app's dropdown scans.
+
+    Read through the "already exists" branch, which is also what makes a re-run cheap: with
+    the .index in place the build names the database it found and returns, without spending
+    hours rebuilding it.
+    """
+    monkeypatch.setattr(script, "FOLDSEEK_DB_DIR", tmp_path)
+    monkeypatch.setattr(script, "INPUT_FILE", "enzymes.tsv.gz")
+    monkeypatch.setattr(script, "require_foldseek", lambda: None)  # no binary on a test host
+    monkeypatch.setattr(script.subprocess, "run", never_run)
+    prefix = tmp_path / "enzymes" / "enzymes"
+    prefix.parent.mkdir()
+    prefix.with_suffix(".index").write_bytes(b"")
+
+    script.build_enzyme_db_foldseek(ROWS)
+
+    assert str(prefix) in capsys.readouterr().out
+
+
+# ── Picking a half-finished run back up ──────────────────────────────────────
+
+
+def test_an_absent_pickle_starts_an_empty_frame_with_the_right_columns(script, tmp_path, monkeypatch):
+    """The first run has nothing to resume from, and must still produce the app's three columns.
+
+    Concatenating onto a frame with no columns is how a pickle ends up with whatever ESM3
+    returned that day instead.
+    """
+    monkeypatch.setattr(script, "SEQUENCE_EMBEDDINGS_DIR", tmp_path)
+
+    done = script.load_embeddings(pd)
+
+    assert list(done.columns) == script.PICKLE_COLUMNS
+    assert len(done) == 0
+
+
+def test_a_pickle_with_other_columns_is_refused_before_the_run_starts(script, tmp_path, monkeypatch):
+    """A mismatched pickle stops the run immediately, naming both column lists.
+
+    People leave this script running for days; discovering the mismatch as a KeyError on the
+    first checkpoint would throw all of that away.
+    """
+    monkeypatch.setattr(script, "SEQUENCE_EMBEDDINGS_DIR", tmp_path)
+    pd.DataFrame(columns=["Entry", "esm2_mean"]).to_pickle(script.embeddings_path())
+
+    with pytest.raises(SystemExit) as excinfo:
+        script.load_embeddings(pd)
+
+    assert "esm2_mean" in str(excinfo.value)  # what is there
+    assert str(script.PICKLE_COLUMNS) in str(excinfo.value)  # what was expected
+
+
+def test_an_input_that_is_fully_embedded_does_not_start_a_worker(script, tmp_path, monkeypatch, capsys):
+    """Re-running a finished input costs nothing — that is what makes topping one up cheap.
+
+    Adding sequences to an input file should pay for the new sequences only, so a run with
+    nothing pending returns before the model is even asked for.
+    """
+    monkeypatch.setattr(script, "SEQUENCE_EMBEDDINGS_DIR", tmp_path)
+    monkeypatch.setattr(script.subprocess, "run", never_run)
+    embedded = pd.DataFrame(
+        [(seq_id, sequence, [0.0]) for seq_id, sequence in ROWS],
+        columns=script.PICKLE_COLUMNS,
+    )
+    embedded.to_pickle(script.embeddings_path())
+
+    script.build_enzyme_db_esm3(ROWS)
+
+    assert str(script.embeddings_path()) in capsys.readouterr().out

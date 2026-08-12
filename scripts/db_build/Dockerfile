@@ -1,11 +1,13 @@
-# Enzyme DB builder — independent of the app image. See README.md.
+# Enzyme data prep — independent of the app image. Serves both scripts. See README.md.
 #
 # Build:  docker build -t etk-db-build scripts/db_build
-# Run:    docker run --rm -v "$(pwd)/scripts/db_build:/app" etk-db-build
+# Run:    docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
+#         ...append `download_data.py` to run the downloader instead of the builder.
 #
-# The mount carries three things: the script (so editing its CONFIG block or commenting
-# out a step in main() needs no rebuild), the input sequence file, and output/ — which is
-# how the built database, the embeddings pickle and the downloaded weights reach the host.
+# Two mounts. /app carries the scripts (so editing a CONFIG block or commenting out a unit
+# in main() needs no rebuild) and the input sequence file. /data is the app's data directory,
+# read-write here — everything downloaded or built lands in it directly, which is why there
+# is nothing to copy afterwards.
 #
 # python:3.12, not 3.11 or 3.10. Two hard constraints:
 #   * esm 3.2.2+ declares requires-python >=3.12,<3.13 (3.2.1.post1 was the last to take 3.10).
@@ -83,15 +85,20 @@ RUN pip install --no-cache-dir \
 
 WORKDIR /app
 
-# HF_HOME points at the mount so the 5.4 GB ESM3 snapshot survives `docker run --rm`.
-# Set here as well as in the script because huggingface_hub freezes its cache paths at
-# import time. Nothing is COPYed in — the script and its input arrive on the mount.
-ENV HF_HOME=/app/output/hf
+# The one place the container's data path is named — the same variable the app itself reads,
+# so download_data.py needs no per-environment edit. No HF_HOME here: the script derives the
+# Hugging Face cache from this and sets it before importing huggingface_hub, which freezes its
+# cache paths at import time. Nothing is COPYed in — the scripts and input arrive on the mount.
+ENV ETK_DATA_DIR=/data
 
-# No `VOLUME /app/output`. The mount lands on /app, its parent, and a VOLUME declared on a
-# subdirectory of a bind mount shadows it with an empty anonymous volume: the container
-# would see none of the host's output/, and everything written there would be thrown away
-# by `docker run --rm`. Unbuffered so the script's own progress lines interleave with
-# foldseek's instead of sitting in a block buffer until the process exits.
+# No `VOLUME` on either mount point. A VOLUME declared on a bind-mounted path shadows it with
+# an empty anonymous volume: the container would see none of the host's files, and everything
+# written there would be thrown away by `docker run --rm`. Unbuffered so the scripts' own
+# progress lines interleave with foldseek's instead of sitting in a block buffer until exit.
 ENV PYTHONUNBUFFERED=1
-ENTRYPOINT ["python", "build_enzyme_db.py"]
+
+# ENTRYPOINT is the interpreter, not one script, so the image runs either: the default below
+# keeps the existing build command working, and `… etk-db-build download_data.py` overrides it.
+ENTRYPOINT ["python"]
+CMD ["download_data.py"]
+#CMD ["build_enzyme_db.py"]

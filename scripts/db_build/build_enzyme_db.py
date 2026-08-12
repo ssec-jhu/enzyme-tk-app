@@ -2,46 +2,56 @@
 
 Two artifacts, from the same input, either or both (see `main()` at the bottom):
 
-  output/foldseek_db/<name>/<name>*          -> copy to data/foldseek_db/
-  output/sequence_embeddings/<name>.pkl      -> copy to data/sequence_embeddings/
+  <data>/foldseek_db/<name>/<name>*       -> the Sequence-Structure Similarity tool
+  <data>/sequence_embeddings/<name>.pkl   -> the Func-E tool
 
-Input is a CSV or TSV, plain or gzipped, with an `Entry` and a `Sequence` column --
-the same contract the app applies to data/sequences/. Every other column is ignored.
+Both are written straight into the app's data directory (DATA_DIR, from download_data.py),
+so there is nothing to copy afterwards -- restart the stack and the tools pick them up.
 
-Each artifact needs one model, downloaded once into output/ and reused after that:
-foldseek's ProstT5 (~2 GB) predicts structure from sequence, so no PDB files are
-needed; ESM3-open (~5.4 GB) produces the 1536-d `esm3_mean` column Func-E consumes.
+Input is a CSV or TSV, plain or gzipped, with an `Entry` and a `Sequence` column -- the same
+contract the app applies to data/sequences/. Every other column is ignored.
 
-Both steps are resumable. The foldseek DB is skipped when it already exists; the
-embeddings pickle is topped up, so adding sequences to an input file costs only the
-new sequences. There is no maximum sequence length to set -- how long a protein can be
-is a property of this machine's memory, so the embedding runs in a child process,
-shortest sequences first, and any protein too large to hold is named and skipped rather
-than killing the run. Run in Docker (see Dockerfile) or locally: python build_enzyme_db.py
+Each artifact needs one model: foldseek's ProstT5 predicts structure from sequence, so no PDB
+files are needed, and ESM3-open produces the 1536-d `esm3_mean` column Func-E consumes. Both
+are downloaded by `python download_data.py`; this script only checks for them and stops with
+that command if one is missing.
 
-Pass --weights-only to download the models and build nothing, before any input file exists;
-a normal run downloads a model only when an artifact it is building needs one.
+Both steps are resumable. The foldseek DB is skipped when it already exists; the embeddings
+pickle is topped up, so adding sequences to an input file costs only the new sequences. There
+is no maximum sequence length to set -- how long a protein can be is a property of this
+machine's memory, so the embedding runs in a child process, shortest sequences first, and any
+protein too large to hold is named and skipped rather than killing the run.
+
+Run in Docker (see Dockerfile) or locally: python build_enzyme_db.py
 """
 
 import csv
 import gzip
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
+# The sibling script owns where everything lives, so DATA_DIR is defined once. Importing it
+# also sets HF_HOME, which has to happen before huggingface_hub is imported anywhere.
+from download_data import (
+    FOLDSEEK_DB_DIR,
+    FOLDSEEK_WEIGHTS_DIR,
+    HF_CACHE_DIR,
+    PROSTT5_WEIGHTS_FILE,
+    SEQUENCE_EMBEDDINGS_DIR,
+    esm3_is_cached,
+    require_foldseek,
+)
+
 # ---- CONFIG: edit these ----
 INPUT_FILE = "enzymes_sample_10.tsv"  # CSV/TSV of sequences (.gz ok), relative to this file
-OUTPUT_DIR = "output"  # both artifacts and the downloaded weights land here
-PROSTT5_WEIGHTS_DIR = ""  # existing ProstT5 weights dir; blank => download into OUTPUT_DIR
 LIMIT = 0  # 0 = every sequence; >0 = first N only (quick test)
 DEVICE = ""  # ESM3 only: "" = auto (GPU if present), or "cpu" / "cuda"
 FORCE = False  # True = rebuild the foldseek DB even if it already exists
 
 HERE = Path(__file__).resolve().parent
-OUT = HERE / OUTPUT_DIR
 
 # The two input columns, and the exact three columns the app's Func-E tool requires of
 # an embeddings pickle. Metadata columns are dropped rather than carried: the full
@@ -96,61 +106,32 @@ def output_name() -> str:
 # ---- foldseek database ----
 
 
-def prostt5_weights_dir() -> Path:
-    """Where the ProstT5 weights live; a relative PROSTT5_WEIGHTS_DIR is read from this folder."""
-    if not PROSTT5_WEIGHTS_DIR:
-        return OUT / "foldseek_models" / "weights"
-    return (HERE / PROSTT5_WEIGHTS_DIR).resolve()  # an absolute setting wins on its own
-
-
-def require_foldseek() -> None:
-    """Exit unless the foldseek binary is on PATH -- it both downloads the weights and builds."""
-    if shutil.which("foldseek") is None:
-        sys.exit("ERROR: `foldseek` not found on PATH - run inside the Docker image or install foldseek.")
-
-
-def download_or_reuse_prostt5_weights(weights_dir: Path) -> None:
-    """Reuse the ProstT5 weights if they are on disk, otherwise download them (~2 GB, once)."""
-    target = weights_dir / "prostt5-f16.gguf"
-    print(f"ProstT5 weights: looking for {target}")
-    if target.exists():
-        print("ProstT5 weights: FOUND - reusing, nothing to download")
-        return
-
-    # After the exists check, not before: foldseek is the downloader rather than only the
-    # builder, so `foldseek databases` below is unreachable without it -- but weights already
-    # on disk need no binary to reuse.
-    require_foldseek()
-    print(f"ProstT5 weights: NOT FOUND - downloading ~2 GB into {weights_dir} (one time only)")
-    weights_dir.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory() as tmp:
-        subprocess.run(["foldseek", "databases", "ProstT5", str(weights_dir), tmp], check=True)
-    # Confirmed rather than assumed: foldseek exiting 0 without leaving the file here would
-    # otherwise be reported as a successful download and fail later inside createdb.
+def require_prostt5_weights() -> Path:
+    """The ProstT5 weights directory, or exit naming the file and how to get it."""
+    target = FOLDSEEK_WEIGHTS_DIR / PROSTT5_WEIGHTS_FILE
     if not target.exists():
-        sys.exit(f"ERROR: foldseek reported success but {target} is not there.")
-    print(f"ProstT5 weights: downloaded to {target}")
+        sys.exit(f"ERROR: ProstT5 weights not found at {target}.\n       Run: python download_data.py")
+    return FOLDSEEK_WEIGHTS_DIR
 
 
 def build_enzyme_db_foldseek(records: list[tuple[str, str]]) -> None:
-    """Sequences -> a foldseek database at output/foldseek_db/<name>/<name>.
+    """Sequences -> a foldseek database at <data>/foldseek_db/<name>/<name>.
 
-    The same two commands enzymetk runs internally (`foldseek databases ProstT5`, then
-    `foldseek createdb --prostt5-model`), which is why no structure files are involved.
+    The same command enzymetk runs internally (`foldseek createdb --prostt5-model`), which is
+    why no structure files are involved.
     """
     print("============================================================")
     print(f"Starting foldseek DB build for {len(records)} sequences...")
 
-    require_foldseek()  # createdb below needs it even when the weights are already cached
+    require_foldseek()
 
     name = output_name()
-    db_prefix = OUT / "foldseek_db" / name / name
+    db_prefix = FOLDSEEK_DB_DIR / name / name
     if Path(f"{db_prefix}.index").exists() and not FORCE:
         print(f"foldseek DB already exists: {db_prefix}  (set FORCE = True to rebuild)")
         return
 
-    weights_dir = prostt5_weights_dir()
-    download_or_reuse_prostt5_weights(weights_dir)
+    weights_dir = require_prostt5_weights()
     db_prefix.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -170,39 +151,14 @@ def build_enzyme_db_foldseek(records: list[tuple[str, str]]) -> None:
 
 # ---- ESM3 embeddings ----
 
-ESM3_REPO = "EvolutionaryScale/esm3-sm-open-v1"
-ESM3_WEIGHTS_FILE = "data/weights/esm3_sm_open_v1.pth"  # the checkpoint ESM3.from_pretrained loads
 CHECKPOINT_EVERY = 250  # sequences per pickle rewrite; an interrupted run loses at most this many
 WORKER_FLAG = "--embed-worker"  # internal: re-runs this file as the child process holding the model
 
 
-def download_or_reuse_esm3_weights() -> None:
-    """Reuse the ESM3-open weights if they are cached, otherwise download them (~5.4 GB, once).
-
-    Returning early really does skip the network: ESM3.from_pretrained reaches data_root(),
-    which runs its own snapshot_download, so anything missing beyond this checkpoint is still
-    fetched by the constructor and a complete cache needs no request at all. No token and no
-    login either -- the repo is ungated.
-    """
-    # The cache goes under output/ so it lands on the mount and survives ``docker run --rm``.
-    # setdefault because the Dockerfile sets HF_HOME too and its path is the container's, not
-    # this one's; without a default a host run would cache to ~/.cache instead, where the next
-    # Docker run cannot see it. Set before the import: huggingface_hub freezes its cache paths
-    # at import time.
-    os.environ.setdefault("HF_HOME", str(OUT / "hf"))
-    from huggingface_hub import snapshot_download, try_to_load_from_cache
-    from huggingface_hub.constants import HF_HUB_CACHE
-
-    # The checkpoint itself, not the folder holding it: an interrupted download leaves the
-    # folder behind, which would read as "found" right up until the model constructor failed.
-    print(f"ESM3 weights: looking for {ESM3_REPO}/{ESM3_WEIGHTS_FILE} under {HF_HUB_CACHE}")
-    cached = try_to_load_from_cache(ESM3_REPO, filename=ESM3_WEIGHTS_FILE)  # path, or None
-    if isinstance(cached, str):
-        print(f"ESM3 weights: FOUND - reusing {cached}")
-        return
-
-    print(f"ESM3 weights: NOT FOUND - downloading {ESM3_REPO} (~5.4 GB) into {HF_HUB_CACHE}")
-    print(f"ESM3 weights: downloaded to {snapshot_download(repo_id=ESM3_REPO)}")
+def require_esm3_weights() -> None:
+    """Exit unless the ESM3 checkpoint is in the Hugging Face cache."""
+    if not esm3_is_cached():
+        sys.exit(f"ERROR: ESM3 weights not found in {HF_CACHE_DIR}.\n       Run: python download_data.py")
 
 
 def select_pending(records: list[tuple[str, str]], done_ids: set[str]) -> list[tuple[str, str]]:
@@ -220,16 +176,17 @@ def select_pending(records: list[tuple[str, str]], done_ids: set[str]) -> list[t
 
 def embeddings_path() -> Path:
     """Where the embeddings pickle for this input lives."""
-    return OUT / "sequence_embeddings" / f"{output_name()}.pkl"
+    return SEQUENCE_EMBEDDINGS_DIR / f"{output_name()}.pkl"
 
 
 def inflight_path() -> Path:
     """Marker naming the sequence currently inside the model.
 
     The worker writes an id here before handing it to ESM3 and clears it afterwards, so if
-    the worker is killed the supervisor can name the sequence that did not fit.
+    the worker is killed the supervisor can name the sequence that did not fit. A dotfile, so
+    it sits beside the pickle without the app's `*.pkl` scan ever seeing it.
     """
-    return OUT / "sequence_embeddings" / f".{output_name()}.inflight"
+    return SEQUENCE_EMBEDDINGS_DIR / f".{output_name()}.inflight"
 
 
 def ceiling_path() -> Path:
@@ -239,7 +196,7 @@ def ceiling_path() -> Path:
     sequences alone. Deleted at the start of every run, so a host given more memory simply
     discovers a higher ceiling instead of inheriting yesterday's.
     """
-    return OUT / "sequence_embeddings" / f".{output_name()}.ceiling"
+    return SEQUENCE_EMBEDDINGS_DIR / f".{output_name()}.ceiling"
 
 
 def load_embeddings(pd):
@@ -261,7 +218,7 @@ def load_embeddings(pd):
 
 
 def build_enzyme_db_esm3(records: list[tuple[str, str]]) -> None:
-    """Sequences -> output/sequence_embeddings/<name>.pkl with Entry, Sequence, esm3_mean.
+    """Sequences -> <data>/sequence_embeddings/<name>.pkl with Entry, Sequence, esm3_mean.
 
     Supervises a child process that owns the model. A sequence too long for the host's
     memory does not raise -- the kernel sends SIGKILL, which Python cannot catch, so the
@@ -280,6 +237,7 @@ def build_enzyme_db_esm3(records: list[tuple[str, str]]) -> None:
         print(f"ESM3 embeddings up to date: {out_path} ({len(done)} sequences)")
         return
 
+    require_esm3_weights()  # before the first worker, so a missing model is one message not two
     print(f"Embedding {len(pending)} sequences with ESM3 ({len(done)} already done)...")
     lengths = {seq_id: len(sequence) for seq_id, sequence in records}
     inflight, ceiling = inflight_path(), ceiling_path()
@@ -339,7 +297,6 @@ def embed_worker() -> None:
     if not pending:
         return
 
-    download_or_reuse_esm3_weights()
     from enzymetk.embedprotein_esm3_step import EmbedESM3
 
     # Constructed once, outside the loop: the model loads in __init__ (several GB resident),
@@ -382,19 +339,16 @@ def write_pickle(frame, path: Path) -> None:
     os.replace(tmp_path, path)
 
 
-WEIGHTS_ONLY_FLAG = "--weights-only"  # download the models and build nothing; no input file needed
+WEIGHTS_ONLY_FLAG = "--weights-only"  # kept only to redirect; the downloads moved to download_data.py
 
 
-def download_weights_only() -> None:
-    """Download every model this script uses, then stop -- no input read, no artifacts built.
+def weights_only_redirect() -> None:
+    """Report that --weights-only has moved, and exit non-zero.
 
-    A normal run only reaches a download through the artifact that needs it, so it wants a valid
-    INPUT_FILE first; this makes the weights fetchable on their own. Each download reuses what is
-    already on disk, so re-running costs nothing.
+    Kept rather than deleted because the dispatch below falls through to `main()`: an
+    unrecognised flag would otherwise start a full build instead of saying anything.
     """
-    print("Fetching model weights only; no database or embeddings will be built.")
-    download_or_reuse_prostt5_weights(prostt5_weights_dir())
-    download_or_reuse_esm3_weights()
+    sys.exit(f"{WEIGHTS_ONLY_FLAG} has moved -- the downloads now live next door.\n       Run: python download_data.py")
 
 
 def main() -> None:
@@ -406,11 +360,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    # The worker flag is set only by build_enzyme_db_esm3 when it spawns its child; the one flag
-    # meant for a user is --weights-only.
+    # The worker flag is set only by build_enzyme_db_esm3 when it spawns its child; neither
+    # flag is one a user types now that the downloads live in download_data.py.
     if WORKER_FLAG in sys.argv:
         embed_worker()
     elif WEIGHTS_ONLY_FLAG in sys.argv:
-        download_weights_only()
+        weights_only_redirect()
     else:
         main()
