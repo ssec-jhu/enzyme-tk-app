@@ -102,60 +102,10 @@ Both services **must** resolve `JOB_OUTPUTS_PATH` to the same path. Override via
 ## Azure Deployment
 
 Deploys web, worker, and beat as Azure Container Apps plus Azure Cache for
-Redis, pulling the same GHCR image `ci.yml` publishes on every push to
-`main`. Requires `az login` and an existing `enzyme-tk-rg` resource group.
-
-```bash
-make deploy-azure
-```
-
-This runs `az deployment group create -f main.bicep`, reading four secrets
-out of `.env`:
-
-| Variable | Purpose |
-|----------|---------|
-| `GH_USERNAME` | GitHub username owning the PAT below |
-| `GH_PAT` | GitHub PAT used by Container Apps to pull the private `ghcr.io/ssec-jhu/enzyme-tk-app` image |
-| `ETK_ADMIN_TOKEN` / `ETK_SECRET_KEY` | Same admin secrets as local dev — see [Admin Secrets](#admin-secrets-env) |
-
-### Generating `GH_PAT`
-
-Use a **classic** PAT, not a fine-grained one:
-
-1. [github.com/settings/tokens](https://github.com/settings/tokens) → **Generate new token (classic)**.
-2. Scope: `read:packages` only.
-3. If `ssec-jhu` enforces SSO, click **Configure SSO** next to the new token and authorize it for the org — otherwise GHCR will still deny pulls with it.
-
-Fine-grained PATs don't reliably work here: even with `Packages: Read`
-permission, org approval, and package-level access all granted, GHCR can
-still return `denied` on pull for an org-owned container package — a known
-gap in GitHub's fine-grained token support. Classic PATs with
-`read:packages` are the documented, reliable path (it's what `ci.yml` itself
-uses via `GITHUB_TOKEN`).
-
-To sanity-check a token before deploying:
-
-```bash
-echo "$GH_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
-docker pull ghcr.io/ssec-jhu/enzyme-tk-app:main
-```
-
-If the pull succeeds locally, `make deploy-azure` will succeed too.
-
-### Accessing the deployed app
+Redis via `make deploy-azure`. See the [Developer Guide](docs/developer-guide.md#azure-deployment)
+for required tools, secrets, and steps.
 
 The live app: **https://enzyme-tk-web.victoriouscliff-65afb037.eastus.azurecontainerapps.io**
-
-This URL is stable across redeploys — the random suffix belongs to the
-Container Apps *Environment* (`enzyme-tk-env`), not the individual
-deployment, and `make deploy-azure` updates that environment in place rather
-than recreating it. It only changes if the environment or the
-`enzyme-tk-rg` resource group is deleted and recreated. To look it up
-without a redeploy:
-
-```bash
-az containerapp show -g enzyme-tk-rg -n enzyme-tk-web --query properties.configuration.ingress.fqdn -o tsv
-```
 
 ## Developers — Adding a New Tool
 
