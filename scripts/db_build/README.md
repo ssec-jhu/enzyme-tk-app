@@ -2,10 +2,13 @@
 
 Get the data the app needs onto disk. Two scripts, one Docker image, no dependency on the app image:
 
-| Script | Does |
-|---|---|
-| [`download_data.py`](download_data.py) | Downloads the model weights and structure databases the tools read |
-| [`build_enzyme_db.py`](build_enzyme_db.py) | Turns **your own** sequence file into a FoldSeek database and an embeddings table |
+| Script | Does | |
+|---|---|---|
+| [`download_data.py`](download_data.py) | Downloads the model weights and structure databases the tools read | the image's default |
+| [`build_enzyme_db.py`](build_enzyme_db.py) | Turns **your own** sequence file into a FoldSeek database and an embeddings table | run it second |
+
+**Run them in that order.** The builder downloads nothing — it needs ProstT5 and ESM3, which only
+`download_data.py` fetches. See [Run](#run) for the command for each job.
 
 Everything lands **directly in the app's data directory** — the one `docker-compose.yml` bind-mounts
 read-only at `/app-data` — so there is nothing to copy afterwards. Restart the stack and the tools pick
@@ -71,22 +74,56 @@ Data directory: /app-data
 
 ## Run
 
+Build the image once:
+
 ```bash
 docker build -t etk-db-build scripts/db_build
 ```
 
+Every command below uses that same image and the same two mounts. `/app` carries the scripts and your
+input file; `/data` is the app's data directory, read-write here. Because the scripts are mounted
+rather than baked in, **commenting out a unit or editing a CONFIG value takes effect on the next run,
+with no rebuild** — you never rebuild the image to change what runs.
+
+### I want the weights and databases the app needs
+
 ```bash
-docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py
+docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 ```
 
-Drop the trailing `download_data.py` to run the builder instead — that is the image's default.
+That is the image's default, `download_data.py`. It works through the six units in order and ends with
+`report()`. Around 20 GB the first time and minutes the second: everything already on disk is reused,
+so it is safe to re-run and safe to interrupt.
 
-Two mounts. `/app` carries the scripts and your input file; `/data` is the app's data directory,
-read-write here. Because the scripts are mounted rather than baked into the image, **commenting out a
-unit or editing a CONFIG value takes effect on the next run, with no rebuild.**
+### I only want to know what I already have
 
-To write somewhere else — a deployment disk, a scratch volume — change the second mount, or set
-`ETK_DATA_DIR`. It is the same variable the app itself reads, so the two cannot drift.
+Comment out every unit in `download_data.py`'s `main()`, leaving `report()`, and run the same command.
+It downloads nothing and prints one `OK`/`MISSING` line per data item the app looks for.
+
+### I only want one thing — say, just the PDB database
+
+Comment out the other units and run the same command. Each is independent; none of them depends on
+another having run.
+
+### I want a FoldSeek database or embeddings from my own sequences
+
+Two steps, in this order — **the builder downloads nothing**, so the weights have to be there first.
+
+1. Get the models it needs: ProstT5 for a FoldSeek database, ESM3 for embeddings. Comment out the rest
+   and run the default command above. (Skip this if `report()` already shows them as `OK`.)
+2. Drop your CSV/TSV in `scripts/db_build/`, point `INPUT_FILE` at it, and run the builder by name:
+
+```bash
+docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build build_enzyme_db.py
+```
+
+If a weight is missing the builder stops before doing any work and names both the file and the command
+that fetches it, so getting the order wrong costs you nothing but a re-run.
+
+### I want the data somewhere other than the repo
+
+A deployment disk, a scratch volume: change the second mount, or set `ETK_DATA_DIR`. It is the same
+variable the app itself reads, so the app and the prep scripts cannot drift apart.
 
 ## Choose what runs
 
@@ -139,8 +176,8 @@ Both steps resume. The FoldSeek database is skipped when it already exists (`FOR
 and the embeddings pickle is topped up rather than recreated — so adding sequences to an input file costs
 only the new sequences, and a run you interrupt picks up where it stopped.
 
-The builder downloads nothing. It needs ProstT5 for the database and ESM3 for the embeddings, and if
-either is absent it stops and tells you to run `download_data.py`.
+Run `download_data.py` first, as above — the builder fetches nothing, and stops naming the file and the
+command if ProstT5 (for the database) or ESM3 (for the embeddings) is absent.
 
 ## ESM3 runtime and memory
 

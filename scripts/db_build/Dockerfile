@@ -2,7 +2,7 @@
 #
 # Build:  docker build -t etk-db-build scripts/db_build
 # Run:    docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
-#         ...append `download_data.py` to run the downloader instead of the builder.
+#         ...that runs download_data.py; append `build_enzyme_db.py` to run the builder instead.
 #
 # Two mounts. /app carries the scripts (so editing a CONFIG block or commenting out a unit
 # in main() needs no rebuild) and the input sequence file. /data is the app's data directory,
@@ -97,8 +97,10 @@ ENV ETK_DATA_DIR=/data
 # progress lines interleave with foldseek's instead of sitting in a block buffer until exit.
 ENV PYTHONUNBUFFERED=1
 
-# ENTRYPOINT is the interpreter, not one script, so the image runs either: the default below
-# keeps the existing build command working, and `… etk-db-build download_data.py` overrides it.
+# ENTRYPOINT is the interpreter, not one script, so the image runs either. The default is the
+# downloader because it comes first: the builder needs weights only download_data.py fetches.
+# Append a script name to override it for one run (`… etk-db-build build_enzyme_db.py`), or swap
+# the two CMD lines to change which one a bare `docker run` does.
 ENTRYPOINT ["python"]
 CMD ["download_data.py"]
-#CMD ["build_enzyme_db.py"]
+# CMD ["build_enzyme_db.py"]
