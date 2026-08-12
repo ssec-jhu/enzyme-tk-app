@@ -67,6 +67,14 @@ after it, with the suffixes removed: `enzymes.tsv.gz` builds `enzymes/` and `enz
 Each artifact needs one model. Both download once into `output/` and are reused after that, so keep
 the mount and the second run costs nothing.
 
+A normal run downloads a model only when it reaches an artifact that needs one, so it wants a valid `INPUT_FILE` first — it exits on a missing input before downloading anything. To fetch the weights on their own, before any input file exists, pass `--weights-only`:
+
+```bash
+docker run --rm -v "$(pwd)/scripts/db_build:/app" etk-db-build --weights-only
+```
+
+That downloads every model and builds nothing. Anything already on disk is reused, so it is safe to re-run and it doubles as a way to check what you have.
+
 - **ProstT5, ~2 GB** — FoldSeek uses it to predict structure from sequence, which is why no PDB or
   CIF files are involved. **If you already have these weights**, move them into `output/` once and the
   default config finds them, instead of downloading 2 GB again. Both of these hold a copy:
@@ -81,8 +89,7 @@ the mount and the second run costs nothing.
   the weights in as above, or mount their directory yourself and give the absolute container path.
 
 - **ESM3-open, ~5.4 GB** — produces the 1536-d `esm3_mean` column. Downloaded anonymously from
-  Hugging Face into `output/hf/`; no account or token is needed. Peak memory is ~5.6 GB, so give
-  Docker at least **8 GB**.
+  Hugging Face into `output/hf/`; no account or token is needed. Peak memory is ~5.6 GB, so give Docker at least **8 GB**.
 
 ## ESM3 runtime and memory
 
@@ -155,4 +162,5 @@ appears in Func-E's Databases dropdown under that name.
   `docker build --no-cache` to pick up newer commits from it.
 - Running outside Docker works too (`python build_enzyme_db.py`) if `foldseek` is on your `PATH`; the
   ESM3 step additionally needs `torch`, `esm` and `enzymetk` installed. The FoldSeek-only path needs
-  nothing but the Python standard library.
+  nothing but the Python standard library. Either way the Hugging Face cache goes to `output/hf`, so a
+  host run and a container run reuse each other's download instead of fetching it twice.
