@@ -11,7 +11,7 @@ The agent must follow these strictly defined patterns for writing tests in the E
 ### Guidelines
 
 1.  **Location & Discovery**
-    - Tests live in `enzyme_tk_app/app/tests/` and use **pytest**.
+    - Tests live in `enzyme_tk_app/app/tests/` and use **pytest**. The one exception is `scripts/db_build/` (`conftest.py`, `test_download_data.py`, `test_enzyme_db_build.py`): those scripts ship in their own image and are not importable as part of the app package, so their tests sit beside them — never move them into the app suite.
     - Test files should be named `test_<module_or_feature>.py` so the scope is obvious (e.g., `test_backend_config.py` tests `backend/config.py`).
     - Test functions should be named `test_*`.
     - **Resilient to change**: Tests for registries or auto-discovered components (e.g., tools, icons) must **scan the source at runtime** rather than hard-coding names or counts.

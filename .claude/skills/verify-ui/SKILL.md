@@ -121,7 +121,11 @@ Reaction Similarity and Substrate/Product Similarity run in seconds on the
 bundled data and are the reliable choices. **Func-E** now encodes the query
 reaction itself and succeeds in ~15 s, but only with `data/unimol_weights/`
 and `data/funce_models/` present — the tool card shows a **Missing data** badge
-when they are not. **Sequence / Sequence+Structure Similarity** need database
+when they are not. `scripts/db_build/download_data.py` downloads the first and
+reports on the second (the Func-E checkpoints have no public source yet, so they
+are placed by hand); running it with every unit commented out prints an
+`OK`/`MISSING` line per data item, which is the quickest way to tell a missing
+prerequisite from a real regression. **Sequence / Sequence+Structure Similarity** need database
 files that are usually absent locally — a failure there is almost certainly not
 your change. Confirm by reading `.jobs-error-box`.
 

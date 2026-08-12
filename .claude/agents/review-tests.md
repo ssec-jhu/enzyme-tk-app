@@ -22,7 +22,7 @@ The user will provide a scope. Resolve it to concrete test files:
 |----------------------------------|--------------------------------------------------------------------|
 | `"review tests for tools/timer"` | `enzyme_tk_app/app/tests/test_tools_timer.py`                      |
 | `"audit test_results"`           | `enzyme_tk_app/app/tests/test_results.py`                          |
-| `"review all tests"`             | Every `test_*.py` under `enzyme_tk_app/app/tests/`                 |
+| `"review all tests"`             | Every `test_*.py` under `enzyme_tk_app/app/tests/` **and** `scripts/db_build/` |
 | `"review tests for backend"`     | All `test_backend_*.py` files                                      |
 
 If the scope is ambiguous, **ask the user** before proceeding.

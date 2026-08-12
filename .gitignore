@@ -168,13 +168,13 @@ cython_debug/
 # File system
 .DS_Store
 
-# Standalone enzyme DB builder: generated DB + embeddings pickle + downloaded weights.
-# The glob also catches Finder-style duplicates ("output copy"), which hold gigabytes of
-# model weights and would otherwise be staged by `git add -A`.
+# Leftover from before scripts/db_build/ wrote into the app data directory: neither script
+# creates output/ any more, but an existing one still holds gigabytes of model weights that
+# `git add -A` would otherwise stage. The glob also catches Finder-style duplicates
+# ("output copy"). Safe to drop once you have moved or deleted yours.
 /scripts/db_build/output*/
-# Standalone foldseek DB builder: generated DB + downloaded ProstT5 weights
-/scripts/foldseek_db_build/output/
 # App data: large downloaded/generated sets — ignore all except the sample structures/
+# (this also covers .hf_cache/, where download_data.py puts the ESM3 snapshot)
 /enzyme_tk_app/app/data/*
 !/enzyme_tk_app/app/data/structures/
 
