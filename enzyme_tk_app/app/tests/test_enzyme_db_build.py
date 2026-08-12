@@ -171,3 +171,19 @@ def test_select_pending_orders_shortest_first(script):
 def test_pickle_columns_match_the_app_contract(script):
     """Func-E requires exactly these three columns of an embeddings pickle (funce/compute.py)."""
     assert script.PICKLE_COLUMNS == ["Entry", "Sequence", "esm3_mean"]
+
+
+def test_weights_only_skips_the_input_file(script, monkeypatch):
+    """--weights-only must run before any input file exists — the weights come first.
+
+    Patching the downloads keeps this off the network and past the foldseek guard, which
+    would otherwise exit on a host with no binary.
+    """
+    called = []
+    monkeypatch.setattr(script, "INPUT_FILE", "no-such-file.tsv")
+    monkeypatch.setattr(script, "download_or_reuse_prostt5_weights", lambda _: called.append("prostt5"))
+    monkeypatch.setattr(script, "download_or_reuse_esm3_weights", lambda: called.append("esm3"))
+
+    script.download_weights_only()  # would SystemExit if it read INPUT_FILE
+
+    assert called == ["prostt5", "esm3"]
