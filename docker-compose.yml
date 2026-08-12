@@ -31,10 +31,17 @@ services:
       # disables the /admin login (fail-closed). See scripts/template.env.
       - ETK_ADMIN_TOKEN=${ETK_ADMIN_TOKEN:-}
       - ETK_SECRET_KEY=${ETK_SECRET_KEY:-}
-      # SESSION_COOKIE_SECURE — the session cookie's Secure flag is
-      # auto-detected from the request (request.is_secure) by default.
-      # Set Flask's SESSION_COOKIE_SECURE=true in production behind a
-      # TLS-terminating reverse proxy to force the flag on.
+      # Sliding idle window for an unlocked admin session, in seconds.
+      # Every authenticated check slides it forward, including the
+      # dashboard's 10 s poll, so an open tab never expires.
+      - ETK_ADMIN_SESSION_TTL_SECONDS=${ETK_ADMIN_SESSION_TTL_SECONDS:-300}
+      # Cookie Secure flag — NOT configurable and NOT auto-detected.
+      # app.py sets Flask's SESSION_COOKIE_SECURE=True unconditionally, and
+      # backend/session.py derives the anonymous etk_session_id cookie's flag
+      # from the same key, so both cookies are always Secure. Browsers accept
+      # them over http://localhost (a trustworthy origin); on any other
+      # plain-HTTP origin they are dropped and session scoping collapses.
+      # Deploy behind a TLS-terminating reverse proxy.
     volumes:
       - job-outputs:/job-outputs
       # TODO: change this path to where data is for deployment
