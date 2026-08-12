@@ -401,7 +401,7 @@ def main() -> None:
     records = read_sequences(HERE / INPUT_FILE)
     print(f"Read {len(records)} sequences from {INPUT_FILE}")
 
-    # build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database
+    build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database
     build_enzyme_db_esm3(records)  # comment out to skip the ESM3 embeddings
 
 
