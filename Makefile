@@ -1,7 +1,7 @@
 # Makefile for enzyme-tk-app
 # Cleans up generated artifacts.
 
-.PHONY: clean help
+.PHONY: clean help deploy-azure
 
 help:
 	@echo "Available commands:"
@@ -43,13 +43,9 @@ clean:
 
 deploy-azure:
 	@echo "Deploying to Azure..."
-	az deployment group create \
-	-g enzyme-tk-rg \
-	-f main.bicep \
-	--parameters \
-	ghcrUsername=$(GH_USERNAME) \
-	ghcrPat=$(GH_PAT) \
-	adminToken=$(ETK_ADMIN_TOKEN) \
-	secretKey=$(ETK_SECRET_KEY)
-
+	@set -eu; set -a; . ./.env; set +a; \
+	params="$$(mktemp)"; trap 'rm -f "$$params"' EXIT; \
+	printf '{"ghcrUsername":{"value":"%s"},"ghcrPat":{"value":"%s"},"adminToken":{"value":"%s"},"secretKey":{"value":"%s"}}' \
+		"$$GH_USERNAME" "$$GH_PAT" "$${ETK_ADMIN_TOKEN:-}" "$${ETK_SECRET_KEY:-}" > "$$params"; \
+	az deployment group create -g enzyme-tk-rg -f main.bicep --parameters @"$$params"
 	@echo "Deployment complete."
