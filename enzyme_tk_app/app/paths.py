@@ -48,7 +48,8 @@ SEQUENCE_EMBEDDINGS_DIR: Path = DATA_DIR / "sequence_embeddings"
 FUNCE_MODELS_DIR: Path = DATA_DIR / "funce_models"
 
 # UniMol molecule-embedding checkpoint (~660 MB).  Named for the model, like
-# foldseek_models/ above.  Passed to enzymetk's UniMol step as ``weights_dir``, the
-# same way FoldSeek takes ``prostt5_weights_path``; the step resolves the checkpoint
-# under it and fails if it is absent, rather than downloading a replacement.
+# foldseek_models/ above.  Passed to enzymetk's ``Funce_rxnfp_unimol`` step as
+# ``unimol_weights_dir``, the same way FoldSeek takes ``prostt5_weights_path``; the
+# step resolves the checkpoint under it and fails if it is absent, rather than
+# downloading a replacement (``download_if_missing=False``).
 UNIMOL_WEIGHTS_DIR: Path = DATA_DIR / "unimol_weights"

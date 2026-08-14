@@ -3,14 +3,7 @@ dash==4.4.1
 dash-ag-grid==35.3.0
 dash-bootstrap-components==2.0.4
 # TODO: Pin the version of enzymetk once a stable release is available.
-# Head of the funce-updates branch.  Pinned by SHA, not branch name: a branch ref
-# makes Docker builds non-reproducible and lets pip's cache serve stale code.
-# This commit gives the UniMol step a weights_dir kwarg, which is how funce/compute.py
-# points it at data/unimol_weights/ — without it, unimol_tools falls back to its own
-# site-packages folder and downloads the ~660 MB checkpoint into every fresh container.
-# It also carries the earlier embedchem_rxnfp_run.py fix — convert_batch(list(rxns)),
-# where the pin before that passed a numpy array the tokenizer rejects outright.
-enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@b9327707d1a2e66f46cd946d2d84df99273eaa4a
+enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@funce-updates
 gunicorn==26.0.0
 pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint

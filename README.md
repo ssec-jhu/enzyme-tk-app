@@ -25,14 +25,13 @@ A web application for protein engineering workflows, built with [Dash](https://d
 
 > **Func-E encodes the query reaction in the worker.** Any valid reaction SMILES can be
 > scored — no pre-encoded pair needed: RxnFP fingerprints the reaction and UniMol embeds its
-> substrate and product (`compute._encode_reaction()` in `enzyme_tk_app/app/tools/funce/`).
-> Write **one molecule per side of `>>`** and leave out the leaving groups: each side is
-> embedded as a single 3D structure, so a dot-joined side (`A.B`) is not rejected — it is
-> scored as one nonsense molecule. The **protein** side is
+> substrate and product, all inside `enzymetk`'s `Funce_rxnfp_unimol` step. A dot-joined
+> side (`A.B>>C`) is embedded one molecule at a time and summed, so multi-substrate
+> reactions work; leaving groups are still better left out. The **protein** side is
 > still encoded offline — Func-E ranks only proteins already present in a
 > `data/sequence_embeddings/` pickle. Encoding needs the UniMol checkpoint under
 > `data/unimol_weights/`; without it the tool card shows a **"Missing data"** badge (see
-> [Data Directories](#data-directories)).
+> [Data Directories](#data-directories)). The app never downloads it.
 
 ![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
 
@@ -123,7 +122,7 @@ every unit out of `download_data.py` and its closing `report()` is an inventory 
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | `download_data.py` | ProstT5 weights for sequence-to-structure prediction — `prostt5-f16.gguf` (~2 GB) |
 | `sequence_embeddings/` | Func-E Activity Prediction | `build_enzyme_db.py` | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
 | `funce_models/` | Func-E Activity Prediction | Manual — no public source yet; `download_data.py` only checks and names the eight files it wants | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
-| `unimol_weights/` | Func-E Activity Prediction | `download_data.py` | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. Func-E passes this directory to the UniMol step as `weights_dir`. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
+| `unimol_weights/` | Func-E Activity Prediction | `download_data.py` | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. Func-E passes this directory to the `Funce_rxnfp_unimol` step as `unimol_weights_dir`. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
 
 A Func-E job peaks around **2 GB RSS** in the worker process, with a transient RxnFP subprocess of
 similar size earlier in the run — it loads its own torch and BERT, then exits before the worker
@@ -139,6 +138,21 @@ beside the full sets — e.g. 20-row slices of `sequences/protein.csv` and of th
 locally without loading the 100 MB+ originals. A database that cannot be read is skipped
 and named in a **Databases Skipped** stat card; the job only fails if *every* selection is
 unreadable.
+
+### Refetching `enzymetk` (branch-tracked)
+
+`requirements/prd.txt` installs `enzymetk` from a **branch** (`@funce-updates`), not a pinned
+commit, until it has a release. Both pip and the Docker layer cache key on the branch *name*
+rather than the commit it resolves to, so a plain `docker compose build` reuses whatever copy it
+already has. To pick up new commits from the branch:
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
+This is the same situation — and the same answer — as the builder image in
+[`scripts/db_build/`](scripts/db_build/README.md), which tracks the same branch.
 
 ### GPU (optional)
 
