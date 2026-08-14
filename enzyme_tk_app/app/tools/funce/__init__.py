@@ -6,9 +6,8 @@ constants shared between ``modal.py`` (example picker) and ``compute.py``
 
 Func-E scores (enzyme, reaction) pairs with an ensemble of four attention
 models — one per EC level — and returns the proteins predicted most active
-on the query reaction.  The step itself is *prediction-only*: the protein
-database ships pre-encoded, and ``compute._encode_reaction`` embeds the
-query reaction before scoring.
+on the query reaction.  The protein database ships pre-encoded; the query
+reaction is encoded at run time by the step ``compute`` calls.
 """
 
 from enzyme_tk_app.app.components.icons import ICON_TOOL_ACTIVITY
@@ -30,60 +29,31 @@ TOOL_DEF: ToolDef = {
     "max_duration": 1800,
 }
 
+# The two reactions below the first are **supplied by the client** — do not reword the
+# chemistry, add a leaving group, or split a dot-joined side to make them look tidier.
+# Both need every molecule they name: the step embeds each one separately and SUMS the
+# per-side vectors into Func-E's single 768-d slot, so dropping one changes the score.
+
 # The reaction behind the Funce_pairs.pkl fixture, kept as the first example so a
 # run can be compared against the numbers the tool used to return.
 DEHP_MEHP_SMILES = "CCCCC(CC)COC(=O)C1=CC=CC=C1C(=O)OCC(CC)CCCC>>CCCCC(CC)COC(=O)C1=CC=CC=C1C(=O)O"
 
-# The same phthalate ester hydrolysis two carbons down each chain.  Nothing on
-# disk was ever pre-encoded for it, so it exercises the query-time encoder.
-DBP_MBP_SMILES = "CCCCOC(=O)c1ccccc1C(=O)OCCCC>>CCCCOC(=O)c1ccccc1C(=O)O"
+# Two substrates: the amino acid and the ketone it alkylates.
+TRPB_ALKYLATION_SMILES = "N[C@H](C(O)=O)CO.CCC(C1=CC=CC=C1)=O>>CC(C(C2=CC=CC=C2)=O)C[C@@H](C(O)=O)N"
 
-# The four reactions below are *sanity checks*: the answer is known before the run.
-# The first three name an enzyme that is actually embedded in one of the shipped
-# databases, so a healthy run puts that Entry at or near rank 1; the fourth names an
-# enzyme class no database contains, so it must not.  Every side is a single molecule
-# — ``compute._encode_reaction`` hands each whole side to UniMol as one structure, so a
-# dot-joined side is embedded as one nonsense molecule.  Leaving groups are therefore
-# omitted, exactly as DEHP → MEHP omits the released 2-ethylhexanol.
-
-# Ground truth: EnzymeMap rxn_idx 306389 lists A0A0A1H8I4 (aconitate isomerase,
-# EC 5.3.3.7) as the catalyst, and that protein is in enzymes_sample_100_but_90.pkl.
-# trans- to cis-aconitate is a pure double-bond geometry flip — no atoms gained or lost.
-# Observed over all three databases (104 candidates): A0A0A1H8I4 ranks 1st at 0.9895
-# with the tightest ensemble spread in the table (std 0.0067); the runner-up scores
-# 0.5533 at std 0.3970.  Treat that gap as the regression baseline.
-ACONITATE_SMILES = r"O=C(O)/C=C(\CC(=O)O)C(=O)O>>O=C(O)/C=C(/CC(=O)O)C(=O)O"
-
-# Ground truth in a different EC class, so a run that only scores hydrolases well is
-# visible as such.  EnzymeMap rxn_idx 292676 lists A0A075FBG7 (9,13-epoxylabda-14-ene
-# synthase, EC 4.2.3.189), also in enzymes_sample_100_but_90.pkl.  A diterpene cyclase
-# closes an ether ring across the labdane skeleton; the diphosphate leaving group is
-# not written.
-LABDANE_SMILES = (
-    r"C/C(=C\COP(=O)(O)OP(=O)(O)O)CC[C@@]1(O)[C@H](C)CC[C@H]2C(C)(C)CCC[C@@]21C"
-    r">>C=CC1(C)CC[C@@]2(O1)[C@H](C)CC[C@H]1C(C)(C)CCC[C@@]12C"
+# Three substrates, one of them a bare fluoride ion.  ``[F-]`` is monatomic, which is
+# the shape most likely to defeat a 3D conformer generator — UniMol does embed it
+# (768-d, finite), so leave it in: it is the nucleophile the reaction is named for.
+FLUORINASE_SMILES = (
+    "CSCC[C@@H](C(O)=O)N.NC1=C2N=CN([C@@H]3O[C@@H]([C@H]([C@H]3O)O)CCl)C2=NC=N1.[F-]"
+    ">>NC4=C5N=CN([C@@H]6O[C@@H]([C@H]([C@H]6O)O)CF)C5=NC=N4"
 )
 
-# EC-analogue rather than an exact pair: the standard 4-nitrophenyl acetate esterase
-# assay.  A0A024SC78 (cutinase, EC 3.1.1.74) is the one protein present in *both*
-# enzymes_sample_10_but_9.pkl and enzymes_sample_100_but_90.pkl, so it should surface
-# twice, once per ``database``.  Tests generalisation, not a memorised pair.
-PNP_ACETATE_SMILES = "CC(=O)Oc1ccc([N+](=O)[O-])cc1>>O=[N+]([O-])c1ccc(O)cc1"
-
-# Negative control.  Glutamate → glutamine is EC 6.3.1.2, and no protein in any shipped
-# database is a ligase: of the 95 embedded proteins the 60 that carry an EC span only
-# classes 1-5.  Chosen over a catechol dioxygenase (EC 1.13.11.1) because EC 1.14
-# monooxygenases *are* present, which would make that a near-neighbour, not a negative.
-#
-# It is a *soft* negative, not a floor.  Observed top score 0.8265 (A0A095C6S0, an
-# amine oxidase — the closest thing to amino-acid chemistry the databases hold) at
-# std 0.1858.  The signal to read is the margin, not the absolute value: a genuine
-# pair clears 0.98 with std under 0.01, so a run where this reaction reaches the
-# ground-truth examples' scores means the ensemble has stopped discriminating.
-GLUTAMINE_SMILES = "N[C@@H](CCC(=O)O)C(=O)O>>N[C@@H](CCC(N)=O)C(=O)O"
-
 # ``task_name`` is the name the example picker prefills into the Task Name field
-# (see ``callbacks.populate_example_reaction``).
+# (see ``callbacks.populate_example_reaction``).  It is deliberately short and
+# kebab-case while the label carries the client's full title: the My Tasks table has no
+# max-width on its Task Name column, so a title-length name there squeezes the other
+# eight columns.
 EXAMPLE_REACTIONS = [
     {
         "label": "DEHP → MEHP (phthalate monoester hydrolysis)",
@@ -91,28 +61,13 @@ EXAMPLE_REACTIONS = [
         "task_name": "DEHP-MEHP",
     },
     {
-        "label": "DBP → MBP (phthalate monoester hydrolysis)",
-        "value": DBP_MBP_SMILES,
-        "task_name": "DBP-MBP",
+        "label": "Asymmetric Alkylation of Ketones Catalyzed by Engineered TrpB",
+        "value": TRPB_ALKYLATION_SMILES,
+        "task_name": "trpb-alkylation",
     },
     {
-        "label": "Aconitate isomerisation — expect A0A0A1H8I4 (EC 5.3.3.7)",
-        "value": ACONITATE_SMILES,
-        "task_name": "A0A0A1H8I4-aconitate",
-    },
-    {
-        "label": "Labdane cyclisation — expect A0A075FBG7 (EC 4.2.3.189)",
-        "value": LABDANE_SMILES,
-        "task_name": "A0A075FBG7-labdane",
-    },
-    {
-        "label": "pNP-acetate hydrolysis — expect A0A024SC78 (EC 3.1.1.74)",
-        "value": PNP_ACETATE_SMILES,
-        "task_name": "A0A024SC78-pNP",
-    },
-    {
-        "label": "Glutamate → glutamine — negative control (EC 6.3.1.2)",
-        "value": GLUTAMINE_SMILES,
-        "task_name": "glutamine-negative",
+        "label": "Fluorinase for Improved Fluorination Efficiency with a Non-native Substrate",
+        "value": FLUORINASE_SMILES,
+        "task_name": "fluorinase",
     },
 ]

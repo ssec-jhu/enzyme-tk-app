@@ -1,16 +1,40 @@
 """Compute function for the Func-E Activity Prediction tool.
 
-Runs ``enzymetk.predict_Funce_step.Funce`` to score every protein in a
-pre-encoded database against a query reaction, then ranks them by predicted
-activity.
+Runs ``enzymetk.Funce_rxnfp_unimol`` to score every protein in a pre-encoded
+database against a query reaction, then ranks them by predicted activity.
 
-.. note::
+The step owns the whole pipeline — fingerprinting the reaction with RxnFP,
+embedding each molecule with UniMol, broadcasting those vectors across every
+protein row, and scoring with the EC-level ensemble.  This module only routes:
+it loads the selected database pickles into one frame, names the two data
+directories, and ranks what comes back.
 
-   ``Funce`` is *prediction-only*.  It needs a DataFrame that already carries
-   the protein embedding (``esm3_mean``) and the three reaction embeddings
-   (``rxnfp``, ``substrate_unimol_repr``, ``product_unimol_repr``).  The
-   database pickles under ``data/sequence_embeddings/`` supply the protein side; the
-   reaction side is computed from the query SMILES by :func:`_encode_reaction`.
+Invariants that live here because they are Func-E's alone
+---------------------------------------------------------
+
+**All selected databases are scored in one call.**  Func-E's cross-attention
+softmaxes over the batch, so a row's score depends on which other rows went
+through the same ``execute()``.  Chunking the frame, or scoring one database at a
+time and merging, changes every number.
+
+**The app never downloads.**  ``download_if_missing=False`` is passed
+explicitly, so a missing UniMol checkpoint fails loudly instead of pulling
+~660 MB inside a request.  ``check_data`` gates the tool off long before that.
+
+**A multi-molecule side is split and summed** by the step's own
+``combine_molecule_embeddings``.  ``sum([v]) == v``, so a single-molecule side is
+byte-for-byte unchanged; a dot-joined side is no longer the silent failure it was
+when the app handed UniMol a whole side as one structure.  Which reduction the
+training pipeline used is not recorded anywhere, so a shipped example should not
+lean on it.
+
+**The step mutates three environment variables process-wide, permanently:** it
+sets ``UNIMOL_WEIGHT_DIR``, prepends ``sys.executable``'s directory to ``PATH``
+(RxnFP shells out to a bare ``python``), and ``setdefault``s
+``MKL_THREADING_LAYER=GNU``.  All three are inert in this image — the bindir is
+already on ``PATH``, and ``import torch`` above beats the MKL variable to first
+use — but the worker is long-lived and runs other tools, so this is where to look
+if one of them ever behaves oddly after a Func-E job.
 """
 
 import multiprocessing
@@ -18,7 +42,6 @@ import pickle
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import pandas as pd
 
@@ -26,10 +49,9 @@ from enzyme_tk_app.app.paths import FUNCE_MODELS_DIR, SEQUENCE_EMBEDDINGS_DIR, U
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
 from enzyme_tk_app.app.utils.smiles_validation import split_reaction, validate_reaction_smiles
 
-# Reaction-side embedding columns the Funce step reads — enzymetk's own
-# defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_encode_reaction``
-# returns exactly these keys and ``_load_databases`` strips them from the
-# pickles; the protein side comes from the database pickle.
+# Reaction-side embedding columns the step writes onto every row — enzymetk's own
+# defaults for ``rxn_col`` / ``sub_col`` / ``prod_col``.  ``_load_databases``
+# strips them from the pickles; the protein side comes from the pickle.
 RXN_COLS = ["rxnfp", "substrate_unimol_repr", "product_unimol_repr"]
 
 # The step's activity score.  enzymetk prefixes its output columns with its
@@ -37,12 +59,25 @@ RXN_COLS = ["rxnfp", "substrate_unimol_repr", "product_unimol_repr"]
 PRED_COL = "Funce_prediction"
 
 # ── The only columns removed from the result ────────────────────────────────
-# Everything else the Funce step returns reaches the results grid untouched.
+# Everything else the step returns reaches the results grid untouched.
 # Delete a name from this list to keep that column; a name that the installed
 # enzymetk no longer emits is ignored rather than an error.
+#
+# The step already drops the scratch columns itself (its own ``LEAKED_COLS``), so
+# most of this list is belt over braces.  It is kept because ``errors="ignore"``
+# makes it free and because the failure it prevents is silent: those columns hold
+# only the *last* ensemble member's values, and they would land in the grid right
+# beside the correct ``Funce_<feature>_mean`` / ``_std`` pair with nothing to tell
+# a reader which is which.
+#
+# The real invariant is wider than these names: no column whose cells are not
+# JSON-native may survive.  ``_load_databases`` keeps every column a pickle
+# carries, so a legacy pickle holding some *other* array column fails
+# ``json.dumps`` after the compute has already succeeded.
 DROPPED_COLS = [
     # Embeddings.  Every cell holds an ndarray, which ``json.dumps`` cannot
-    # encode — keeping one of these breaks the result payload.
+    # encode — keeping one of these breaks the result payload.  The step does
+    # *not* drop these; its docstring says the caller must.
     "esm3_mean",
     "rxnfp",
     "substrate_unimol_repr",
@@ -112,6 +147,12 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
     failing the whole run; only a total wipeout is an error, since an empty
     result would otherwise look like "no hits".
 
+    The returned frame must be **freshly owned**: the step mutates it in place,
+    adding the reaction vectors and score columns.  Caching loaded pickles here —
+    the obvious optimization, since these run to hundreds of MB — would let one
+    job's reaction survive into the next in a long-lived worker, scoring the wrong
+    chemistry with no error to show for it.
+
     Args:
         databases: Filenames chosen in the modal.
 
@@ -157,8 +198,16 @@ def _load_databases(databases: list[str]) -> tuple[pd.DataFrame, list[str]]:
 
         # Drop any reaction embeddings the pickle carries of its own.  Fixtures like
         # Funce_pairs.pkl were built with one reaction already broadcast across every
-        # row; the query's vectors must win, and leaving these in place would let a
-        # stale reaction survive into rows the broadcast in ``run`` does not reach.
+        # row, and the query's vectors must win.
+        #
+        # The step overwrites all three columns on every row, so today this is
+        # redundant.  It stays because the redundancy is not guaranteed: the step
+        # assigns three *hard-coded* names, while the ``Funce`` it wraps reads
+        # ``rxn_col`` / ``sub_col`` / ``prod_col`` from defaults the step never
+        # passes.  Let those drift apart and Funce reads the pickle's stale reaction
+        # instead — a confident ranking for the wrong chemistry, with no exception
+        # and no shape mismatch to catch it.  This line is what makes that
+        # impossible, for the cost of one ``errors="ignore"`` drop.
         frame = frame.drop(columns=RXN_COLS, errors="ignore")
 
         # Named exactly as the file is named in data/sequence_embeddings/, extension
@@ -183,12 +232,20 @@ def _allow_forking():
     ``None`` embedding rather than an error.  Clearing the flag for the duration
     of the call is the standard Celery workaround.
 
-    Ceiling: unimol_tools pools up to 8 processes to embed our two molecules, and
-    a hard kill of the worker mid-call could orphan them.  Forwarding a kwarg will
-    not fix it: ``multi_process`` is read from the ``params`` dict ``UniMolRepr``
-    builds from its own named arguments, and anything else passed to it is dropped,
-    so the flag never reaches the conformer generator.  Dropping this needs a change
-    inside unimol_tools itself.
+    This wraps the step's whole ``execute()`` because UniMol runs deep inside it
+    and the step exposes no narrower hook.  The two other phases are unaffected
+    either way: ``subprocess`` never consults ``daemon`` (so RxnFP would run
+    daemonic or not), and Funce's forward pass spawns nothing.  Nesting is safe —
+    an inner call reads ``was_daemon`` as ``False`` and neither clears nor restores.
+
+    Ceiling: unimol_tools pools up to 8 processes to embed our molecules, and a hard
+    kill of the worker mid-call could orphan them.  That window is UniMol's alone,
+    not the whole ``execute()`` — the pool exists only while UniMol runs, even
+    though the flag is cleared for longer.  Forwarding a kwarg will not fix it:
+    ``multi_process`` is read from the ``params`` dict ``UniMolRepr`` builds from
+    its own named arguments, and anything else passed to it is dropped, so the flag
+    never reaches the conformer generator.  Dropping this needs a change inside
+    unimol_tools itself.
     """
     process = multiprocessing.current_process()
     was_daemon = getattr(process, "daemon", False)
@@ -199,74 +256,6 @@ def _allow_forking():
     finally:
         if was_daemon:
             process.daemon = True
-
-
-def _encode_reaction(smiles: str) -> dict:
-    """Embed *smiles* into the three reaction vectors the Funce step reads.
-
-    The reaction is fingerprinted with RxnFP (256-d) and its substrate and product
-    are embedded with UniMol (768-d each) — widths fixed by the trained Funce
-    checkpoints.  RxnFP, not DRFP: ``forward_reaction`` is ``nn.Linear(in=256)`` and
-    was fit on RxnFP's dense continuous basis, so a DRFP vector folded to 256 is
-    *accepted* and silently reranks rather than failing.
-
-    Ceiling: both steps reload their checkpoint on every call — roughly ten of the
-    twelve seconds a small job takes, and flat regardless of database size.  The
-    upgrade is module-level cached ``UniMolRepr`` / ``RXNBERTFingerprintGenerator``
-    singletons, worth doing only if that fixed cost ever stops being noise next to
-    scoring itself.
-
-    Args:
-        smiles: The query reaction SMILES, already passed through
-            :func:`validate_reaction_smiles`.
-
-    Returns:
-        Mapping of each name in ``RXN_COLS`` to its ``float32`` vector.
-    """
-    import numpy as np  # noqa: PLC0415
-    from enzymetk.embedchem_rxnfp_step import RxnFP  # noqa: PLC0415
-    from enzymetk.embedchem_unimol_step import UniMol  # noqa: PLC0415
-
-    substrate, product = split_reaction(smiles)
-
-    # RxnFP round-trips the frame through to_csv/read_csv in a subprocess, so it must
-    # see no array columns — hence this bare one-row frame, before anything is merged.
-    # env_name=None skips the `conda run -n rxnfp` wrapper; tmp_dir must be a real
-    # path, because left None the step f-strings the TemporaryDirectory *object*
-    # into a filename and breaks.
-    with TemporaryDirectory() as tmp_dir:
-        rxn_df = RxnFP("reaction", 1, env_name=None, tmp_dir=tmp_dir).execute(pd.DataFrame({"reaction": [smiles]}))
-
-    # Both molecules in one call: UniMol rebuilds its model on every execute() and
-    # always writes to "unimol_repr", so one call per molecule would cost a second
-    # checkpoint load *and* need renaming in between.  weights_dir names the bundled
-    # checkpoint; left off, unimol_tools resolves UNIMOL_WEIGHT_DIR instead and downloads
-    # ~660 MB into its own site-packages directory on every fresh container.
-    with _allow_forking():
-        mol_df = UniMol("smiles", weights_dir=str(UNIMOL_WEIGHTS_DIR)).execute(
-            pd.DataFrame({"smiles": [substrate, product]})
-        )
-
-    # UniMol logs its own failures and writes None rather than raising.  numpy turns
-    # that None into a 1-wide nan vector, which survives the broadcast and only
-    # surfaces as "mat1 and mat2 shapes cannot be multiplied" inside Funce — or, if
-    # the widths happened to line up, as silently meaningless scores.  Stop here,
-    # where the cause is still named.
-    reprs = list(mol_df["unimol_repr"])
-    if any(v is None for v in reprs):
-        raise ValueError(
-            "UniMol could not embed the substrate or product of this reaction — "
-            "see the job log for the underlying error."
-        )
-
-    # UniMol hands back a nested cls_repr ([[...768...]]); flatten to the
-    # one-vector-per-cell shape the Funce step expects.
-    substrate_repr, product_repr = (np.asarray(v).flatten().astype(np.float32) for v in reprs)
-    return {
-        "rxnfp": np.asarray(rxn_df["rxnfp"].iloc[0]).flatten().astype(np.float32),
-        "substrate_unimol_repr": substrate_repr,
-        "product_unimol_repr": product_repr,
-    }
 
 
 def run(params: dict) -> dict:
@@ -286,12 +275,16 @@ def run(params: dict) -> dict:
         - ``dataframe``: ``{"columns": [...], "data": [records]}``.
 
     Raises:
-        ValueError: When the reaction SMILES is invalid or no database can be read.
+        ValueError: When the reaction SMILES is invalid, no database can be read, or
+            the step rejects the reaction or an embedding width.
+        FileNotFoundError: When the Func-E checkpoints or the UniMol checkpoint are
+            absent — raised by the step, and reaching the UI as a raw traceback.
+        RuntimeError: When RxnFP, UniMol, or the ensemble itself fails, likewise.
         ImportError: When ``enzymetk`` (or torch) is not available.
     """
     # Lazy import — enzymetk pulls in torch, which is heavy; worker only.
     import torch  # noqa: PLC0415
-    from enzymetk import Funce  # noqa: PLC0415
+    from enzymetk import Funce_rxnfp_unimol  # noqa: PLC0415
 
     smiles: str = params["smiles"]
     databases: list[str] = params["databases"]
@@ -308,21 +301,47 @@ def run(params: dict) -> dict:
     db_df, databases_skipped = _load_databases(databases)
     candidate_count = len(db_df)
 
-    # Broadcast the single query reaction across every protein row — the step
-    # scores pairs and does no broadcasting of its own.
-    for col, vector in _encode_reaction(smiles).items():
-        db_df[col] = [vector] * candidate_count
+    # Passing validation does *not* mean the raw string is a two-block reaction:
+    # ``validate_reaction_smiles`` checks the (substrate, product) pair that
+    # ``split_reaction`` derives, so a multi-arrow route is accepted — `A>>B>>C` reads
+    # as (A, C) and the intermediate is never even parsed.  The step splits on a
+    # single ">" and demands exactly three blocks, so it sees five and raises.
+    # Rebuilding from the pair is what turns "what the validator approved" into "what
+    # the step accepts", preserving today's reading instead of failing a reaction that
+    # scores now.  It trims both sides on the way.
+    substrate, product = split_reaction(smiles)
+    reaction = f"{substrate}>>{product}"
 
-    # Initialize the Funce step for scoring the reaction against the protein database.
-    step = Funce(COL_ENTRY, model_dir=str(FUNCE_MODELS_DIR))
-    scored = step.execute(db_df)
+    # ``db << step`` is enzymetk's own idiom (``Step.__rlshift__``).
+    #
+    # First argument is the *reaction*, not the id column — unlike the bare ``Funce``
+    # step this replaces, which took ``id_col`` there.  Both are strings, so passing
+    # the wrong one is accepted here and only fails once RxnFP tries to fingerprint
+    # the literal text "Entry".
+    #
+    # Every database goes through in one call — see the batch note in the module
+    # docstring.  ``_allow_forking`` covers the whole step because UniMol's conformer
+    # pool is built deep inside it.
+    with _allow_forking():
+        scored = db_df << Funce_rxnfp_unimol(
+            reaction,
+            model_dir=str(FUNCE_MODELS_DIR),
+            unimol_weights_dir=str(UNIMOL_WEIGHTS_DIR),
+            # The app never downloads: a missing checkpoint is a data problem to
+            # report, not ~660 MB to fetch inside a request.  This is the library
+            # default too; naming it keeps that true if the default ever flips.
+            download_if_missing=False,
+            id_col=COL_ENTRY,
+        )
 
     # The step leaves ranking to the caller.
     ranked = scored.sort_values(PRED_COL, ascending=False).head(top_n).reset_index(drop=True)
 
     # Everything the step returned is kept except the columns named at the top
     # of this module — see ``DROPPED_COLS``.  A column enzymetk adds later is
-    # kept and shown rather than silently discarded.
+    # kept and shown rather than silently discarded.  The embeddings in that list
+    # are not optional: ``json.dumps`` in the worker has no ``default=``, so one
+    # surviving ndarray records this job as FAILURE after the scoring succeeded.
     ranked = ranked.drop(columns=DROPPED_COLS, errors="ignore")
 
     run_time = round(time.monotonic() - run_time_start, 3)

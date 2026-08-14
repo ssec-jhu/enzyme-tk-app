@@ -85,8 +85,10 @@ def split_reaction(smiles: str) -> tuple[str, str]:
     """Split a reaction SMILES into ``(substrate, product)`` on ``>>``.
 
     The product is the *last* segment, so a multi-arrow string like ``A>>B>>C``
-    yields ``(A, C)``.  Each side may be dot-joined (``A.B>>C``); it is embedded
-    whole, exactly as the reference example does.
+    yields ``(A, C)``.  A side may be dot-joined (``A.B>>C``) and is returned
+    whole; how a consumer reduces it is the consumer's own contract — the
+    fingerprint tools hand the side straight to RDKit, Func-E's step splits it
+    and sums the per-molecule embeddings (see ``tools/funce/compute.py``).
     """
     parts = smiles.strip().split(">>")
     return parts[0].strip(), parts[-1].strip()

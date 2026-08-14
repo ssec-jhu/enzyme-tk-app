@@ -127,11 +127,6 @@ def modal():
                                         [
                                             dbc.Textarea(
                                                 id=f"id-textarea-{TOOL_DEF['slug']}-smiles",
-                                                # One molecule per side.  The dot-joined
-                                                # "CC(=O)O.CCO" this used to show is the one
-                                                # shape that fails silently here: UniMol embeds
-                                                # a whole side as a single structure, so the
-                                                # released alcohol is better left out entirely
                                                 # (see EXAMPLE_REACTIONS in __init__.py).
                                                 placeholder="e.g. CC(=O)OCC>>CC(=O)O",
                                                 rows=3,

@@ -10,8 +10,10 @@ Four things are pinned here:
 * **The dropped columns** — ``compute.DROPPED_COLS`` names what is stripped
   from the Funce output before it is JSON-encoded.  Dropping too much silently
   loses results; dropping an embedding short breaks the payload.
-* **Compute** — how an accepted reaction is encoded, which databases are loaded,
-  which are skipped, and what the stat cards say about all of it.
+* **Compute** — how the reaction and the two data directories are handed to
+  ``enzymetk.Funce_rxnfp_unimol``, which databases are loaded, which are skipped,
+  and what the stat cards say about all of it.  *How* a reaction is encoded is no
+  longer the app's contract; the step owns it.
 * **The example picker** — selecting an example fills the Task Name as well as
   the SMILES, since the Task Name is the one field that otherwise blocks submit.
 
@@ -33,8 +35,15 @@ run the pipeline need the stand-in modules, and they install them in
 ``sys.modules`` for one test at a time.  RDKit is the exception — it is a real
 dependency and a small one, so the tests that reject a reaction run against it
 unstubbed.
+
+One test does reach for the real package, to check the step's signature against the
+call ``run()`` makes — the one thing a hand-written stub cannot do.  It is the sole
+test here that pays for a real ``import enzymetk``, which *does* drag in torch, so
+keep it to one: it ``importorskip``s, skipping in a dev venv whose build predates
+the step and running for real in the container.
 """
 
+import inspect
 import json
 import multiprocessing
 import pickle
@@ -59,18 +68,18 @@ from enzyme_tk_app.app.tools.funce.callbacks import (
 )
 from enzyme_tk_app.app.tools.funce.compute import (
     DROPPED_COLS,
+    FUNCE_MODELS_DIR,
     PRED_COL,
     RXN_COLS,
     UNIMOL_WEIGHTS_DIR,
     _allow_forking,
-    _encode_reaction,
     _load_databases,
     _resolve_database,
     run,
 )
 from enzyme_tk_app.app.tools.funce.results import _get_column_defs, results_layout
 from enzyme_tk_app.app.utils.columns import COL_DATABASE, COL_ENTRY, COL_SEQUENCE
-from enzyme_tk_app.app.utils.smiles_validation import split_reaction
+from enzyme_tk_app.app.utils.smiles_validation import split_reaction, validate_reaction_smiles
 
 # Every column the Func-E grid is expected to define, spelled out rather than
 # generated: this list is the contract with enzymetk's output, so a change on
@@ -272,11 +281,16 @@ BAD_DB = "bogus.pkl"
 GOOD_DB_ENTRIES = ["P00001", "P00002", "P00003"]
 
 # Vector widths the trained Func-E checkpoints require: RxnFP's reaction
-# fingerprint and UniMol's per-molecule embedding.  The stand-in steps below
-# emit these widths so the arrays flowing through ``_encode_reaction`` have the
-# shape the real ones would.
+# fingerprint and UniMol's per-molecule embedding.  The stubbed step below writes
+# these widths, so the columns ``run()`` has to drop are the shape the real ones
+# would be — without them the drop would have nothing to remove and its test
+# would pass with the drop deleted.
 RXNFP_WIDTH = 256
 UNIMOL_WIDTH = 768
+
+# Stand-in default for the stubbed step's optional arguments, so a test can tell an
+# argument the app never passed from one it passed the default value of.
+_OMITTED = "<argument not passed>"
 
 
 def _make_funce_frame(entries: list[str]) -> pd.DataFrame:
@@ -319,90 +333,92 @@ def embeddings_db_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture()
-def stub_enzymetk_steps(monkeypatch):
-    """Stand in for the three ``enzymetk`` steps and ``torch`` for one test.
+def stub_funce_step(monkeypatch):
+    """Stand in for ``enzymetk.Funce_rxnfp_unimol`` and ``torch`` for one test.
 
-    ``run()`` and ``_encode_reaction`` import them inside their bodies, so
-    replacing the ``sys.modules`` entries is enough — and it is also necessary:
-    torch is a multi-gigabyte dependency, the enzymetk build installed here does
-    not export ``Funce`` at all, and each embedding step loads a checkpoint of
-    several hundred megabytes.
+    ``run()`` imports both inside its body, so replacing the ``sys.modules``
+    entries is enough — and it is also necessary: torch is a multi-gigabyte
+    dependency, the enzymetk build installed here does not export the step at all,
+    and the real thing loads roughly 2 GB of checkpoints.
+
+    The stub mirrors the real ``__init__`` parameter names with **no** ``**kwargs``,
+    so a keyword ``run()`` invents fails here rather than being swallowed.  That
+    catches drift on the *app's* side only.  A hand-written stub structurally cannot
+    catch a rename on the *enzymetk* side — it is the thing being substituted —
+    which is what ``test_the_real_step_accepts_the_call_run_makes`` is for.
 
     Returns:
-        A recorder holding what the UniMol step was built with — currently
-        just its ``weights_dir``.
+        A recorder holding every constructor argument, plus the daemon flag seen
+        during ``execute`` — the only way to pin that ``_allow_forking`` still wraps
+        the right call.
     """
-    recorded = types.SimpleNamespace(unimol_weights_dir=None)
+    recorded = types.SimpleNamespace(
+        reaction=None,
+        model_dir=None,
+        unimol_weights_dir=None,
+        download_if_missing=None,
+        id_col=None,
+        protein_emb_col=None,
+        daemon_during_execute=None,
+    )
 
-    class StubFunce:
-        """The prediction step, reduced to what ``run()`` actually calls."""
+    class StubFunceRxnfpUnimol:
+        """The one step ``run()`` calls, reduced to the columns it writes.
 
-        def __init__(self, entry_col, model_dir=None):
-            self.entry_col = entry_col
-            self.model_dir = model_dir
-
-        def execute(self, frame):
-            """Score rows in ascending order, so ranking has something to reorder."""
-            scored = frame.copy()
-            scored[PRED_COL] = [round(0.1 * (position + 1), 4) for position in range(len(scored))]
-            return scored
-
-    class StubRxnFP:
-        """The reaction fingerprinter, reduced to the column it writes.
-
-        The signature mirrors the real one, so a change to how
-        ``_encode_reaction`` constructs the step fails here instead of passing
-        silently.
+        Signature mirrors the real class exactly — reaction first and positional,
+        the rest keyword — so passing ``id_col`` into the reaction slot, or dropping
+        ``download_if_missing``, fails here instead of silently letting the real step
+        fingerprint the literal text "Entry" or download a checkpoint.
         """
 
-        def __init__(self, reaction_col, num_threads=1, env_name=None, tmp_dir=None):
-            self.reaction_col = reaction_col
-            self.num_threads = num_threads
-            self.env_name = env_name
-            self.tmp_dir = tmp_dir
+        def __init__(
+            self,
+            reaction,
+            model_dir,
+            unimol_weights_dir=None,
+            # _OMITTED, not the real defaults (False / "Entry"), on purpose: those two
+            # are also the values the app passes, so mirroring them would make
+            # "argument omitted" indistinguishable from "argument passed correctly" and
+            # the assertions below would hold with the arguments deleted.  Real defaults
+            # are pinned by test_the_real_step_accepts_the_call_run_makes; what this
+            # stub pins is the parameter *names* and the values the app chooses.
+            download_if_missing=_OMITTED,
+            id_col=_OMITTED,
+            protein_emb_col="esm3_mean",
+        ):
+            recorded.reaction = reaction
+            recorded.model_dir = model_dir
+            recorded.unimol_weights_dir = unimol_weights_dir
+            recorded.download_if_missing = download_if_missing
+            recorded.id_col = id_col
+            recorded.protein_emb_col = protein_emb_col
+
+        def __rlshift__(self, frame):
+            """``db << step``, enzymetk's idiom — its ``Step`` base delegates like this."""
+            return self.execute(frame)
 
         def execute(self, frame):
-            """Add one flat fingerprint per reaction row."""
-            fingerprinted = frame.copy()
-            fingerprinted["rxnfp"] = [[0.5] * RXNFP_WIDTH] * len(frame)
-            return fingerprinted
+            """Encode, broadcast and score exactly as the real step does.
 
-    class StubUniMol:
-        """The molecule embedder, reduced to the nested column it writes.
+            Faithful in three ways that tests depend on: it adds the three ndarray
+            reaction columns (so the drop in ``run()`` has something to remove), it
+            mutates the caller's frame **in place** and returns a ``.drop()`` copy
+            (matching the real aliasing contract), and it scores rows in ascending
+            order so ranking has something to reorder.
+            """
+            recorded.daemon_during_execute = multiprocessing.current_process().daemon
+            widths = {"rxnfp": RXNFP_WIDTH, "substrate_unimol_repr": UNIMOL_WIDTH, "product_unimol_repr": UNIMOL_WIDTH}
+            for column, width in widths.items():
+                frame[column] = [np.full(width, 0.5, dtype=np.float32)] * len(frame)
+            frame[PRED_COL] = [round(0.1 * (position + 1), 4) for position in range(len(frame))]
+            # The real step returns ``frame.drop(columns=LEAKED_COLS)`` — a copy, over
+            # a frame it has already mutated.  It does not emit those scratch columns
+            # for the app to drop, which is why nothing here does either.
+            return frame.drop(columns=[], errors="ignore")
 
-        The signature mirrors the real one, so dropping ``weights_dir`` — or passing
-        it positionally into some other parameter — fails here rather than silently
-        letting unimol_tools download its own checkpoint.
-        """
-
-        def __init__(self, smiles_col, weights_dir=None):
-            self.smiles_col = smiles_col
-            recorded.unimol_weights_dir = weights_dir
-
-        def execute(self, frame):
-            """Embed every molecule in the frame."""
-            embedded = frame.copy()
-            # Real UniMol nests its cls_repr one level deep ([[...768 floats...]]),
-            # which compute has to flatten.  Each vector is filled with the length of
-            # the molecule it came from, so a test can tell substrate from product.
-            embedded["unimol_repr"] = [[[float(len(smiles))] * UNIMOL_WIDTH] for smiles in frame[self.smiles_col]]
-            return embedded
-
-    # One module per import in compute.  The two embedding steps need real
-    # submodule entries — a single flat ``enzymetk`` stub fails with
-    # "'enzymetk' is not a package" the moment one of them is imported.
     enzymetk_stub = types.ModuleType("enzymetk")
-    enzymetk_stub.Funce = StubFunce
-    rxnfp_stub = types.ModuleType("enzymetk.embedchem_rxnfp_step")
-    rxnfp_stub.RxnFP = StubRxnFP
-    unimol_stub = types.ModuleType("enzymetk.embedchem_unimol_step")
-    unimol_stub.UniMol = StubUniMol
-    for module_name, module in [
-        ("enzymetk", enzymetk_stub),
-        ("enzymetk.embedchem_rxnfp_step", rxnfp_stub),
-        ("enzymetk.embedchem_unimol_step", unimol_stub),
-    ]:
-        monkeypatch.setitem(sys.modules, module_name, module)
+    enzymetk_stub.Funce_rxnfp_unimol = StubFunceRxnfpUnimol
+    monkeypatch.setitem(sys.modules, "enzymetk", enzymetk_stub)
 
     # torch is used for exactly one thing: naming the device on a stat card.
     torch_stub = types.ModuleType("torch")
@@ -492,10 +508,15 @@ def test_load_databases_merges_every_selection(embeddings_db_dir):
 def test_load_databases_drops_the_reaction_vectors_the_pickle_carries(embeddings_db_dir):
     """A database's own reaction embeddings must not survive the load.
 
-    Shipped pickles such as ``Funce_pairs.pkl`` were built with one reaction
-    already broadcast across every row.  ``run()`` writes the query's vectors
-    afterwards, so a stale column left in place would be scored for any row that
-    broadcast does not reach — a confident prediction for the wrong reaction.
+    Shipped pickles such as ``Funce_pairs.pkl`` were built with one reaction already
+    broadcast across every row, and the query's vectors must win.
+
+    The step overwrites all three columns on every row, so this is redundant today —
+    but the redundancy is not guaranteed.  The step assigns three *hard-coded* names
+    while the ``Funce`` it wraps reads ``rxn_col`` / ``sub_col`` / ``prod_col`` from
+    defaults the step never passes; let those drift apart and Funce reads the pickle's
+    stale reaction instead, returning a confident ranking for the wrong chemistry with
+    no exception and no shape mismatch to catch it.
     """
     # Guard the fixture: without the stale columns on disk there is nothing to strip.
     assert set(RXN_COLS) <= set(_make_funce_frame(GOOD_DB_ENTRIES).columns)
@@ -545,75 +566,92 @@ def test_resolve_database_rejects_anything_but_a_file_inside_its_directory(embed
         _resolve_database(database)
 
 
-# ── Compute — encoding the reaction ──────────────────────────────────────────
+# ── Compute — how the step is constructed ────────────────────────────────────
 
 
-def test_encode_reaction_returns_one_flat_vector_per_column_the_step_reads(stub_enzymetk_steps):
-    """The keys must be exactly ``RXN_COLS``, each holding a flat float32 vector.
+def test_run_hands_the_step_the_reaction_and_both_data_directories(embeddings_db_dir, stub_funce_step):
+    """Every constructor argument the app is responsible for, in one place.
 
-    ``_encode_reaction`` writes those three names out as literals, so this is
-    what keeps them in step with ``RXN_COLS`` — the list ``run()`` broadcasts and
-    ``_load_databases`` strips.  Flatness is a real transformation, not a
-    formality: UniMol nests its output one level and the Funce step reads one
-    vector per cell.
+    ``model_dir`` and ``unimol_weights_dir`` name the bundled data.  Left off, the
+    step falls back to Func-E's own default (a path that does not exist) and to
+    unimol_tools' own lookup, which caches the ~660 MB checkpoint in site-packages —
+    re-downloading it into every fresh container, onto a layer that is thrown away.
     """
-    smiles = "CCO>>CC=O"
-    substrate, product = split_reaction(smiles)
+    run(_run_params())
 
-    vectors = _encode_reaction(smiles)
-
-    assert set(vectors) == set(RXN_COLS)
-    for column, vector in vectors.items():
-        assert vector.ndim == 1, f"'{column}' is still nested; the Funce step reads one vector per cell"
-        assert vector.dtype == np.float32
-
-    # The stand-in embedder fills each vector with the length of the molecule it
-    # came from, so substrate and product swapped over would show up right here.
-    assert vectors["substrate_unimol_repr"][0] == len(substrate)
-    assert vectors["product_unimol_repr"][0] == len(product)
-
-    # The two stand-in steps emit the widths their real counterparts do, so a
-    # crossed wire — the fingerprint read off the molecule embedder, say — comes
-    # back the wrong length.
-    assert len(vectors["rxnfp"]) == RXNFP_WIDTH
+    assert stub_funce_step.reaction == DEHP_MEHP_SMILES
+    assert stub_funce_step.model_dir == str(FUNCE_MODELS_DIR)
+    assert stub_funce_step.unimol_weights_dir == str(UNIMOL_WEIGHTS_DIR)
+    assert stub_funce_step.id_col == COL_ENTRY
 
 
-def test_encode_reaction_points_unimol_at_the_bundled_weights(stub_enzymetk_steps):
-    """The UniMol step must be given the app's weights directory.
+def test_run_never_lets_the_step_download(embeddings_db_dir, stub_funce_step):
+    """``download_if_missing`` must be passed, and must be ``False``.
 
-    Without ``weights_dir`` the step falls back to unimol_tools' own lookup, which
-    caches the ~660 MB checkpoint in its site-packages directory — re-downloading it
-    into every fresh container, onto a layer that is thrown away.
+    The app does not fetch data on a user's behalf: a missing checkpoint is a
+    deployment problem to report, not ~660 MB to pull inside a request that has
+    already been waiting.  ``check_data`` gates the tool off long before this, so
+    reaching the step with data absent already means something is wrong.
+
+    ``False`` is the library default too, which is exactly why this is asserted
+    rather than left implicit — a default that flips upstream would otherwise turn
+    the app into a downloader silently.
     """
-    _encode_reaction(DEHP_MEHP_SMILES)
+    run(_run_params())
 
-    assert stub_enzymetk_steps.unimol_weights_dir == str(UNIMOL_WEIGHTS_DIR)
+    assert stub_funce_step.download_if_missing is False
 
 
-def test_encode_reaction_refuses_an_embedding_unimol_could_not_produce(stub_enzymetk_steps, monkeypatch):
-    """A ``None`` from UniMol has to stop the job, not become a one-wide ``nan``.
+def test_run_passes_the_reaction_positionally_not_the_id_column(embeddings_db_dir, stub_funce_step):
+    """The first argument is the reaction.  The step this replaced took ``id_col``.
 
-    UniMol catches its own failures, logs them, and writes ``None`` instead of
-    raising.  ``np.asarray(None).astype(np.float32)`` is ``array([nan])``, which
-    survives the broadcast and only surfaces as "mat1 and mat2 shapes cannot be
-    multiplied (10x1 and 768x1024)" inside Funce — and had the widths happened to
-    line up, it would have scored nonsense silently instead.  This is not
-    hypothetical: it is what a Celery worker did before ``_allow_forking``,
-    because a daemonic process may not create the Pool UniMol builds conformers
-    with.
+    ``Funce(COL_ENTRY, model_dir=...)`` and ``Funce_rxnfp_unimol(smiles,
+    model_dir=...)`` both take a string first, so writing the old call is accepted
+    by Python, by the type checker, and by the step's own validation.  It fails much
+    later and much further away: RxnFP tries to fingerprint the literal text
+    "Entry", inside a subprocess.
     """
-    unimol_step = sys.modules["enzymetk.embedchem_unimol_step"].UniMol
+    run(_run_params())
 
-    def execute_failing_to_embed(self, frame):
-        """Mimic UniMol swallowing an error: a None per molecule, no exception."""
-        unembedded = frame.copy()
-        unembedded["unimol_repr"] = [None] * len(frame)
-        return unembedded
+    assert stub_funce_step.reaction != COL_ENTRY
+    assert ">>" in stub_funce_step.reaction
 
-    monkeypatch.setattr(unimol_step, "execute", execute_failing_to_embed)
 
-    with pytest.raises(ValueError, match="UniMol could not embed"):
-        _encode_reaction(DEHP_MEHP_SMILES)
+def test_run_collapses_a_multi_arrow_route_to_one_arrow(embeddings_db_dir, stub_funce_step):
+    """A route the app accepts must reach the step as a two-block reaction.
+
+    ``utils.smiles_validation`` deliberately reads ``A>>B>>C`` as "first segment is
+    the substrate, last is the product" and Reaction Similarity depends on that, so
+    the shared validator cannot be tightened.  But the step splits on a *single*
+    ``>`` and demands exactly three blocks, so the raw string would raise inside
+    enzymetk — turning a reaction that scores today into a failed job.
+    """
+    run(_run_params(smiles="CCO>>CC=O>>CC(=O)O"))
+
+    assert stub_funce_step.reaction == "CCO>>CC(=O)O"
+
+
+def test_the_real_step_accepts_the_call_run_makes():
+    """Bind ``run()``'s exact arguments against the installed class.
+
+    The stub in this file mirrors the real signature, but it cannot catch a rename
+    on enzymetk's side — it *is* the substitute.  ``bind`` proves the call is valid
+    against the genuine class without instantiating it or loading a checkpoint.
+
+    Skipped rather than failed where the installed build predates the step, so a dev
+    venv stays usable; it runs for real in the container, which is the environment
+    that matters.
+    """
+    module = pytest.importorskip("enzymetk.predict_funce_step_rxnfp_unimol_workflow")
+
+    inspect.signature(module.Funce_rxnfp_unimol.__init__).bind(
+        None,  # self
+        DEHP_MEHP_SMILES,
+        model_dir=str(FUNCE_MODELS_DIR),
+        unimol_weights_dir=str(UNIMOL_WEIGHTS_DIR),
+        download_if_missing=False,
+        id_col=COL_ENTRY,
+    )
 
 
 @pytest.mark.parametrize("started_daemonic", [True, False], ids=["celery-worker", "plain-process"])
@@ -634,10 +672,25 @@ def test_allow_forking_clears_the_daemon_flag_and_puts_it_back(monkeypatch, star
     assert process.daemon is started_daemonic
 
 
+def test_run_executes_the_step_with_the_daemon_flag_cleared(embeddings_db_dir, stub_funce_step, monkeypatch):
+    """``_allow_forking`` has to wrap the step call, not merely exist.
+
+    The test above proves the context manager works; nothing proved it was still
+    around the right call.  Move the ``with`` outside ``execute()``, or delete it,
+    and UniMol's conformer ``Pool`` raises inside a daemonic Celery child — which
+    UniMol swallows into a ``None`` embedding rather than an error.
+    """
+    monkeypatch.setattr(multiprocessing.current_process(), "daemon", True)
+
+    run(_run_params())
+
+    assert stub_funce_step.daemon_during_execute is False
+
+
 # ── Compute — run() ──────────────────────────────────────────────────────────
 
 
-def test_run_refuses_a_bad_reaction_before_it_opens_a_database(embeddings_db_dir, stub_enzymetk_steps):
+def test_run_refuses_a_bad_reaction_before_it_opens_a_database(embeddings_db_dir, stub_funce_step):
     """The SMILES is checked first, so nothing slow happens on behalf of a typo.
 
     The database named here does not exist — reading it would raise as well.
@@ -660,7 +713,7 @@ def test_run_refuses_a_bad_reaction_before_it_opens_a_database(embeddings_db_dir
     ],
     ids=["clean-run-has-no-card", "one-skipped-is-named"],
 )
-def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_enzymetk_steps, databases, expected_skipped):
+def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_funce_step, databases, expected_skipped):
     """The "Databases Skipped" card appears only when a database was skipped.
 
     It is spliced into the card list conditionally, so both halves matter: a
@@ -675,7 +728,7 @@ def test_run_databases_skipped_stat_card(embeddings_db_dir, stub_enzymetk_steps,
     assert cards["Databases Searched"] == "1"
 
 
-def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_enzymetk_steps):
+def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_funce_step):
     """Hits come back best-first and cut to ``top_n``; the Top Score card agrees."""
     result = run(_run_params(top_n=2))
 
@@ -689,7 +742,7 @@ def test_run_ranks_by_prediction_and_keeps_only_top_n(embeddings_db_dir, stub_en
     assert cards["Candidates Scored"] == str(len(GOOD_DB_ENTRIES))
 
 
-def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_dir, stub_enzymetk_steps):
+def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_dir, stub_funce_step):
     """Embeddings must not reach the payload — ``json.dumps`` cannot encode an ndarray.
 
     The backend stores the result as JSON, so an embedding left on the frame
@@ -714,25 +767,29 @@ def test_run_result_drops_embeddings_and_stays_json_serialisable(embeddings_db_d
     EXAMPLE_REACTIONS,
     ids=[example["task_name"] for example in EXAMPLE_REACTIONS],
 )
-def test_every_example_reaction_has_one_molecule_per_side(example):
-    """Each side of a shipped example must be a single molecule, never dot-joined.
+def test_every_example_reaction_is_runnable(example):
+    """A shipped example must pass the same validator a typed reaction does.
 
-    ``compute._encode_reaction`` splits the reaction on ``>>`` and hands each
-    *whole* side to UniMol as one molecule to build a 3D conformer from, so a
-    dot-joined side is embedded as one nonsense structure.  It does not fail
-    loudly either: unimol_tools runs in ``mode='fast'``, where a failed
-    ``AllChem.EmbedMolecule`` silently falls back to ``Compute2DCoords`` — and
-    Func-E returns a complete, successful-looking ranking built on a meaningless
-    vector.  The constraint is Func-E's alone; tools such as Reaction Similarity
-    use dot-joined sides freely because RDKit fingerprints do not care.
+    Two of these are supplied by the client and were transcribed by hand — long
+    strings with stereocentres, ring-closure digits and a bracketed ion, where a
+    single lost character still parses as *some* molecule or fails only once the
+    job reaches the worker.  Running the real validator here is what makes a
+    transcription slip a test failure instead of a broken dropdown entry.
     """
-    substrate, product = split_reaction(example["value"])
+    assert validate_reaction_smiles(example["value"]) is None
 
-    for side_name, side in [("substrate", substrate), ("product", product)]:
-        assert "." not in side, (
-            f"Example '{example['task_name']}' has a dot-joined {side_name} ({side}) — "
-            f"UniMol would embed those molecules as one structure"
-        )
+
+def test_an_example_exercises_the_summed_multi_molecule_path():
+    """At least one shipped example must carry a dot-joined side.
+
+    The step embeds each molecule of a side separately and sums the per-side
+    vectors.  Because ``sum([v]) == v``, a single-molecule example scores
+    identically whether or not that reduction works — so without a multi-molecule
+    example among them, nothing shipped would notice it breaking.
+    """
+    multi = [ex["task_name"] for ex in EXAMPLE_REACTIONS if "." in split_reaction(ex["value"])[0]]
+
+    assert multi, "No shipped example has a dot-joined substrate; the summed path is untested"
 
 
 # ── Populate example ─────────────────────────────────────────────────────────
