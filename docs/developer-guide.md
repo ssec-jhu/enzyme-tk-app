@@ -129,7 +129,7 @@ Skip this if your tool computes from user input alone. If it reads databases, mo
 | `FOLDSEEK_WEIGHTS_DIR` | `foldseek_models/weights/` | Sequence and Structure-Based Similarity |
 | `SEQUENCE_EMBEDDINGS_DIR` | `sequence_embeddings/` | Func-E |
 | `FUNCE_MODELS_DIR` | `funce_models/` | Func-E |
-| `UNIMOL_WEIGHTS_DIR` | `unimol_weights/` | Func-E (reaction encoding). `funce/compute.py` passes it to the UniMol step as `weights_dir` |
+| `UNIMOL_WEIGHTS_DIR` | `unimol_weights/` | Func-E (reaction encoding). `funce/compute.py` passes it to the `Funce_rxnfp_unimol` step as `unimol_weights_dir` |
 
 **What belongs in `paths.py` and what does not.** A path goes here when it is large, versioned independently of any single tool, or plausibly reusable by a future one. A path used only inside one tool module stays in that module and derives from `DATA_DIR` itself.
 
@@ -529,6 +529,8 @@ Your `run()` function returns a plain dict. The framework recognises several spe
 **Do NOT echo input parameters** in the return dict. The framework stores `params` separately and auto-renders them via `build_result_input_params()`.
 
 **The return value must be JSON-serialisable — all of it.** The worker `json.dumps` the whole dict and writes it to `JOB_OUTPUTS_PATH/<job_id>/` on the shared Docker volume, keeping only a pointer in Redis (`_store_result` in [`backend/tasks.py`](../enzyme_tk_app/app/backend/tasks.py)), so size is not a concern — a large `dataframe` is fine. Type is: that dump passes no `default=`, so a numpy scalar or an ndarray in a cell raises at persist time and the finished job is recorded as **FAILURE** with nothing to show for the compute that already succeeded. Convert or drop such columns before returning — this is why `funce/compute.py` strips its embedding columns (`DROPPED_COLS`).
+
+**Your tool's own invariants go in this module's docstring.** `AGENTS.md` and the `create-tool` agent carry the contracts that bind *every* tool; a rule about how *your* algorithm turns a user's input into numbers belongs beside the code that does it, where nobody editing that code can miss it — and a rule about a tool that is later retired does not linger in a shared file reading as a live constraint on new ones. [`funce/compute.py`](../enzyme_tk_app/app/tools/funce/compute.py) is the worked example: its docstring records why every selected database must be scored in one call, why the app never downloads a checkpoint, and how a dot-joined reaction side is reduced. Pin whatever a reader could get wrong with a test in `test_tools_<name>.py`.
 
 ### 5.2 Example — Reaction Similarity compute
 
