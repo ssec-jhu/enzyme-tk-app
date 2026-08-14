@@ -99,6 +99,13 @@ services:
 Both services **must** resolve `JOB_OUTPUTS_PATH` to the same path. Override via `.env` or the orchestrator's env config.
 
 
+## Azure Deployment
+
+Deploys web, worker, and beat as Azure Container Apps plus Azure Cache for
+Redis via `make deploy-azure`. See the [Developer Guide](docs/developer-guide.md#azure-deployment)
+for required tools, secrets, and steps.
+
+The live app: **https://enzyme-tk-web.victoriouscliff-65afb037.eastus.azurecontainerapps.io**
 ## FAQ
 
 ### How do I add a new FoldSeek database from my CSV file?
@@ -109,7 +116,7 @@ Use the standalone builder in [`scripts/foldseek_db_build/`](scripts/foldseek_db
 
 Tools live in self-contained sub-packages under `enzyme_tk_app/app/tools/`. Auto-discovery scans sub-packages at import time — **no central file to edit**. Create a new folder and the tool card appears on the home page automatically.
 
-### File layout 101 
+### File layout 101
 
 | File | Required? | Must export | Purpose |
 |------|-----------|-------------|---------|
