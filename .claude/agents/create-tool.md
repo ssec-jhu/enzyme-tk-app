@@ -222,14 +222,13 @@ before touching any of this.
   Tasks table already shows the tool in the column beside Task Name. Full contract in
   `create-modal` §7; `test_every_example_prefills_a_task_name` in `tests/test_tools.py` enforces a
   non-blank name for every tool.
-- **A Func-E reaction takes exactly one molecule per side of `>>`.** `funce/compute._encode_reaction`
-  hands each *whole* side to UniMol as one structure to build a 3D conformer from, so a dot-joined
-  side (`A.B`) is embedded as a single nonsense molecule — and silently, since unimol_tools runs in
-  `mode="fast"` and falls back to `Compute2DCoords` when `AllChem.EmbedMolecule` fails, returning a
-  complete, successful-looking ranking off a meaningless vector. Omit leaving groups (DEHP → MEHP
-  omits the released 2-ethylhexanol); `test_every_example_reaction_has_one_molecule_per_side` in
-  `tests/test_tools_funce.py` pins it for the shipped examples. Func-E only — the RDKit-fingerprint
-  tools take dot-joined sides freely.
+- **Document your tool's own encoding constraints in its `compute.py` docstring, not in this file
+  or `AGENTS.md`.** Those two carry conventions binding *every* tool; a rule about how one algorithm
+  turns a user structure into vectors belongs beside the code that does it, where nobody editing that
+  code can miss it. `tools/funce/compute.py` is the worked example — it records how a dot-joined side
+  is reduced, why every selected database must be scored in one call, and why the app never
+  downloads a checkpoint. Write the equivalent for your tool, and pin whatever a reader could get
+  wrong with a test in `tests/test_tools_<slug>.py`.
 - For callback implementation patterns (guard clauses, decorator syntax, naming), read and follow `.claude/agents/write-callback.md`, and examine existing tools.
 
 ## 5. Reference Material

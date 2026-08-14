@@ -23,7 +23,16 @@ running container until you rebuild:
 docker compose up -d --build web
 ```
 
-~60–90 s. Then open the pane against the Docker app:
+~60–90 s. That picks up any change in *this* repo, but **not new `enzymetk`
+commits** — `requirements/prd.txt` tracks a branch, so pip and the layer cache
+both see an unchanged branch name. When the behaviour you are verifying lives in
+the library, force the refetch:
+
+```bash
+docker compose build --no-cache web && docker compose up -d web
+```
+
+Then open the pane against the Docker app:
 
 ```
 preview_start { url: "http://localhost:8050" }
