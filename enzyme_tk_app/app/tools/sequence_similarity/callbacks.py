@@ -2,7 +2,7 @@
 
 This module defines callbacks that:
 - Open/close the modal when the launch button is clicked
-- Dynamically populate the EC number filter from the selected database
+- Dynamically populate the EC number and cofactor filters from the selected databases
 - Validate the form and enable/disable the submit button
 - Submit a sequence similarity job to the backend scheduler
 """
@@ -18,6 +18,7 @@ from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
 from enzyme_tk_app.app.utils.data_loading import (
+    get_cofactors,
     get_ec_numbers,
     get_sequence_database_options,
     scan_sequence_databases,
@@ -25,8 +26,9 @@ from enzyme_tk_app.app.utils.data_loading import (
 )
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
-# Build lookup dict: example sequence (the dropdown value) -> task name.
-_TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in _get_example_sequences()}
+# Build lookup dict: example sequence (the dropdown value) -> the whole example,
+# so the picker can read its filter selections as well as its task name.
+_EXAMPLES_BY_VALUE = {ex["value"]: ex for ex in _get_example_sequences()}
 
 
 @callback(
@@ -56,29 +58,48 @@ def toggle_sequence_similarity_modal(launch_clicks, cancel_clicks):
 
 @callback(
     Output(f"id-textarea-{TOOL_DEF['slug']}-sequence", "value"),
+    # populate_ec_options and populate_cofactor_options own these two properties; an
+    # example is a second, independent writer.  Safe because the two sit in disjoint
+    # dependency graphs — nothing takes a filter's value as an Input, and no callback
+    # writes the databases dropdown that would re-trigger the option builders — so
+    # neither can clobber the other.  Give an example an Output on the databases
+    # dropdown and that stops being true: the option builders are downstream of it and
+    # would clear the filter this callback just set.
+    Output(f"id-dropdown-{TOOL_DEF['slug']}-ec-filter", "value", allow_duplicate=True),
+    Output(f"id-dropdown-{TOOL_DEF['slug']}-cofactor-filter", "value", allow_duplicate=True),
+    # The Task Name output goes LAST in every populate_example_* callback.
     Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_sequence(example_value):
-    """Populate the sequence textarea and Task Name when an example is selected.
+    """Populate the sequence, both pre-filters and the Task Name from an example.
 
     The Task Name is prefilled with the example's own name so a run is
     submittable in one click — it is the one field that otherwise blocks submit.
     An already-typed name is overwritten, like every other example-filled field.
 
+    An example that declares no ``ec``/``cofactors`` clears those dropdowns rather
+    than leaving them: picking a second example must not silently carry the first
+    one's filter into a search the user thinks is unfiltered.  A sequence the user
+    pasted is not an example at all, so it fills the textarea and leaves their own
+    filters and task name exactly as they were.
+
     Args:
         example_value: The selected example protein sequence string.
 
     Returns:
-        Tuple of (sequence_string, task_name).  The task name is ``no_update``
-        for a sequence that is not one of the shipped examples.
+        Tuple of (sequence, ec_filter, cofactor_filter, task_name).  The last
+        three are ``no_update`` for a sequence that is not a shipped example.
     """
     if not example_value:
         raise PreventUpdate
 
-    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
-    return example_value, task_name or no_update
+    example = _EXAMPLES_BY_VALUE.get(example_value)
+    if example is None:
+        return example_value, no_update, no_update, no_update
+
+    return example_value, example.get("ec", []), example.get("cofactors", []), example["task_name"]
 
 
 @callback(
@@ -118,6 +139,44 @@ def populate_ec_options(database_values):
         ec_numbers.update(get_ec_numbers(SEQUENCES_DIR / safe_name))
 
     return [{"label": ec, "value": ec} for ec in sorted(ec_numbers)], []
+
+
+@callback(
+    Output(f"id-dropdown-{TOOL_DEF['slug']}-cofactor-filter", "options"),
+    Output(f"id-dropdown-{TOOL_DEF['slug']}-cofactor-filter", "value"),
+    Input(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
+)
+def populate_cofactor_options(database_values):
+    """Populate the cofactor filter dropdown when the selection changes.
+
+    The EC twin of this callback, with one difference: ``Cofactor`` is optional
+    metadata rather than a required column, so a database without it simply
+    contributes no options.  ``get_cofactors`` reads the same cached scan
+    ``get_ec_numbers`` does, so this costs one dict lookup on top of that.
+
+    Args:
+        database_values: The selected database filenames.
+
+    Returns:
+        Tuple of (options list, empty selection list).
+    """
+    if not database_values:
+        raise PreventUpdate
+
+    usable, _problems = scan_sequence_databases()
+    usable_names = set(usable)
+
+    cofactors: set[str] = set()
+    for name in database_values:
+        # Sanitise client-supplied filename: strip directory components so a
+        # name can never escape data/sequences/, then accept it only if it is
+        # currently a compliant database.
+        safe_name = Path(name).name
+        if safe_name not in usable_names:
+            continue
+        cofactors.update(get_cofactors(SEQUENCES_DIR / safe_name))
+
+    return [{"label": c, "value": c} for c in sorted(cofactors)], []
 
 
 @callback(
@@ -237,6 +296,8 @@ def submit_sequence_similarity_job(
     # Only mention filters if they are applied, to avoid cluttering the message.
     if ec_filter:
         msg += f", filtered by {len(ec_filter)} EC number(s)"
+    if cofactor_filter:
+        msg += f", filtered by {len(cofactor_filter)} cofactor(s)"
     msg += ")"
 
     return msg

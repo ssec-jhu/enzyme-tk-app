@@ -64,6 +64,15 @@ would blank the field). Above, a value that is not one of the shipped examples s
 textarea and only spares the Task Name; `sequence_structure_similarity`'s version does the same
 for the structure-upload outputs on a sequence-only example.
 
+**`no_update` is not the default for "this branch has nothing to say" — it means "leave what the
+user left".** Where the callback is the field's author for this branch, an absent value is an
+explicit *clear*, not a skip. `sequence_similarity.populate_example_sequence` splits exactly there:
+a shipped example returns `ex.get("ec", [])` — `[]`, so picking a second example positively clears
+the first one's filter — while a sequence the user pasted is not an example at all and returns
+`no_update` for the filters and the Task Name, leaving their own settings alone. Getting this
+backwards is silent: the run is filtered by a leftover the user never chose and the modal shows no
+sign of it (`create-modal` §7).
+
 ### 3. Intentional DOM Writes Are Not Guard Clauses
 
 Not every `return ""` is a guard clause. Some returns **intentionally** write a value to the DOM — those must stay as explicit returns. Common example: clearing stale results when a modal reopens.
@@ -183,18 +192,39 @@ process on every boot. The same discipline is what lets `utils/smiles_rendering.
 anywhere. (Do not put a shared validator in a tool's `compute.py` — `validate_reaction_smiles`
 lived in `funce/compute.py` until Reaction Similarity needed it too.)
 
-### 5. Naming & Placement
+### 5. Two Callbacks Writing One Property — `allow_duplicate`
+
+Dash rejects two callbacks with the same `Output` unless the later ones declare
+`Output(..., "value", allow_duplicate=True)` (and carry `prevent_initial_call=True`). The flag
+silences the error; it does **not** order the writers. Add it only when you can show the two
+writers cannot race:
+
+- **They must sit in disjoint dependency graphs.** In `sequence_similarity`, `populate_ec_options`
+  and `populate_cofactor_options` own the two filter `value` properties, and
+  `populate_example_sequence` writes them as a second, independent writer. Safe because nothing
+  takes a filter's `value` as an `Input` and **no callback anywhere writes the Databases dropdown**,
+  so picking an example cannot re-trigger the option builders.
+- **Adding an `Output` can break a graph that was disjoint.** Giving that same example callback an
+  `Output` on the Databases dropdown would put the option builders downstream of it: they would fire
+  and clear the filter the example had just set. Reordering the `Output(...)` lines does not help —
+  the second callback runs after the first has returned. Change the *graph*, not the order.
+- **Prefer one owner.** `allow_duplicate` is the exception, not a way to spread writes for one
+  property across callbacks. `pages/admin.py` and `pages/my_tasks.py` are the other legitimate uses:
+  several distinct user actions feed one result/refresh sink, and only one can fire per interaction.
+
+### 6. Naming & Placement
 
 - Callback function names start with a **verb** describing the action. Every tool modal uses the same four: `toggle_*`, `populate_example_*`, `validate_*`, `submit_*`.
 - Keep callbacks close to the component they modify — define them in the same file as the component that owns the `Output`.
 - Always add `prevent_initial_call=True` on callbacks that should not fire at page load. `validate_*` is the standing exception (§4) — it must fire at load to disable the Run button.
 
-### 6. Exemplars
+### 7. Exemplars
 
 - **All four callbacks in one short file:** See `enzyme_tk_app/app/tools/timer_tool_template/callbacks.py` — the canonical `toggle_` / `populate_example_` / `validate_` / `submit_` set, heavily commented and with no tool-specific logic in the way.
 - **`PreventUpdate` usage:** See `enzyme_tk_app/app/pages/my_tasks.py` — uses `raise PreventUpdate` consistently in all action callback guard clauses.
 - **Positional-arg decorator style:** See `enzyme_tk_app/app/tools/substrate_product_similarity/callbacks.py` — all `@callback` decorators use positional args, never list syntax.
 - **Server-side guard + `validate_db_names`:** See `enzyme_tk_app/app/tools/substrate_product_similarity/callbacks.py` and `enzyme_tk_app/app/tools/sequence_similarity/callbacks.py`.
+- **Example picker with more outputs than the input + Task Name:** See `enzyme_tk_app/app/tools/sequence_similarity/callbacks.py` — four outputs, two of them `allow_duplicate` filter dropdowns (§5), Task Name last, and the `[]`-clears / `no_update`-leaves split of §2. `sequence_structure_similarity/callbacks.py` is the simpler form: extra outputs, no duplicate owner.
 
 ---
 

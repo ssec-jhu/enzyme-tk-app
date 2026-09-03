@@ -6,6 +6,8 @@ import pytest
 
 from enzyme_tk_app.app.tests.conftest import offered_databases
 from enzyme_tk_app.app.utils.data_loading import (
+    extract_cofactor_names,
+    get_cofactors,
     get_ec_numbers,
     get_foldseek_database_options,
     get_reaction_database_options,
@@ -393,3 +395,90 @@ def test_get_ec_numbers_reads_a_tsv(sequences_db_dir):
     path = _write_database(sequences_db_dir, "tabbed.tsv")
 
     assert get_ec_numbers(path) == ["1.1.1.1", "3.2.2.-"]
+
+
+# ── Cofactor extraction ─────────────────────────────────────────────────────
+
+
+@pytest.mark.parametrize(
+    ("cell", "expected"),
+    [
+        pytest.param(
+            "COFACTOR: Name=heme b; Xref=ChEBI:CHEBI:60344; Evidence={ECO:0000269|PubMed:33329665}; "
+            "Note=Binds 2 heme groups per subunit. {ECO:0000269|PubMed:33329665};",
+            {"heme b"},
+            id="one-name-ignores-xref-evidence-note",
+        ),
+        pytest.param(
+            "COFACTOR: Name=Mg(2+); Xref=ChEBI:CHEBI:18420; Evidence={ECO:0000250}; Name=Mn(2+); "
+            "Xref=ChEBI:CHEBI:29035; Note=Divalent metal cation. Prefers Mn(2+) over Mg(2+).;",
+            {"Mg(2+)", "Mn(2+)"},
+            id="two-names-in-one-block",
+        ),
+        pytest.param(
+            "COFACTOR: Name=Mn(2+); Xref=ChEBI:CHEBI:29035; Evidence={ECO:0000269|PubMed:16345941}; "
+            "COFACTOR: Name=NAD(+); Xref=ChEBI:CHEBI:57540; Evidence={ECO:0000269|PubMed:16345941};",
+            {"Mn(2+)", "NAD(+)"},
+            id="two-cofactor-blocks",
+        ),
+        pytest.param(
+            "COFACTOR: Name=6,7-dimethyl-8-(1-D-ribityl)lumazine; Xref=ChEBI:CHEBI:16628;",
+            {"6,7-dimethyl-8-(1-D-ribityl)lumazine"},
+            id="name-containing-commas",
+        ),
+        pytest.param(
+            "COFACTOR: Name=pyridoxal 5'-phosphate; Xref=ChEBI:CHEBI:597326;",
+            {"pyridoxal 5'-phosphate"},
+            id="name-containing-spaces-and-apostrophe",
+        ),
+        pytest.param("COFACTOR: Xref=ChEBI:CHEBI:1; Note=no name here;", set(), id="no-name-field"),
+        pytest.param("", set(), id="blank"),
+        pytest.param(None, set(), id="none"),
+        pytest.param(float("nan"), set(), id="nan"),
+    ],
+)
+def test_extract_cofactor_names(cell, expected):
+    """Only ``Name=`` values are cofactors — never Xref, Evidence or Note."""
+    assert extract_cofactor_names(cell) == expected
+
+
+def _write_cofactor_database(directory, filename="cofactors.tsv"):
+    """Write a TSV whose Cofactor column holds real UniProt blobs.
+
+    TSV, not CSV: a cofactor name may itself contain commas
+    (``6,7-dimethyl-8-(1-D-ribityl)lumazine``).
+    """
+    path = directory / filename
+    path.write_text(
+        "Entry\tSequence\tEC number\tCofactor\n"
+        "P1\tMKT\t1.1.1.1\tCOFACTOR: Name=Zn(2+); Xref=ChEBI:CHEBI:29105;\n"
+        "P2\tMKTA\t1.1.1.1\tCOFACTOR: Name=Mg(2+); Evidence={ECO:1}; Name=Mn(2+); Note=Prefers Mn(2+).;\n"
+        "P3\tMKTAY\t2.2.2.2\t\n"
+    )
+    return path
+
+
+def test_get_cofactors_reads_every_name(sequences_db_dir):
+    """Names from both shapes are returned, sorted and de-duplicated; blanks add nothing."""
+    path = _write_cofactor_database(sequences_db_dir)
+
+    assert get_cofactors(path) == ["Mg(2+)", "Mn(2+)", "Zn(2+)"]
+
+
+def test_get_cofactors_returns_empty_without_the_column(sequences_db_dir):
+    """A database with no Cofactor column scans as empty rather than raising.
+
+    ``Cofactor`` is optional metadata, so ``usecols`` must not ask for it — the
+    default database selection includes files that do not carry it.
+    """
+    path = _write_database(sequences_db_dir, "plain.csv")
+
+    assert get_cofactors(path) == []
+
+
+def test_get_ec_numbers_and_get_cofactors_share_one_scan(sequences_db_dir):
+    """Both readers come off the same cached pass, so the file is parsed once."""
+    path = _write_cofactor_database(sequences_db_dir)
+
+    assert get_ec_numbers(path) == ["1.1.1.1", "2.2.2.2"]
+    assert get_cofactors(path) == ["Mg(2+)", "Mn(2+)", "Zn(2+)"]

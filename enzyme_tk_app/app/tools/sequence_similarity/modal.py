@@ -102,6 +102,43 @@ def _get_example_sequences():
                 "VLKFVAVTCRKSK"
             ),
         },
+        {
+            "label": "O04846 — Alpha carbonic anhydrase 1 (EC filter: 4.2.1.1)",
+            "task_name": "O04846-carbonic-anhydrase",
+            "ec": ["4.2.1.1"],
+            "value": (
+                "MKIMMMIKLCFFSMSLICIAPADAQTEGVVFGYKGKNGPNQWGHLNPHFTTCAVGKLQSPIDIQRRQIFYNH"
+                "KLNSIHREYYFTNATLVNHVCNVAMFFGEGAGDVIIENKNYTLLQMHWHTPSEHHLHGVQYAAELHMVHQAK"
+                "DGSFAVVASLFKIGTEEPFLSQMKEKLVKLKEERLKGNHTAQVEVGRIDTRHIERKTRKYYRYIGSLTTPPC"
+                "SENVSWTILGKVRSMSKEQVELLRSPLDTSFKNNSRPCQPLNGRRVEMFHDHERVDKKETGNKKKKPN"
+            ),
+        },
+        {
+            "label": "O13289 — Peroxisomal catalase (cofactor filter: heme)",
+            "task_name": "O13289-catalase-heme",
+            "cofactors": ["heme"],
+            "value": (
+                "MAPTFTNSNGQPIPEPFATQRVGQHGPLLLQDFNLIDSLAHFDRERIPERVVHAKGSGAYGVFEVTDDITDI"
+                "CAAKFLDTVGKKTRIFTRFSTVGGELGSADTARDPRGFATKFYTEEGNLDLVYNNTPVFFIRDPSKFPHFIH"
+                "TQKRNPETHLKDANMFWDYLTSNEESIHQVMVLFSDRGTPASYREMNGYSGHTYKWSNKKGEWFYVQVHFIS"
+                "DQGIKTLTNEEAGALAGSNPDYAQEDLFKNIAAGNYPSWTAYIQTMTEAEAKEAEFSVFDLTKVWPHKKYPL"
+                "RRFGKFTLNENPKNYFAEVEQAAFSPAHTVPYMEPSADPVLQSRLFSYADTHRHRLGTNYTQIPVNCPVTGA"
+                "VFNPHMRDGAMTVNGNLGSHPNYLASDKPVEFKQFSLQEDQEVWNGAATPFHWKATPADFKQAQELWKVLKR"
+                "YPNQQEHLAHNIAVHAAGADAAIQDRVFAYFGKVSQDLADAIKKEVLELSPRK"
+            ),
+        },
+        {
+            "label": "J9VWW9 — Superoxide dismutase [Mn] (EC 1.15.1.1 + cofactor Mn(2+))",
+            "task_name": "J9VWW9-SOD-Mn",
+            "ec": ["1.15.1.1"],
+            "cofactors": ["Mn(2+)"],
+            "value": (
+                "MITAITRTALPRATLRTSLATMSTIRAKHTLPPLPYAYDALEPSISAEIMNLHHTKHHQTYVNGLNAAEESL"
+                "QKASADGDFKTAISLQPALKFNGGGHINHSLFWKNLAPTGSAQVKVPTSGVFYDQVQADFGGFENLKKEMNA"
+                "KTAAIQGSGWGWLGYNKATKKLEIVTTPNQDPLLSHVPIIGIDIWEHAFYLQYKNVKPDYLNAIWNVINYEE"
+                "AESRLKAAQ"
+            ),
+        },
     ]
 
 
@@ -273,7 +310,7 @@ def modal():
                                 className="mb-2",
                                 align="center",
                             ),
-                            # Cofactor Filter (multi-select, disabled — coming soon)
+                            # Cofactor Filter (multi-select, dynamically populated)
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -286,8 +323,7 @@ def modal():
                                             options=[],
                                             value=[],
                                             multi=True,
-                                            placeholder="Coming soon — no cofactor data loaded",
-                                            disabled=True,
+                                            placeholder="Filter by cofactor (optional)...",
                                             className="themed-control",
                                         ),
                                         width=9,

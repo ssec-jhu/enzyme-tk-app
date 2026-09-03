@@ -145,16 +145,25 @@ own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
    is labelled `database`. A user-requested labelling exception, not a bug to fix.
 8. **Dependent dropdowns take the union.** Anything derived from the selection (EC-number
    filter, cofactor filter) is rebuilt as the union across the selected files and clears its
-   own value when the selection changes, so a stale filter is never carried over.
+   own value when the selection changes, so a stale filter is never carried over. That option
+   builder **owns** the dropdown's `value`: a second writer — an example picker that also
+   prefills the filter — needs `allow_duplicate=True` and a graph that cannot re-fire the
+   builder, which is why nothing may write the Databases dropdown (`write-callback` §5).
 9. **`data/sequences/` files declare their columns; a file that does not is not a database.**
    A file there qualifies only when **both** hold: its extension is in
    `SEQUENCE_DB_SUFFIXES` (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`) **and** its header carries
    every one of `REQUIRED_SEQUENCE_COLUMNS` (`Entry`, `Sequence`, `EC number`). Everything
    else in the file is **metadata the app never enumerates** — it rides through the search
    into the results grid untouched (which is why that grid appends a def for whatever it was
-   not told about; see `create-ag-grid` §2.6). `scan_sequence_databases()` in
-   `utils/data_loading.py` is the single scan: `get_sequence_database_options()` takes its
-   names, `check_data()` takes its `problems` lines
+   not told about; see `create-ag-grid` §2.6). **`Cofactor` is the one exception**: still
+   optional — never in `REQUIRED_SEQUENCE_COLUMNS`, a file without it is a database — but when a
+   file carries it, `get_cofactors()` enumerates its `Name=` values for Sequence Similarity's
+   cofactor filter and `compute.run()` rewrites the column to those names, so it earns a curated
+   def showing `Mg(2+); Mn(2+)` instead of the raw UniProt blob. `extract_cofactor_names()` in
+   `utils/data_loading.py` is the one parser for such a cell, shared by dropdown and worker — a
+   filter matching on names the dropdown never offered would silently return nothing.
+   `scan_sequence_databases()` in `utils/data_loading.py` is the single scan:
+   `get_sequence_database_options()` takes its names, `check_data()` takes its `problems` lines
    (`"badfile.csv — missing columns: Sequence, EC number"`). A non-compliant file is
    therefore **not offered at all** and is named on the home-page card instead — silently
    omitting it would leave the scientist who dropped it in with no explanation. `compute.run()`
@@ -219,9 +228,13 @@ before touching any of this.
   callback returns it **verbatim** as its **last** output, into
   `f"id-input-{TOOL_DEF['slug']}-task-name"`. Task Name is the one field that blocks submit, so an
   example that leaves it blank is not runnable in one click. Never prepend the tool slug — the My
-  Tasks table already shows the tool in the column beside Task Name. Full contract in
-  `create-modal` §7; `test_every_example_prefills_a_task_name` in `tests/test_tools.py` enforces a
-  non-blank name for every tool.
+  Tasks table already shows the tool in the column beside Task Name. An example may prefill **other**
+  fields too, via optional per-example keys and one extra `Output` each (`sequence_similarity`'s `ec`
+  and `cofactors` filters, `sequence_structure_similarity`'s structure upload) — Task Name stays last,
+  and the constraints on a prefilled value are in `create-modal` §7. Document which keys *your*
+  examples carry, and what a valid value for each is, in the `_get_example_*()` docstring — not here.
+  Full contract in `create-modal` §7; `test_every_example_prefills_a_task_name` in
+  `tests/test_tools.py` enforces a non-blank name for every tool.
 - **Document your tool's own encoding constraints in its `compute.py` docstring, not in this file
   or `AGENTS.md`.** Those two carry conventions binding *every* tool; a rule about how one algorithm
   turns a user structure into vectors belongs beside the code that does it, where nobody editing that

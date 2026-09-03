@@ -4,6 +4,17 @@ Loads the selected protein sequence database, applies EC number and
 cofactor pre-filters, then runs ``enzymetk.sequence_search_blast.BLAST``
 to find the most similar sequences.
 
+**The two pre-filters read their columns differently, and must.**  An
+``EC number`` cell holds atomic tokens separated by ``;`` (``"3.2.2.-; 3.2.2.6"``),
+so splitting on ``;`` is the whole parse.  A ``Cofactor`` cell is a UniProt
+annotation blob where ``;`` also separates ``Xref=``, ``Evidence=`` and ``Note=``
+sub-fields *and* successive ``COFACTOR:`` blocks — only its ``Name=`` values are
+cofactors, and ``extract_cofactor_names()`` is the one parser for them, shared with
+the dropdown that offers those names.  Each filter keeps a row that carries *any*
+selected value; a row whose cell is blank — or whose database has no ``Cofactor``
+column at all, since ``Cofactor`` is optional metadata — lists nothing and so
+survives no filter.
+
 .. note::
 
    The BLAST function requires the **diamond** binary to be available
@@ -29,6 +40,7 @@ from enzyme_tk_app.app.utils.columns import (
     COL_TARGET,
 )
 from enzyme_tk_app.app.utils.data_loading import (
+    extract_cofactor_names,
     load_sequence_data,
     scan_sequence_databases,
 )
@@ -61,9 +73,8 @@ def run(params: dict) -> dict:
             - ``"sequence"`` (str): query protein sequence.
             - ``"ec_filter"`` (list[str]): EC numbers to pre-filter
               the database (empty list means no filter).
-            - ``"cofactor_filter"`` (list[str]): cofactor values to
-              pre-filter (empty list means no filter).  The column
-              does not exist yet — this is a placeholder.
+            - ``"cofactor_filter"`` (list[str]): cofactor names to
+              pre-filter the database (empty list means no filter).
             - ``"top_n"`` (int): max number of results to return.
             - ``"predict_catalytic"`` (bool): whether to run catalytic
               residue prediction on the results.
@@ -148,12 +159,26 @@ def run(params: dict) -> dict:
         )
         db_df = db_df[mask]
 
-    # Pre-filter by cofactor if the column exists and filters are given.
-    # The "cofactor" column does not exist in the current CSV but will
-    # be added in a future data update.
-    # TODO: Update this logic if the cofactor column contains multiple
-    if cofactor_filter and COL_COFACTOR in db_df.columns:
-        db_df = db_df[db_df[COL_COFACTOR].isin(cofactor_filter)]
+    # Reduce each raw UniProt annotation blob to its "Name=" values once — the
+    # filter matches on them and the grid shows them.  A database with no Cofactor
+    # column lists no cofactors, so none of its rows match once a filter is active:
+    # the same rule as a blank cell, and the reason this cannot use .isin().
+    has_cofactors = COL_COFACTOR in db_df.columns
+    cofactor_names = (
+        db_df[COL_COFACTOR].map(extract_cofactor_names)
+        if has_cofactors
+        else pd.Series([set()] * len(db_df), index=db_df.index)
+    )
+    if has_cofactors:
+        # "; " is the source file's own separator and no cofactor name contains one —
+        # unlike ", ", which is ambiguous inside "6,7-dimethyl-8-(1-D-ribityl)lumazine".
+        db_df[COL_COFACTOR] = cofactor_names.map(lambda names: "; ".join(sorted(names)))
+
+    # Pre-filter by cofactor if the user selected any — a row survives when it lists
+    # *any* of them, matching how the EC filter above treats a multi-selection.
+    if cofactor_filter:
+        wanted = set(cofactor_filter)
+        db_df = db_df[cofactor_names.map(lambda names: bool(wanted & names))]
 
     filtered_size = len(db_df)
 

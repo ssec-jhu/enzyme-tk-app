@@ -17,12 +17,16 @@ sequence database when it is a delimited table — CSV or TSV, plain or gzipped
 (:data:`SEQUENCE_DB_SUFFIXES`) — carrying all of
 :data:`REQUIRED_SEQUENCE_COLUMNS`: ``Entry``, ``Sequence`` and ``EC number``.
 Every other column is metadata: the app never enumerates it, and it rides
-through the search into the results grid untouched.  The contract is the
+through the search into the results grid untouched.  ``Cofactor`` is the one
+exception — optional, so a file without it is still a database, but enumerated
+by :func:`get_cofactors` when present so a tool can offer it as a filter, and
+reduced to its names before it reaches a grid.  The contract is the
 extension *and* the header, never the extension alone — a file that does not
 meet it is not offered in any dropdown, and
 :func:`scan_sequence_databases` says why so the home-page card can show it.
 """
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,6 +34,7 @@ import pandas as pd
 
 from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCE_EMBEDDINGS_DIR, SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
+    COL_COFACTOR,
     COL_EC_NUMBER,
     COL_ENTRY,
     COL_MOL_INDEX,
@@ -286,28 +291,86 @@ def load_sequence_data(path):
     return db_df
 
 
-@lru_cache(maxsize=64)
-def _scan_ec_numbers(path_str: str, mtime: float, size: int) -> tuple[str, ...]:
-    """Read the EC column of one database, cached on file identity.
+_COFACTOR_NAME_RE = re.compile(r"Name=([^;]+)")
+"""Every ``Name=`` value in a UniProt cofactor annotation, up to the next ``;``."""
 
-    Cached because ``populate_ec_options`` has no ``prevent_initial_call`` and
-    its dropdown defaults to every database selected — so this runs in the
-    *web* process on every page load, once per selected file, and a full-column
-    read of ``enzymes.tsv`` is ~1.7 s.  Keyed like :func:`_read_header`, so a
-    re-dropped database is rescanned without an app restart.
+
+def extract_cofactor_names(cell) -> set[str]:
+    """Extract the cofactor names from one raw UniProt ``Cofactor`` cell.
+
+    A cell is an annotation blob, not a value: ``Name=`` is one field among
+    ``Xref=``, ``Evidence=`` and ``Note=``, all ``;``-separated.  Splitting on
+    ``;`` therefore yields those other fields as garbage "cofactors" — only the
+    ``Name=`` values are names.  Two shapes both carry several, and both occur:
+
+    - repeated blocks — ``COFACTOR: Name=Mn(2+); Xref=...; COFACTOR: Name=NAD(+); Xref=...;``
+    - several names in one block — ``COFACTOR: Name=Mg(2+); Xref=...; Name=Mn(2+); Note=...;``
+
+    Both return every name, so the pair above give ``{"Mn(2+)", "NAD(+)"}`` and
+    ``{"Mg(2+)", "Mn(2+)"}``.  A blank cell, a ``NaN`` and a cell with no
+    ``Name=`` all give an empty set — "no cofactor listed", which is what the
+    filter excludes.
+
+    Both the web process (the dropdown's option list) and the worker (the
+    pre-filter in ``sequence_similarity/compute.py``) parse cells, so this is
+    the one parser for them: a filter that matched on different names than the
+    dropdown offered would silently return nothing.
+
+    Args:
+        cell: One raw ``Cofactor`` value — a string, or anything falsy/``NaN``.
+
+    Returns:
+        The cofactor names, stripped, with blanks dropped.
+    """
+    if not isinstance(cell, str):
+        return set()
+    return {name.strip() for name in _COFACTOR_NAME_RE.findall(cell) if name.strip()}
+
+
+@lru_cache(maxsize=64)
+def _scan_filter_columns(path_str: str, mtime: float, size: int) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Read the EC and Cofactor columns of one database in a single pass.
+
+    Cached because neither ``populate_ec_options`` nor ``populate_cofactor_options``
+    has ``prevent_initial_call`` and their database dropdown defaults to every
+    database selected — so this runs in the *web* process on every page load, once
+    per selected file.  Keyed like :func:`_read_header`, so a re-dropped database is
+    rescanned without an app restart.
+
+    Both columns are read together because the cost is tokenising the file, not
+    materialising a column: measured on the 812 MB ``enzymes.tsv``, ``EC number``
+    alone is 1.75 s, ``Cofactor`` alone 2.05 s, and **both together 1.70 s**.  Two
+    separate scans would double a cold page load for nothing.
+
+    ``Cofactor`` is optional metadata, not one of :data:`REQUIRED_SEQUENCE_COLUMNS`,
+    and ``pandas`` raises for a ``usecols`` column the file lacks — so the header
+    decides what is asked for, and an absent column scans as empty.
+
+    Returns:
+        ``(ec_numbers, cofactors)``, each a sorted tuple of unique values.  Tuples,
+        not lists — a cached value must not be mutable by its callers.
     """
     path = Path(path_str)
-    db_df = pd.read_csv(path, sep=sequence_db_separator(path), usecols=[_COL_EC_NUMBER])
-    ec_series = db_df[_COL_EC_NUMBER].dropna()
-    unique_ecs = set()
-    for cell in ec_series:
-        # A cell may hold several EC numbers (e.g. "3.2.2.-; 3.2.2.6").
-        for part in str(cell).split(";"):
-            part = part.strip()
-            if part:
-                unique_ecs.add(part)
-    # Tuple, not list — a cached value must not be mutable by its callers.
-    return tuple(sorted(unique_ecs))
+    header = _read_header(path_str, mtime, size)
+    wanted = [c for c in (_COL_EC_NUMBER, COL_COFACTOR) if c in header]
+    db_df = pd.read_csv(path, sep=sequence_db_separator(path), usecols=wanted)
+
+    unique_ecs: set[str] = set()
+    if _COL_EC_NUMBER in db_df.columns:
+        for cell in db_df[_COL_EC_NUMBER].dropna():
+            # A cell may hold several EC numbers (e.g. "3.2.2.-; 3.2.2.6").  Unlike
+            # a Cofactor cell, these are atomic tokens, so ";" really does split them.
+            for part in str(cell).split(";"):
+                part = part.strip()
+                if part:
+                    unique_ecs.add(part)
+
+    unique_cofactors: set[str] = set()
+    if COL_COFACTOR in db_df.columns:
+        for cell in db_df[COL_COFACTOR].dropna():
+            unique_cofactors.update(extract_cofactor_names(cell))
+
+    return tuple(sorted(unique_ecs)), tuple(sorted(unique_cofactors))
 
 
 def get_ec_numbers(path):
@@ -324,7 +387,24 @@ def get_ec_numbers(path):
         Sorted list of unique EC number strings found in the file.
     """
     stat = path.stat()
-    return list(_scan_ec_numbers(str(path), stat.st_mtime, stat.st_size))
+    return list(_scan_filter_columns(str(path), stat.st_mtime, stat.st_size)[0])
+
+
+def get_cofactors(path):
+    """Extract sorted unique cofactor names from a sequence database.
+
+    ``Cofactor`` is optional metadata, so a file without the column yields an
+    empty list rather than raising.  Cells are UniProt annotation blobs — see
+    :func:`extract_cofactor_names` for what is taken out of them.
+
+    Args:
+        path: Path to the database file (CSV or TSV, plain or gzipped).
+
+    Returns:
+        Sorted list of unique cofactor names found in the file.
+    """
+    stat = path.stat()
+    return list(_scan_filter_columns(str(path), stat.st_mtime, stat.st_size)[1])
 
 
 def load_and_clean_data(csv_path):

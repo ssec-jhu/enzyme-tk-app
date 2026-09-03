@@ -72,8 +72,10 @@ def _get_column_defs() -> list[dict]:
         {"field": col.COL_TEMPERATURE, "width": 110, "filter": "agNumberColumnFilter"},
         {"field": col.COL_LENGTH, "width": 90, "filter": "agNumberColumnFilter"},
         {"field": col.COL_MASS, "width": 110, "filter": "agNumberColumnFilter"},
-        # ── Cofactor (placeholder — column coming in future data update) ─
-        {"field": col.COL_COFACTOR, "width": 120},
+        # ── Cofactor ─────────────────────────────────────────────────
+        # Extracted names ("Mg(2+); Mn(2+)"), not the raw UniProt blob — compute.py
+        # reduces the column before it reaches here.  160 fits "pyridoxal 5'-phosphate".
+        {"field": col.COL_COFACTOR, "width": 160},
     ]
 
 

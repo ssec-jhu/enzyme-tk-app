@@ -267,7 +267,7 @@ known = {d["field"] for d in defs}
 defs += [{"field": c, "headerName": c} for c in df_payload["columns"] if c not in known]
 ```
 
-This is not synthesis: no name is invented, they are read off the payload — so an unexpected column is unstyled but never invisible. Two tools need it and both do it identically. `tools/funce/results.py`: a newer `enzymetk` may emit new `Funce_*` columns. `tools/sequence_similarity/results.py`: a sequence database only has to carry `Entry`, `Sequence` and `EC number` (`create-tool` §3b.9), every other column is metadata this app never enumerates, and a real `enzymes.tsv` search brings 17 of them (`Organism`, `Protein names`, `Catalytic activity`, `Cofactor`, …). Curated defs lead, the appended tail comes last; if you extend the curated list, leave the append in place.
+This is not synthesis: no name is invented, they are read off the payload — so an unexpected column is unstyled but never invisible. Two tools need it and both do it identically. `tools/funce/results.py`: a newer `enzymetk` may emit new `Funce_*` columns. `tools/sequence_similarity/results.py`: a sequence database only has to carry `Entry`, `Sequence` and `EC number` (`create-tool` §3b.9), every other column is metadata this app never enumerates, and a real `enzymes.tsv` search brings 17 of them (`Organism`, `Protein names`, `Catalytic activity`, …). Curated defs lead, the appended tail comes last; if you extend the curated list, leave the append in place.
 
 ### 2.7 — Header labels (`headerName`) — optional, and Func-E opts out
 
