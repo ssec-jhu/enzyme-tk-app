@@ -4,7 +4,7 @@ dash-ag-grid==35.3.0
 dash-bootstrap-components==2.0.4
 # TODO: Pin the version of enzymetk once a stable release is available.
 enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@funce-updates
-gunicorn==26.0.0
+gunicorn==26.2.0
 pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
 # Func-E reaction encoding.  rxnfp itself is installed in the Dockerfile, not here:
