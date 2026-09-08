@@ -29,9 +29,11 @@ admin dashboard specifically is `check-admin`'s — both drive real Docker.
    ```bash
    tox
    ```
-   Runs the default `envlist` (check-style, check-security, format-check,
-   test, build-docs, build-dist). All environments must pass. Report the
-   test count (e.g., "42 passed").
+   Runs the default `envlist` (check-style, check-security, format, test,
+   test-docker-dependent, build-docs, build-dist). All environments must
+   pass. Report the test count (e.g., "42 passed"). `test-docker-dependent`
+   installs nothing locally — it runs pytest inside the `worker` container
+   and is ignored when no Docker daemon is up.
 
 ---
 

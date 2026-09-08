@@ -268,4 +268,11 @@ tox -e build-dist       # build distribution package
 
 CI runs these same tox environments. See [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
 
+On Linux, `tox -e test` installs PyTorch from the [CPU channel](https://download.pytorch.org/whl/cpu)
+(`PIP_EXTRA_INDEX_URL` in `[testenv:test]`): `enzymetk` and `unimol_tools` leave `torch` unpinned, and
+PyPI's linux wheel drags in ~2.8 GB of CUDA dependencies — more than a CI runner's free disk. No effect
+on macOS, where PyPI's torch is already CPU-only; the image reaches the same result its own way (see
+[GPU (optional)](#gpu-optional)). `tox -e test-docker-dependent` installs nothing locally — it runs
+pytest inside the `worker` container and is skipped when Docker is not running.
+
 ![Example Results](enzyme_tk_app/app/assets/example.jpg)
