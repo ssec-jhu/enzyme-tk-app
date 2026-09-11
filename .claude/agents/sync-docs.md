@@ -33,6 +33,12 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
 | `enzyme_tk_app/app/backend/config.py` (env var added/removed/default changed) | `docs/deployment/environment-variables.md` — the variable row, the "Source files" table, and the "Production checklist" if it needs a prod value |
 | `enzyme_tk_app/app/backend/celery_app.py` | `docs/deployment/environment-variables.md` (Celery vars) |
 | `enzyme_tk_app/app/paths.py` | `docs/deployment/environment-variables.md` (data-dir vars) |
+| `enzyme_tk_app/app/utils/submission_limits.py` (env var added/removed/default changed) | `README.md` → Environment Variables (the variable row), `scripts/template.env`, `docker-compose.yml` → `web`, and `main.bicep` → the web container's `env` |
+| `main.bicep` (env added/removed on web/worker/beat) | `README.md` → Configuration; cross-check against `docker-compose.yml` so a flag is not set in one deployment and missing from the other |
+| `docs/developer-guide.md` submit-callback skeleton | any change to the guards a `submit_*` callback must run — new tools are copied from it, so a stale skeleton silently reproduces the gap |
+| `enzyme_tk_app/app/backend/task_scheduler.py` (abstract method added/removed) | `.claude/agents/backend-agent.md` — the ABC-contract bullet and its method count; `docs/developer-guide.md` if the UI calls it. Sync the doc, flag the wording for `backend-agent` |
+| a new `enzyme_tk_app/app/utils/*.py` helper every tool is expected to call | `docs/developer-guide.md` → "Shared Utilities — Read Before You Write" (a row, or a tool author never finds it) and the matching `AGENTS.md` contract bullet |
+| a new autouse fixture in `tests/conftest.py` | `.claude/agents/write-tests.md` and `docs/developer-guide.md` → "Shared helpers in `conftest.py`" — a suite-wide default nobody documented is a test that passes for the wrong reason |
 | `docker-compose.yml` (service/volume/env) | `docs/deployment/index.md` (architecture table + diagram) and `docs/deployment/environment-variables.md` (compose-only vars) |
 | `Dockerfile` (CMD/EXPOSE) | `docs/deployment/index.md` |
 | `scripts/template.env` | `docs/deployment/environment-variables.md` — keep template and doc aligned |

@@ -25,6 +25,7 @@ from enzyme_tk_app.app.utils.data_loading import (
     validate_db_names,
 )
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example sequence (the dropdown value) -> the whole example,
 # so the picker can read its filter selections as well as its task name.
@@ -273,6 +274,12 @@ def submit_sequence_similarity_job(
     if error:
         return error
     top_n = int(top_n)
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(

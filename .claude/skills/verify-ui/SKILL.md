@@ -141,6 +141,24 @@ your change. Confirm by reading `.jobs-error-box`.
 The browser session is cookie-scoped, so a fresh pane starts with zero tasks
 even when jobs exist in Redis.
 
+**`You already have 3 job(s) queued or running` is config, not a bug.** The
+per-session cap is off by default and only on when `APP_IN_PRODUCTION_MODE` is
+set — `docker compose logs web` prints the resolved values on startup. Cancel a
+job on `/my-tasks` (Clear Finished frees nothing — it refuses non-terminal
+jobs), or unset the switch and restart, before reading it as a regression.
+
+To exercise the cap deliberately, bring `web` up with the switch on (no rebuild
+needed if the image is current) and hold slots with long Timer Tool jobs:
+
+```bash
+APP_IN_PRODUCTION_MODE=1 docker compose up -d web
+```
+
+The cap is the constant `MAX_ACTIVE_JOBS_PER_SESSION` (3) in
+`utils/submission_limits.py`, not an env var, so you need **three** concurrent
+jobs to reach it — Timer Tool at `seconds=280` three times. `docker compose up
+-d web` with no override puts it back.
+
 ---
 
 ## 4. Assert on facts, not on the screenshot

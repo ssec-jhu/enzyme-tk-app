@@ -19,6 +19,7 @@ from enzyme_tk_app.app.utils.formatting import validate_top_n
 # Safe at module scope: smiles_validation imports rdkit inside its functions, so
 # nothing heavy loads until the user actually types into the SMILES field.
 from enzyme_tk_app.app.utils.smiles_validation import validate_reaction_smiles
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example SMILES (the dropdown value) -> task name.
 _TASK_NAMES_BY_VALUE = {ex["value"]: ex["task_name"] for ex in EXAMPLE_REACTIONS}
@@ -167,6 +168,12 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
     if error:
         return error
     top_n = int(top_n)
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     # At this point every input has been validated.
     # Proceed to submit the job to the scheduler

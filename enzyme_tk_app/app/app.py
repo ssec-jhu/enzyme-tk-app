@@ -1,5 +1,6 @@
 """Main Dash application entry point for the EnzymeTK Tool Suite."""
 
+import logging
 import secrets
 
 import dash
@@ -9,6 +10,7 @@ from dash import Dash, html
 from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.components.footer import footer
 from enzyme_tk_app.app.components.navbar import navbar
+from enzyme_tk_app.app.utils import submission_limits
 
 # Initialize the app
 # We include FontAwesome for icons and Bootstrap for dbc component functionality.
@@ -76,6 +78,19 @@ server.config["SESSION_COOKIE_SECURE"] = True
 from enzyme_tk_app.app.backend.session import init_session  # noqa: E402
 
 init_session(server)
+
+# Deliberately WARNING, not INFO: the app calls no ``logging.basicConfig`` and the
+# Dockerfile's gunicorn CMD sets no ``--log-level``, so an INFO record is dropped by
+# ``logging.lastResort`` and never reaches ``docker compose logs web``.  This line is an
+# operator's only confirmation that the production switch took — including when a typo'd
+# value resolved to False instead of raising.  Prints once per gunicorn worker.
+logging.warning(
+    "EnzymeTK starting — production mode: %s, concurrent-job cap per session: %s",
+    submission_limits.PRODUCTION_MODE,
+    # The cap only applies in production mode, so print what is actually in force
+    # rather than a number that is being ignored.
+    submission_limits.MAX_ACTIVE_JOBS_PER_SESSION if submission_limits.PRODUCTION_MODE else "off",
+)
 
 if __name__ == "__main__":
     app.run(port=8050, debug=True)

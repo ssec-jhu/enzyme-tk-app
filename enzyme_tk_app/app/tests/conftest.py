@@ -19,6 +19,25 @@ from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
 from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.utils import submission_limits
+
+
+@pytest.fixture(autouse=True)
+def _submission_limit_off(monkeypatch):
+    """Pin the submission cap OFF for every test unless a test opts in.
+
+    ``tox.ini`` sets ``passenv = *``, so a developer with ``APP_IN_PRODUCTION_MODE=1``
+    exported would otherwise run the whole suite with the cap live — and every submit
+    callback would reach for the real scheduler at ``redis://localhost:6379/0``.
+
+    ``monkeypatch.setattr`` is required, not ``setenv``: the constants bind at import
+    time, so changing the environment afterwards cannot flip them (the same reason
+    ``test_backend_config.py`` patches ``config``'s globals directly).
+    """
+    monkeypatch.setattr(submission_limits, "PRODUCTION_MODE", False)
+    # Pinned too, so the suite's expected messages do not move if the policy constant does.
+    monkeypatch.setattr(submission_limits, "MAX_ACTIVE_JOBS_PER_SESSION", 3)
+
 
 # Directory containing test data files (CSV fixtures, etc.).
 TEST_DATA_DIR = Path(__file__).parent / "data"

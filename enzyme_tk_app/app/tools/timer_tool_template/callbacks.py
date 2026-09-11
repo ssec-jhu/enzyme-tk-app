@@ -27,6 +27,7 @@ from flask import g
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example duration (the dropdown value) -> task name.
 # The dropdown hands the callback only the value, so this is how the picker
@@ -197,6 +198,12 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
 
     if seconds < 1 or seconds > 300:
         return "Duration must be between 1 and 300 seconds."
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     # ── Submit to the backend ───────────────────────────────────────
     # get_task_scheduler() returns the singleton TaskScheduler

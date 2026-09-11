@@ -327,6 +327,39 @@ def _smiles_tools():
         yield slug, modal, importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
 
 
+def _tools_with_callbacks():
+    """Yield ``(slug, callbacks module)`` for every discovered tool that has callbacks."""
+    for tool in TOOLS:
+        slug = tool["slug"]
+        try:
+            yield slug, importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+        except ModuleNotFoundError:
+            continue
+
+
+def test_every_tool_enforces_the_active_job_limit():
+    """Every tool's submit path must import the per-session job cap.
+
+    The cap is only as good as its weakest tool: one tool that skips it is an
+    unlimited submission endpoint, and nothing else in the app would notice.
+    Walking the live registry means tool #7 is held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot tell
+    a guard placed before ``submit_job`` from one placed after it.  That half is
+    covered behaviourally in ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_active_job_limit", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_active_job_limit from "
+            "utils.submission_limits — this tool is an uncapped submission endpoint"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
 def test_every_smiles_field_is_validated():
     """A tool that takes a structure must import a validator into its callbacks.
 

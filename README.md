@@ -71,12 +71,27 @@ This writes `.env` with a random `ETK_ADMIN_TOKEN` (the login token) and
 rotate the secrets — it prompts before overwriting an existing `.env`. **Never
 commit `.env`.** If the secrets are left unset, the admin login fails closed.
 
+The same script sets the production switch, so a deployment is one command:
+
+```bash
+./scripts/generate-env.sh --production
+```
+
+That uncomments `APP_IN_PRODUCTION_MODE=true` (see the table below); `--local`
+turns it back off. A **plain rerun preserves whatever the existing `.env` had**,
+so rotating secrets on a live deployment cannot silently drop it back to local
+defaults — and the script prints the resulting mode either way. This only
+affects Docker Compose: `main.bicep` hardcodes the switch on for Azure.
+
 ### Environment Variables
 
-All configuration is via environment variables, read by `enzyme_tk_app/app/backend/config.py`.
+All configuration is via environment variables, read by `enzyme_tk_app/app/backend/config.py`
+(backend runtime, shared by `web` and `worker`) and `enzyme_tk_app/app/utils/submission_limits.py`
+(the production switch and the submission cap, `web` only).
 `docker-compose.yml` sets them **per service**, not globally: `web` and `worker` share the runtime
-variables, `beat` takes only the sweep interval, and the three admin variables go to **`web` alone**
-— nothing the worker runs serves `/admin`. Anything compose leaves unset falls back to the default below.
+variables, `beat` takes only the broker URL and the sweep interval, and the three admin variables plus the three
+production variables go to **`web` alone** — nothing the worker runs serves HTTP. Anything compose
+leaves unset falls back to the default below.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -88,6 +103,11 @@ variables, `beat` takes only the sweep interval, and the three admin variables g
 | `ETK_ADMIN_TOKEN` | *(empty)* | Login token for `/admin`. Empty means the login **fails closed** and the dashboard is unreachable. `web` only |
 | `ETK_SECRET_KEY` | *(empty)* | Signs the admin session cookie. Required whenever `ETK_ADMIN_TOKEN` is set — the app refuses to start otherwise. Unset with no token: a random per-process key, so admins are logged out on restart. `web` only |
 | `ETK_ADMIN_SESSION_TTL_SECONDS` | `300` (5 min) | Sliding idle window for an unlocked admin session. Every authenticated check slides it forward, including the dashboard's 10 s poll, so an open tab never expires. `web` only |
+| `APP_IN_PRODUCTION_MODE` | `false` | **The production switch, and the only one.** Default off, so a downloaded checkout runs locally with no submission limits and no code edits. Set it to `true` for a public deployment and one browser session may then hold at most `MAX_ACTIVE_JOBS_PER_SESSION` (3) concurrent jobs, so a bot or a runaway script cannot starve the Celery workers. That cap is a **constant** in `enzyme_tk_app/app/utils/submission_limits.py`, deliberately not an environment variable — it is policy this app owns, not deployment config. `main.bicep` hardcodes the switch on for Azure, so this row only affects Docker Compose. `web` only |
+
+The submission cap is keyed on the anonymous session cookie, which a client can discard to
+mint a new one — it stops an impatient user, a runaway script, and a naive bot, not a determined
+attacker. A CAPTCHA is the intended answer for that and is not implemented yet.
 
 Both session cookies are always sent with `Secure`, `HttpOnly`, and
 `SameSite=Lax` — `SESSION_COOKIE_SECURE` is not configurable. Browsers accept

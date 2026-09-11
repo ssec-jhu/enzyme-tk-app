@@ -20,6 +20,7 @@ from enzyme_tk_app.app.utils.formatting import validate_top_n
 # Safe at module scope: smiles_validation imports rdkit inside its functions, so
 # nothing heavy loads until the user actually types into the SMILES field.
 from enzyme_tk_app.app.utils.smiles_validation import validate_smiles
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: encoded dropdown value ("role||smiles") -> task name.
 _TASK_NAMES_BY_VALUE = {f"{ex['role']}||{ex['value']}": ex["task_name"] for ex in _get_example_smiles()}
@@ -196,6 +197,12 @@ def submit_substrate_product_similarity_job(
     if error:
         return error
     top_n = int(top_n)
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     # get the task scheduler and submit the job with the collected parameters
     scheduler = get_task_scheduler()

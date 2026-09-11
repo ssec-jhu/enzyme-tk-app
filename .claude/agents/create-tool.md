@@ -242,6 +242,7 @@ before touching any of this.
   is reduced, why every selected database must be scored in one call, and why the app never
   downloads a checkpoint. Write the equivalent for your tool, and pin whatever a reader could get
   wrong with a test in `tests/test_tools_<slug>.py`.
+- **Your `submit_*` callback must end with the per-session job cap.** `validate_active_job_limit(g.session_id)` from `enzyme_tk_app.app.utils.submission_limits`, as the **last** guard — after every field validator, immediately before `get_task_scheduler()` — so a malformed submit still shows its own field error first. It returns a message or `None` like `validate_db_names`/`validate_top_n`, and is a no-op unless the deployment set `APP_IN_PRODUCTION_MODE`. Omit it and your tool is an uncapped submission endpoint one bot can use to starve the workers; `test_every_tool_enforces_the_active_job_limit` in `tests/test_tools.py` walks the live registry and fails the build. Full rationale in `write-callback` §4.
 - For callback implementation patterns (guard clauses, decorator syntax, naming), read and follow `.claude/agents/write-callback.md`, and examine existing tools.
 
 ## 5. Reference Material

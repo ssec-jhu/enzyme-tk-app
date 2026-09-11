@@ -87,6 +87,14 @@ sequenceDiagram
   `is_admin` flag cannot be forged. Unset → random per-process key in `app.py`
   (dev convenience; admins are logged out on restart).
 
+`scripts/generate-env.sh` mints **fresh** values for both on every run — no flag
+and no existing `.env` can preserve a secret, so re-running the script *is* the
+rotation procedure. Its `--production` / `--local` flags, and the production mode
+it carries forward from an existing `.env`, move `APP_IN_PRODUCTION_MODE` alone
+and never touch either secret. Expect a rotation to log every admin out: the new
+`ETK_SECRET_KEY` invalidates every outstanding session cookie and the new
+`ETK_ADMIN_TOKEN` invalidates the old password.
+
 ### Auth flow (all in `pages/admin.py`)
 
 1. `/admin` is **not** in the navbar — discoverable only by URL.
@@ -116,6 +124,11 @@ that same Flask config key. So both the admin session cookie and the anonymous
 one are always `Secure` + `HttpOnly` + `SameSite=Lax`. There is no
 auto-detection and no env var — `session.py`'s `request.is_secure` fallback
 exists only to keep `init_session` reusable elsewhere, and never runs here.
+
+`APP_IN_PRODUCTION_MODE` is no exception: it gates the per-session job cap in
+`utils/submission_limits.py` and nothing else, and must never gate these flags —
+making them conditional would silently weaken every deployment that forgets to set
+it, to spare local dev a tradeoff it already accepts (below).
 
 Browsers treat `http://localhost` and `http://127.0.0.1` as trustworthy
 origins and accept `Secure` cookies there, which is the only reason local

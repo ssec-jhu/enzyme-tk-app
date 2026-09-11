@@ -20,6 +20,7 @@ from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
 from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options, validate_db_names
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example id -> entry.
 _EXAMPLES_BY_ID = {ex["value"]: ex for ex in _get_example_entries()}
@@ -245,6 +246,12 @@ def submit_structure_similarity_job(
         "structure_filename": structure_filename if structure_contents else None,
         "databases": databases,
     }
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     # ready to submit the job to the backend scheduler
     scheduler = get_task_scheduler()

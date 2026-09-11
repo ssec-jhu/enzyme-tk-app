@@ -110,6 +110,7 @@ Most of what a tool needs already exists. Reach for these before writing your ow
 | [`utils/formatting.py`](../enzyme_tk_app/app/utils/formatting.py) | `validate_top_n()` — every Top-N field calls it in the submit callback; it accepts 1–500 and returns an error message or `None`, never raises. Also `round_column_values()`, `format_duration()`, `expires_in()`, `truncate_id()` |
 | [`utils/smiles_rendering.py`](../enzyme_tk_app/app/utils/smiles_rendering.py) | `smiles_to_svg_data_uri()`, `reaction_to_svg_data_uri()`, and `generate_cached_svg_uris(series, render_fn, **kwargs)` which renders each *unique* SMILES once — this is what fills an `SvgRenderer` column (§4.2) |
 | [`utils/smiles_validation.py`](../enzyme_tk_app/app/utils/smiles_validation.py) | `validate_reaction_smiles()` (reactions) and `validate_smiles()` (one molecule) — an error message or `None`, like `validate_db_names()`. Every SMILES field calls one of them in **three** places: the form callback (gates Run, marks the field), the submit callback (the client gate is bypassable) and `run()` (a replayed job skips the modal). The message carries RDKit's own reason (`unclosed ring`) via `rdBase.CaptureErrorLog`, never an echo of the input. Also `split_reaction()`. rdkit is imported inside the functions, so `callbacks.py` can import this at module scope |
+| [`utils/submission_limits.py`](../enzyme_tk_app/app/utils/submission_limits.py) | `validate_active_job_limit(session_id)` — the per-session cap on concurrent jobs, an error message or `None` like the validators above it. **Every** submit callback calls it as its last guard (§3.3); it is a no-op unless the deployment set `APP_IN_PRODUCTION_MODE` |
 | [`paths.py`](../enzyme_tk_app/app/paths.py) | Every shared data-directory constant ([Bundled Data and Paths](#bundled-data-and-paths)) |
 | [`tests/conftest.py`](../enzyme_tk_app/app/tests/conftest.py) | Shared fixtures and tree-walking helpers for your tests ([Tests](#tests)) |
 
@@ -338,6 +339,12 @@ def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n
     if error:
         return error
 
+    # Last guard, after every field validator: the per-session cap on concurrent
+    # jobs. A no-op unless the deployment set APP_IN_PRODUCTION_MODE.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
+
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
         tool_slug=TOOL_DEF["slug"],
@@ -352,11 +359,12 @@ def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n
     return f"Job submitted — ID: {job_id}"
 ```
 
-Three rules the skeleton encodes:
+Four rules the skeleton encodes:
 
 - **Validators return, they don't raise.** `validate_db_names()` and `validate_top_n()` hand back a message string, which you return straight into the submission-results div. An exception would surface as an HTTP 500 on `/_dash-update-component` instead of as text in the modal, because the app installs no Dash `on_error` handler.
 - **`raise PreventUpdate`** is for "nothing to say" — a guard that should leave the DOM untouched. A user-facing problem is a returned string.
 - **`params` key order is the display order** of the Input Parameters table on the results page (§4.1), so list the keys in the order the fields appear in your modal.
+- **The submission cap goes last.** `validate_active_job_limit(g.session_id)` (from `enzyme_tk_app.app.utils.submission_limits`) caps how many jobs one browser session may have queued or running, so a bot cannot starve the workers. It is last so a malformed submit still shows its own field error first, and it returns a message or `None` like the validators above it. Skipping it makes your tool an uncapped submission endpoint — `test_every_tool_enforces_the_active_job_limit` fails the build if you do.
 
 See [reaction_similarity/callbacks.py](../enzyme_tk_app/app/tools/reaction_similarity/callbacks.py) and [funce/callbacks.py](../enzyme_tk_app/app/tools/funce/callbacks.py) for the full implementations.
 
@@ -564,6 +572,7 @@ One file per tool, named for the tool: `enzyme_tk_app/app/tests/test_tools_<name
 | `reactions_dir`, `sequences_dir`, `sequence_csv` | Fixtures that copy the 20-row test CSVs into `tmp_path` |
 | `csv_molecules`, `csv_molecules_known_scores` | Substrate/product SMILES parsed out of the 20-row reaction CSV — the second carries hardcoded expected scores for regression tests |
 | `fake_redis`, `task_scheduler_celery_service`, `write_job_into_fake_redis` | Backend tests against `fakeredis` — no real Redis, no Celery, no network |
+| `_submission_limit_off` (autouse) | Pins the per-session job cap **off** for every test, so a submit-callback test never reaches a real scheduler because `APP_IN_PRODUCTION_MODE` happens to be exported. To exercise the cap, `monkeypatch.setattr` the `submission_limits` constants — `setenv` cannot flip them, they bind at import |
 
 ### Two rules that are easy to get wrong
 
@@ -664,6 +673,14 @@ make deploy-azure
 ```
 
 This runs `az deployment group create -f main.bicep`, reading the four secrets above out of `.env`.
+
+Nothing else from `.env` reaches Azure, so `main.bicep` hardcodes `APP_IN_PRODUCTION_MODE=true`
+on the web container: **the deployed app always runs with the per-session job cap on**
+(`MAX_ACTIVE_JOBS_PER_SESSION`, 3). Change whether it is on in `main.bicep`, not in `.env` —
+and keep the flag in step with `docker-compose.yml` so a setting is not live in one deployment
+and missing from the other. Changing the cap *value* is a code edit in
+`utils/submission_limits.py`; CI rebuilds the image on every push to `main`, so it ships on the
+next deploy without a manual build.
 
 ### Accessing the deployed app
 

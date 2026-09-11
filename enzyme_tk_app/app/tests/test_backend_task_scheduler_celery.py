@@ -111,6 +111,54 @@ def test_get_job_status_none_for_wrong_session(task_scheduler_celery_service, fa
     assert task_scheduler_celery_service.get_job_status("j1", "sess-OTHER") is None
 
 
+# ── count_active_jobs ───────────────────────────────────────────────────────────
+
+
+def test_count_active_jobs_counts_only_pending_and_started(task_scheduler_celery_service, fake_redis):
+    """Only PENDING and STARTED hold a submission slot; terminal jobs never do.
+
+    A session accumulates finished jobs for the whole Redis TTL, so counting them
+    would lock a user out after three successes.
+    """
+    for job_id, status in [
+        ("j-pending", "PENDING"),
+        ("j-started", "STARTED"),
+        ("j-success", "SUCCESS"),
+        ("j-failure", "FAILURE"),
+        ("j-revoked", "REVOKED"),
+        ("j-timeout", "TIMEOUT"),
+    ]:
+        write_job_into_fake_redis(fake_redis, job_id, "sess-1", status=status)
+
+    assert task_scheduler_celery_service.count_active_jobs("sess-1") == 2
+
+
+def test_count_active_jobs_is_scoped_to_one_session(task_scheduler_celery_service, fake_redis):
+    """Another session's running jobs must not consume this session's slots."""
+    write_job_into_fake_redis(fake_redis, "j-mine", "sess-1", status="PENDING")
+    write_job_into_fake_redis(fake_redis, "j-theirs", "sess-2", status="PENDING")
+
+    assert task_scheduler_celery_service.count_active_jobs("sess-1") == 1
+    assert task_scheduler_celery_service.count_active_jobs("sess-2") == 1
+
+
+def test_count_active_jobs_is_zero_for_an_unknown_session(task_scheduler_celery_service):
+    """A browser that has never submitted holds no slots — and must not error."""
+    assert task_scheduler_celery_service.count_active_jobs("sess-never-seen") == 0
+
+
+def test_count_active_jobs_skips_expired_job_hashes(task_scheduler_celery_service, fake_redis):
+    """A stale id left in the session set after its hash expired holds no slot.
+
+    ``list_jobs`` documents that the set can outlive a job hash; the same must not
+    count as an occupied slot, or an expiry would permanently cost the user capacity.
+    """
+    write_job_into_fake_redis(fake_redis, "j-live", "sess-1", status="PENDING")
+    fake_redis.sadd("session:sess-1:jobs", "j-vanished")
+
+    assert task_scheduler_celery_service.count_active_jobs("sess-1") == 1
+
+
 # ── list_jobs ───────────────────────────────────────────────────────────────────
 
 

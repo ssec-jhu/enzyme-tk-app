@@ -35,6 +35,11 @@ services:
       # Every authenticated check slides it forward, including the
       # dashboard's 10 s poll, so an open tab never expires.
       - ETK_ADMIN_SESSION_TTL_SECONDS=${ETK_ADMIN_SESSION_TTL_SECONDS:-300}
+      # Production switch — default OFF so a downloaded checkout runs locally
+      # with no limits and no code edits. Set APP_IN_PRODUCTION_MODE=true in .env
+      # for a public deployment; it sets the default for every individual
+      # production flag below. web only: the worker serves no HTTP.
+      - APP_IN_PRODUCTION_MODE=${APP_IN_PRODUCTION_MODE:-false}
       # Cookie Secure flag — NOT configurable and NOT auto-detected.
       # app.py sets Flask's SESSION_COOKIE_SECURE=True unconditionally, and
       # backend/session.py derives the anonymous etk_session_id cookie's flag

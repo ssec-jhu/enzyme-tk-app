@@ -189,6 +189,50 @@ def test_submit_rejects_bad_duration(duration, expected_fragment):
     assert expected_fragment in result
 
 
+def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
+    """At the cap, the callback returns the message and never reaches submit_job.
+
+    The import-walk in ``test_tools.py`` proves every tool imports the validator; only
+    this proves the guard actually sits *before* the submit, on a real callback.
+
+    Patches ``submission_limits.get_task_scheduler`` — the binding the limiter itself
+    resolves — not the tool's ``callbacks.get_task_scheduler``, which every other submit
+    test patches and which would leave the limiter reaching for real Redis.
+    """
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+    from enzyme_tk_app.app.utils import submission_limits  # noqa: PLC0415
+
+    monkeypatch.setattr(submission_limits, "PRODUCTION_MODE", True)
+    monkeypatch.setattr(submission_limits, "MAX_ACTIVE_JOBS_PER_SESSION", 3)
+
+    limiter_scheduler = MagicMock()
+    limiter_scheduler.count_active_jobs.return_value = 3
+    tool_scheduler = MagicMock()
+
+    with server.test_request_context():
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-at-cap"
+        with (
+            patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.utils.submission_limits.get_task_scheduler",
+                return_value=limiter_scheduler,
+            ),
+            patch(
+                "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+                return_value=tool_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_timer_job(1, 0, "at the cap", 10, False)
+
+    assert "3" in result
+    assert "Cancel" in result
+    tool_scheduler.submit_job.assert_not_called()
+
+
 def test_submit_calls_scheduler():
     """A valid submission must call scheduler.submit_job with correct params."""
     from enzyme_tk_app.app.app import server  # noqa: PLC0415

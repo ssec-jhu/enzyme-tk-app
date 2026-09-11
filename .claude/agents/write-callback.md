@@ -145,6 +145,22 @@ Missing/empty required field → `raise PreventUpdate` (nothing meaningful happe
 A value that is present but *invalid* → `return` the error message string, so the user sees
 it in the modal's submission-results div.
 
+**The per-session job cap is the LAST guard**, after every field validator and immediately
+before `get_task_scheduler()`:
+
+```python
+error = validate_active_job_limit(g.session_id)
+if error:
+    return error
+```
+
+Last, because a malformed submit should show *its own* field error rather than a capacity
+message that tells the user nothing about the typo they made. It returns a message or `None`
+like every validator above it, and is a no-op unless the deployment set
+`APP_IN_PRODUCTION_MODE`. `test_every_tool_enforces_the_active_job_limit` fails any tool whose
+`callbacks.py` omits the import; a behavioural test in `test_tools_timer.py` is what catches a
+guard placed *after* `submit_job`, which the import walk cannot see.
+
 **Database names are the canonical case.** They come from the browser and become filesystem
 paths, so they go through the one shared validator — never a per-tool regex. The second
 argument is the tool's **own option list**, the same builder the modal calls:
