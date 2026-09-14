@@ -592,13 +592,36 @@ Every existing compute test does this.
 1. **`tox run -e format`** — formats, sorts imports, and removes unused ones (F401). If an import exists for its side effect, mark it `# noqa: F401` with a reason. It also formats Python blocks inside `.md` files, so keep every snippet in `AGENTS.md` or `.claude/agents/` a valid statement — `docs/` is excluded from ruff, so snippets in *this* file are neither formatted nor linted.
 2. **`tox`** — the default envlist: `check-style`, `check-security`, `format`, `test`, `test-docker-dependent`, `build-docs`, `build-dist`. The Docker-dependent env fails harmlessly when no daemon is running. Both commands together are the **`verify`** agent, which every code-generating change ends with.
 3. **`verify-ui`** — if the change is visible in a browser (`pages/`, `components/`, `tools/*/modal.py`, `tools/*/results.py`, `assets/*.css`, `assets/*.js`), also run this skill against the running app. `verify` proves the code is clean; only `verify-ui` proves the button works. Never hand the manual check back to the user.
-4. **`sync-docs`** — the last step. It audits `AGENTS.md`, `README.md`, and the agent sources against what you changed.
+4. **`sync-docs`** — the last step. It audits `AGENTS.md`, `README.md`, `docs/deployment-guide.md`, and the agent sources against what you changed.
 
 The app runs in Docker — see [README → Quickstart](../README.md#quickstart).
 
 ```bash
 docker compose up --build
 ```
+
+### The tox environments
+
+_Requires `pip install -r requirements/test.txt`._
+
+```bash
+tox                     # run all environments (lint, security, test, docs, build)
+tox -e test             # unit tests only
+tox -e check-style      # ruff format + lint check
+tox -e check-security   # bandit security scan
+tox -e format           # auto-format and fix imports
+tox -e build-docs       # build Sphinx documentation
+tox -e build-dist       # build distribution package
+```
+
+CI runs these same tox environments. See [ci.yml](https://github.com/ssec-jhu/enzyme-tk-app/blob/main/.github/workflows/ci.yml).
+
+On Linux, `tox -e test` installs PyTorch from the [CPU channel](https://download.pytorch.org/whl/cpu)
+(`PIP_EXTRA_INDEX_URL` in `[testenv:test]`): `enzymetk` and `unimol_tools` leave `torch` unpinned, and
+PyPI's linux wheel drags in ~2.8 GB of CUDA dependencies — more than a CI runner's free disk. No effect
+on macOS, where PyPI's torch is already CPU-only; the image reaches the same result its own way (see
+[Deployment Guide → GPU](deployment-guide.md#gpu-optional)). `tox -e test-docker-dependent` installs
+nothing locally — it runs pytest inside the `worker` container and is skipped when Docker is not running.
 
 **A new dependency is not just a badge.** The `libraries` field in `TOOL_DEF` renders monospace badges on the tool card and installs nothing; list what actually runs in the worker at query time, not what produced the bundled data offline (Func-E lists `torch`, `rxnfp`, `unimol` — its reaction encoder runs those three — but not the ESM3 that embedded the protein database). A new Python package goes in `requirements/prd.txt`; system packages and binaries go through the **`edit-dockerfile`** agent, which covers the `linux/amd64` + `linux/arm64` rules. The one exception is a package needing per-package pip flags, which a requirements file cannot express — `rxnfp` is installed in the `Dockerfile` with `--no-deps` because its metadata hard-pins 2020 releases. Pin it there just as tightly, and note it in the requirements file that would otherwise have held it. A package that leaves `torch` unpinned (as `enzymetk` and `unimol_tools` do) carries one more constraint: CPU torch is enforced twice — the `Dockerfile`'s install order and `tox.ini`'s `[testenv:test]` CPU index for CI — so adding or bumping one means checking both, or linux CI downloads the CUDA stack and runs out of disk.
 
@@ -623,97 +646,8 @@ User views /my-tasks/{job_id}
   └─ Tool results                    ← your results_layout(job)
 ```
 
-## Azure Deployment
+## Deployment
 
-`make deploy-azure` deploys web, worker, and beat as Azure Container Apps plus Azure Cache for
-Redis, pulling the same GHCR image `ci.yml` publishes on every push to `main`.
-
-### Required tools
-
-- **Azure CLI** — `az login` before deploying.
-- An existing **`enzyme-tk-rg`** resource group.
-- **Docker** — only needed to sanity-check the GHCR pull below.
-
-### Required secrets (`.env` at repo root)
-
-| Variable | Purpose |
-|----------|---------|
-| `GH_USERNAME` | GitHub username owning the PAT below |
-| `GH_PAT` | GitHub PAT used by Container Apps to pull the private `ghcr.io/ssec-jhu/enzyme-tk-app` image |
-| `ETK_ADMIN_TOKEN` / `ETK_SECRET_KEY` | Same admin secrets as local dev — see [Admin Secrets](../README.md#admin-secrets-env) |
-
-### Generating `GH_PAT`
-
-Use a **classic** PAT, not a fine-grained one:
-
-1. [github.com/settings/tokens](https://github.com/settings/tokens) → **Generate new token (classic)**.
-2. Scope: `read:packages` only.
-3. If `ssec-jhu` enforces SSO, click **Configure SSO** next to the new token and authorize it for the org — otherwise GHCR will still deny pulls with it.
-
-Fine-grained PATs don't reliably work here: even with `Packages: Read`
-permission, org approval, and package-level access all granted, GHCR can
-still return `denied` on pull for an org-owned container package — a known
-gap in GitHub's fine-grained token support. Classic PATs with
-`read:packages` are the documented, reliable path (it's what `ci.yml` itself
-uses via `GITHUB_TOKEN`).
-
-To sanity-check a token before deploying:
-
-```bash
-echo "$GH_PAT" | docker login ghcr.io -u "$GH_USERNAME" --password-stdin
-docker pull ghcr.io/ssec-jhu/enzyme-tk-app:main
-```
-
-If the pull succeeds locally, `make deploy-azure` will succeed too.
-
-### Deploying
-
-```bash
-make deploy-azure
-```
-
-This runs `az deployment group create -f main.bicep`, reading the four secrets above out of `.env`.
-
-Nothing else from `.env` reaches Azure, so `main.bicep` hardcodes `APP_IN_PRODUCTION_MODE=true`
-on the web container: **the deployed app always runs with the per-session job cap on**
-(`MAX_ACTIVE_JOBS_PER_SESSION`, 3). Change whether it is on in `main.bicep`, not in `.env` —
-and keep the flag in step with `docker-compose.yml` so a setting is not live in one deployment
-and missing from the other. Changing the cap *value* is a code edit in
-`utils/submission_limits.py`; CI rebuilds the image on every push to `main`, so it ships on the
-next deploy without a manual build.
-
-### Accessing the deployed app
-
-The live app: **https://enzyme-tk-web.victoriouscliff-65afb037.eastus.azurecontainerapps.io**
-
-This URL is stable across redeploys — the random suffix belongs to the
-Container Apps *Environment* (`enzyme-tk-env`), not the individual
-deployment, and `make deploy-azure` updates that environment in place rather
-than recreating it. It only changes if the environment or the
-`enzyme-tk-rg` resource group is deleted and recreated. To look it up
-without a redeploy:
-
-```bash
-az containerapp show -g enzyme-tk-rg -n enzyme-tk-web --query properties.configuration.ingress.fqdn -o tsv
-```
-
-### Updating reference data files
-
-Bundled reference data (`data/sequences/`, `data/reactions/`, etc. — see
-[`paths.py`](../enzyme_tk_app/app/paths.py)) is served from the **`app-data`**
-Azure Files share, mounted read-only at `/app-data` on web and worker. Files
-must be uploaded directly to the share; they are not part of the container
-image. The local `data/<subdir>/` path maps to the same `<subdir>/` path on
-the share (e.g. `data/sequences/protein.csv` → `sequences/protein.csv`).
-
-To add or update a file via the Azure Portal:
-
-1. Go to the **`enzyme-tk-rg`** resource group → the storage account (kind
-   `FileStorage`, name like `st<random>`).
-2. **Data storage → File shares** → open **`app-data`**.
-3. If the target subdirectory (`sequences`, `reactions`, ...) doesn't exist
-   yet, click **+ Add directory** to create it.
-4. Open that directory → **Upload** → select the local file. Uploading a
-   file with the same name overwrites the existing one.
-
-No redeploy is needed — web and worker read the share live on each request.
+Deploying this app — environment variables, secrets, TLS, the shared volume, GPU image
+builds, and the Azure Container Apps setup behind `make deploy-azure` — is the
+[Deployment Guide](deployment-guide.md).

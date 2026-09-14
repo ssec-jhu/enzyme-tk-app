@@ -1,6 +1,6 @@
 ---
 name: sync-docs
-description: Use PROACTIVELY as the final step after any change that alters behavior, config, environment variables, invariants, filenames, thresholds, deployment setup, or agent conventions in the EnzymeTK app. Audits and updates every doc and instruction file (AGENTS.md, README.md, docs/deployment/, docs/admin-login.md) and flags when a new doc is warranted. Also invoke when asked to "sync docs", "update docs", or "check docs".
+description: Use PROACTIVELY as the final step after any change that alters behavior, config, environment variables, invariants, filenames, thresholds, deployment setup, or agent conventions in the EnzymeTK app. Audits and updates every doc and instruction file (AGENTS.md, README.md, docs/deployment-guide.md, docs/admin-login.md) and flags when a new doc is warranted. Also invoke when asked to "sync docs", "update docs", or "check docs".
 tools: Read, Write, Edit, Grep, Glob, Bash
 ---
 
@@ -23,25 +23,20 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
 
 ## Scope — what a change touches → what to update
 
-> **`docs/deployment/` does not exist yet.** Until it is created, everything the table below
-> routes there lives in **`README.md` → Configuration** (Environment Variables, Data
-> Directories, GPU, Shared Volume). Update that section instead of creating a stub, and say
-> so in your report.
-
 | Changed | Update |
 |---------|--------|
-| `enzyme_tk_app/app/backend/config.py` (env var added/removed/default changed) | `docs/deployment/environment-variables.md` — the variable row, the "Source files" table, and the "Production checklist" if it needs a prod value |
-| `enzyme_tk_app/app/backend/celery_app.py` | `docs/deployment/environment-variables.md` (Celery vars) |
-| `enzyme_tk_app/app/paths.py` | `docs/deployment/environment-variables.md` (data-dir vars) |
-| `enzyme_tk_app/app/utils/submission_limits.py` (env var added/removed/default changed) | `README.md` → Environment Variables (the variable row), `scripts/template.env`, `docker-compose.yml` → `web`, and `main.bicep` → the web container's `env` |
-| `main.bicep` (env added/removed on web/worker/beat) | `README.md` → Configuration; cross-check against `docker-compose.yml` so a flag is not set in one deployment and missing from the other |
+| `enzyme_tk_app/app/backend/config.py` (env var added/removed/default changed) | `docs/deployment-guide.md` → Environment Variables — the variable row, the "Source files" table, and the "Production checklist" if it needs a prod value |
+| `enzyme_tk_app/app/backend/celery_app.py` | `docs/deployment-guide.md` → Environment Variables (Celery vars) |
+| `enzyme_tk_app/app/paths.py` | `docs/deployment-guide.md` → Environment Variables (data-dir vars) |
+| `enzyme_tk_app/app/utils/submission_limits.py` (env var added/removed/default changed) | `docs/deployment-guide.md` → Environment Variables (the variable row), `scripts/template.env`, `docker-compose.yml` → `web`, and `main.bicep` → the web container's `env` |
+| `main.bicep` (env added/removed on web/worker/beat) | `docs/deployment-guide.md`; cross-check against `docker-compose.yml` so a flag is not set in one deployment and missing from the other |
 | `docs/developer-guide.md` submit-callback skeleton | any change to the guards a `submit_*` callback must run — new tools are copied from it, so a stale skeleton silently reproduces the gap |
 | `enzyme_tk_app/app/backend/task_scheduler.py` (abstract method added/removed) | `.claude/agents/backend-agent.md` — the ABC-contract bullet and its method count; `docs/developer-guide.md` if the UI calls it. Sync the doc, flag the wording for `backend-agent` |
 | a new `enzyme_tk_app/app/utils/*.py` helper every tool is expected to call | `docs/developer-guide.md` → "Shared Utilities — Read Before You Write" (a row, or a tool author never finds it) and the matching `AGENTS.md` contract bullet |
 | a new autouse fixture in `tests/conftest.py` | `.claude/agents/write-tests.md` and `docs/developer-guide.md` → "Shared helpers in `conftest.py`" — a suite-wide default nobody documented is a test that passes for the wrong reason |
-| `docker-compose.yml` (service/volume/env) | `docs/deployment/index.md` (architecture table + diagram) and `docs/deployment/environment-variables.md` (compose-only vars) |
-| `Dockerfile` (CMD/EXPOSE) | `docs/deployment/index.md` |
-| `scripts/template.env` | `docs/deployment/environment-variables.md` — keep template and doc aligned |
+| `docker-compose.yml` (service/volume/env) | `docs/deployment-guide.md` — the Architecture table + diagram, and Environment Variables for compose-only vars |
+| `Dockerfile` (CMD/EXPOSE) | `docs/deployment-guide.md` → Architecture |
+| `scripts/template.env` | `docs/deployment-guide.md` → Environment Variables — keep template and doc aligned |
 | a behavior / threshold / filename / invariant described in prose | `AGENTS.md`, `README.md`, and any `.claude/agents/*.md` that repeats it |
 | admin login / session token / secret key | defer to `admin-page` (owns `docs/admin-login.md`) |
 | a `.claude/agents/*.md` (non-`gsd-*`) **added** | create the matching symlink: `ln -s ../../.claude/agents/<name>.md .github/agents/<name>.agent.md` |
@@ -57,10 +52,11 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
    `README.md`, `docs/`, and `.claude/agents/*.md`. Removed a variable/threshold? Delete
    every mention (an offloaded-at-512KB line long after the threshold is gone is worse than
    no doc). Apply the *minimum* edit; do not rewrite whole files.
-3. **Deployment docs**: every env var has a row (name, default, description); removed vars
-   are deleted; changed defaults updated; new/removed services update the `index.md`
-   architecture table + ASCII diagram; the "Source files" table lists which file defines
-   each var; the "Production checklist" covers any new prod-sensitive var.
+3. **Deployment docs**: `docs/deployment-guide.md` is one flat file — every section below is
+   a heading in it, not a separate page. Every env var has a row (name, default,
+   description); removed vars are deleted; changed defaults updated; new/removed services
+   update the Architecture table + ASCII diagram; the "Source files" table lists which file
+   defines each var; the "Production checklist" covers any new prod-sensitive var.
 4. **Copilot agents**: `.github/agents/*.agent.md` are symlinks to the `.claude/agents/*.md`
    sources, so edits need nothing. Only when an agent is **added** create its symlink
    (`ln -s ../../.claude/agents/<name>.md .github/agents/<name>.agent.md`), or when one is
@@ -71,9 +67,10 @@ invariant wording → `backend-agent`.** Edit the *source* files only:
    stay ignored.
 6. **Flag new-doc needs**: if the change introduces a concept with no doc home — a new
    service, subsystem, operational procedure, or a wired-up feature (e.g. a "Redis memory
-   alert" banner) — recommend a specific new `.md` and say where (e.g. a new
-   `docs/deployment/<topic>.md` plus a row in the `index.md` Guides table). Report it;
-   create it only if asked.
+   alert" banner) — recommend where it belongs — usually a new
+   section in `docs/deployment-guide.md` or `docs/developer-guide.md`, and only a new flat
+   `docs/<topic>.md` plus a row in the README's Documentation table when the topic is big
+   enough to stand alone. Report it; create it only if asked.
 
 ## Rules
 
