@@ -17,7 +17,7 @@ from dash import html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df, offered_databases
 from enzyme_tk_app.app.tools.substrate_product_similarity import (
     TOOL_DEF,
     MoleculeRole,
@@ -43,6 +43,10 @@ from enzyme_tk_app.app.utils.columns import (
 
 # All similarity column names produced by enzymetk — the core regression signal.
 _ALL_SIM_COLUMNS = [a["column"] for a in get_similarity_algorithms()]
+
+# A real, parseable molecule for the callback tests — the form validates the
+# structure now, so a placeholder like "A" would be rejected on its own merits.
+_GLUCOSE_SMILES = "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
 
 
 def _default_params(**overrides):
@@ -242,8 +246,10 @@ def test_run_database_column_derived_from_filename(_patch_reactions_dir):
 
     for row in result["dataframe"]["data"]:
         assert "database" in row, "Missing 'database' column in result row"
-        # CSV is "test_reactions_20.csv" → stem "test_reactions_20" → title "Test Reactions 20"
-        assert row["database"] == "Test Reactions 20"
+        # Named exactly as the file is named in data/reactions/ — not prettified
+        # and not stripped, so the value matches the dropdown label and the file
+        # on disk.
+        assert row["database"] == "test_reactions_20.csv"
 
 
 def test_run_similarity_scores_rounded_to_4_decimals(_patch_reactions_dir):
@@ -346,16 +352,16 @@ def test_run_invalid_algorithm_raises_value_error(_patch_reactions_dir):
 # ── run() — edge cases ───────────────────────────────────────────────────────
 
 
-def test_run_nonexistent_database_returns_empty(_patch_reactions_dir):
-    """When the CSV file does not exist, run() returns empty results gracefully."""
-    params = _default_params(databases=["nonexistent_database.csv"])
-    result = run(params)
+def test_run_nonexistent_database_raises(_patch_reactions_dir):
+    """A missing CSV is the only selection, so it is a total wipeout and must raise.
 
-    assert result["dataframe"]["data"] == []
-    assert result["dataframe"]["columns"] == []
-    # Stat cards should show zero counts
-    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
-    assert stat_cards["Results Returned"] == "0"
+    Returning an empty grid would be indistinguishable from a legitimate
+    "no similar molecules found".
+    """
+    params = _default_params(databases=["nonexistent_database.csv"])
+
+    with pytest.raises(ValueError, match="None of the selected databases"):
+        run(params)
 
 
 def test_run_data_rows_have_consistent_columns(_patch_reactions_dir):
@@ -374,16 +380,13 @@ def test_run_empty_algorithms_raises_value_error(_patch_reactions_dir):
         run(params)
 
 
-def test_run_non_csv_database_is_skipped(_patch_reactions_dir):
-    """A database filename without a .csv suffix must be skipped, not crash."""
+def test_run_non_csv_database_raises_when_it_is_the_only_selection(_patch_reactions_dir):
+    """A non-.csv filename is skipped; being the only selection makes that fatal."""
     params = _default_params(databases=["not_a_csv.txt"])
-    result = run(params)
 
-    assert result["dataframe"]["data"] == []
-    assert result["dataframe"]["columns"] == []
-    stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
-    assert stat_cards["Databases Searched"] == "0/1"
-    assert stat_cards["Databases Skipped"] == "not_a_csv.txt"
+    # Named by its filename, like every other database the user sees.
+    with pytest.raises(ValueError, match="not_a_csv.txt"):
+        run(params)
 
 
 def test_run_skipped_databases_stat_card_in_success_path(_patch_reactions_dir):
@@ -395,6 +398,7 @@ def test_run_skipped_databases_stat_card_in_success_path(_patch_reactions_dir):
     assert len(result["dataframe"]["data"]) > 0
     stat_cards = {c["label"]: c["value"] for c in result["_stat_cards"]}
     assert stat_cards["Databases Searched"] == "1/2"
+    # Skipped names keep their extension, matching the dropdown and the grid.
     assert stat_cards["Databases Skipped"] == "bad.txt"
 
 
@@ -531,24 +535,39 @@ def test_subprod_toggle_modal_closes_on_cancel_click():
 
 
 def test_subprod_populate_example_sets_smiles_and_role():
-    """Selecting an example must populate both the SMILES field and the role selector."""
+    """Selecting an example must populate the SMILES field, the role selector and the Task Name."""
     from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
 
     # Encoded as "role||smiles"
-    smiles, role = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
+    smiles, role, task_name = populate_example_smiles("substrate||OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O")
 
     assert smiles == "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O"
     assert role == "substrate"
+    assert task_name == "glucose"
 
 
 def test_subprod_populate_example_sets_product_role():
     """A product example must set the role to 'product'."""
     from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
 
-    smiles, role = populate_example_smiles("product||CCO")
+    smiles, role, task_name = populate_example_smiles("product||CCO")
 
     assert smiles == "CCO"
     assert role == "product"
+    assert task_name == "ethanol"
+
+
+def test_subprod_populate_example_leaves_task_name_for_unknown_smiles():
+    """A SMILES that is not a shipped example fills the form but not the Task Name."""
+    from dash import no_update
+
+    from enzyme_tk_app.app.tools.substrate_product_similarity.callbacks import populate_example_smiles
+
+    smiles, role, task_name = populate_example_smiles("substrate||C1=CC=CC=C1")
+
+    assert smiles == "C1=CC=CC=C1"
+    assert role == "substrate"
+    assert task_name is no_update
 
 
 def test_subprod_populate_example_returns_defaults_for_none():
@@ -571,40 +590,75 @@ def test_subprod_populate_example_returns_defaults_for_invalid_value():
         populate_example_smiles("no-separator-here")
 
 
-def test_subprod_validate_form_disabled_when_both_empty():
-    """Submit must be disabled when both fields are empty."""
+@pytest.mark.parametrize(
+    ("task_name", "smiles", "databases", "algorithms", "expected_disabled", "expected_invalid"),
+    [
+        ("Glucose search", _GLUCOSE_SMILES, ["db.csv"], ["tanimoto"], False, False),
+        ("", "", ["db.csv"], ["tanimoto"], True, False),
+        (None, None, ["db.csv"], ["tanimoto"], True, False),
+        ("", "CCO", ["db.csv"], ["tanimoto"], True, False),
+        ("My Query", "", ["db.csv"], ["tanimoto"], True, False),
+        ("   ", "   ", ["db.csv"], ["tanimoto"], True, False),
+        ("My Query", _GLUCOSE_SMILES, [], ["tanimoto"], True, False),
+        ("My Query", _GLUCOSE_SMILES, ["db.csv"], [], True, False),
+        # An unusable structure disables Run *and* marks the field, which an
+        # absent one deliberately does not — a blank form is not yet a mistake.
+        ("My Query", "XYZ", ["db.csv"], ["tanimoto"], True, True),
+        # This field takes one molecule; a reaction pasted in is its own mistake.
+        ("My Query", "CCO>>CC=O", ["db.csv"], ["tanimoto"], True, True),
+    ],
+    ids=[
+        "all-valid",
+        "both-empty",
+        "both-none",
+        "missing-name",
+        "missing-smiles",
+        "whitespace-only",
+        "no-databases",
+        "no-algorithms",
+        "unparseable-molecule",
+        "reaction-in-a-molecule-field",
+    ],
+)
+def test_subprod_validate_form(task_name, smiles, databases, algorithms, expected_disabled, expected_invalid):
+    """Run must be disabled unless the form is complete *and* the molecule parses."""
+    disabled, invalid, message = validate_substrate_product_form(task_name, smiles, databases, algorithms)
 
-    assert validate_substrate_product_form("", "", ["db.csv"], ["tanimoto"]) is True
-    assert validate_substrate_product_form(None, None, ["db.csv"], ["tanimoto"]) is True
+    assert disabled is expected_disabled
+    assert invalid is expected_invalid
+    # The message and the red border go together: a marked field always says why.
+    assert bool(message) is expected_invalid
 
 
-def test_subprod_validate_form_disabled_when_name_missing():
-    """Submit must be disabled when task name is empty."""
+@pytest.mark.parametrize(
+    "smiles",
+    ["", "   ", "XYZ", "c1ccccc", "CCO>>CC=O"],
+    ids=["empty", "whitespace-only", "unparseable", "unclosed-ring", "reaction-in-a-molecule-field"],
+)
+def test_subprod_submit_returns_error_when_smiles_invalid(smiles):
+    """A bad molecule must be reported in the modal, not handed to the scheduler.
 
-    assert validate_substrate_product_form("", "CCO", ["db.csv"], ["tanimoto"]) is True
-
-
-def test_subprod_validate_form_disabled_when_smiles_missing():
-    """Submit must be disabled when SMILES is empty."""
-
-    assert validate_substrate_product_form("My Query", "", ["db.csv"], ["tanimoto"]) is True
-
-
-def test_subprod_validate_form_enabled_when_all_filled():
-    """Submit must be enabled when all fields have content."""
-
-    assert (
-        validate_substrate_product_form(
-            "Glucose search", "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O", ["db.csv"], ["tanimoto"]
+    The disabled Run button is client-side only, so this is the check that
+    actually stops a crafted request — and without it the string reaches
+    ``mfpgen.GetFingerprint(None)`` inside ``SubstrateDist``, which raises a C++
+    signature dump the user then meets as a traceback on the My Tasks page.
+    """
+    mock_scheduler = MagicMock()
+    slug = TOOL_DEF["slug"]
+    with (
+        patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
+            return_value=mock_scheduler,
+        ),
+    ):
+        mock_ctx.triggered_id = f"id-btn-{slug}-submit"
+        result = submit_substrate_product_similarity_job(
+            1, 0, "My Query", ["db.csv"], smiles, ["tanimoto"], 10, "substrate"
         )
-        is False
-    )
 
-
-def test_subprod_validate_form_disabled_when_whitespace_only():
-    """Submit must be disabled when fields contain only whitespace."""
-
-    assert validate_substrate_product_form("   ", "   ", ["db.csv"], ["tanimoto"]) is True
+    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    mock_scheduler.submit_job.assert_not_called()
 
 
 # ── Results layout ───────────────────────────────────────────────────────────
@@ -689,7 +743,13 @@ def test_subprod_results_layout_shows_fallback_for_missing_or_empty_data(result_
 
 
 def test_subprod_get_example_smiles_returns_non_empty_list():
-    """_get_example_smiles must return a non-empty list of label/value/role dicts."""
+    """_get_example_smiles must return a non-empty list of label/value/role dicts.
+
+    Every example SMILES must also parse — a typo, or a mangled backslash escape in a
+    stereo bond marker, would otherwise ship a picker entry that crashes the search.
+    """
+    from rdkit import Chem
+
     from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
 
     examples = _get_example_smiles()
@@ -698,6 +758,7 @@ def test_subprod_get_example_smiles_returns_non_empty_list():
     for ex in examples:
         assert "label" in ex and "value" in ex and "role" in ex
         assert len(ex["value"]) > 0, "Example SMILES must not be empty"
+        assert Chem.MolFromSmiles(ex["value"]) is not None, f"Example {ex['label']!r} has invalid SMILES"
 
 
 def test_subprod_modal_returns_dbc_modal():
@@ -747,6 +808,10 @@ def test_subprod_submit_returns_error_when_top_n_invalid():
             "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
             return_value=mock_scheduler,
         ),
+        patch(
+            "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_reaction_database_options",
+            return_value=offered_databases("db.csv"),
+        ),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_substrate_product_similarity_job(
@@ -771,6 +836,10 @@ def test_subprod_submit_returns_job_id():
             patch(
                 "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler",
                 return_value=mock_scheduler,
+            ),
+            patch(
+                "enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_reaction_database_options",
+                return_value=offered_databases("db.csv"),
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"

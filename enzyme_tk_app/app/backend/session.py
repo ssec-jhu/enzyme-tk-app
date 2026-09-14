@@ -14,11 +14,17 @@ Users lose their session only if they clear cookies, use incognito mode,
 switch browsers/devices, or the 30-day expiry elapses.
 
 The ``Secure`` flag is derived from Flask's ``SESSION_COOKIE_SECURE``
-config key.  When the key is not set (the default), the flag mirrors
-``request.is_secure`` so it is automatically enabled behind a
-TLS-terminating reverse proxy that sets ``X-Forwarded-Proto: https``.
-Set ``SESSION_COOKIE_SECURE = True`` in Flask config (or via env var) to
-force the flag on in all environments.
+config key, falling back to ``request.is_secure`` when the key is unset.
+**In this app the fallback never runs**: ``app.py`` sets
+``SESSION_COOKIE_SECURE = True`` unconditionally, so this cookie is always
+``Secure``.  The fallback is kept only so ``init_session`` stays reusable
+in a server that does not set the key.
+
+That means the cookie is dropped by the browser on any plain-HTTP origin
+except ``localhost``/``127.0.0.1``, which browsers treat as trustworthy.
+Local Docker over ``http://localhost:8050`` works for that reason alone —
+serve the app over plain HTTP on a LAN IP and every request mints a fresh
+session id, so job scoping silently collapses.
 """
 
 from __future__ import annotations

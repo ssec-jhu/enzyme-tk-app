@@ -32,6 +32,7 @@ from dash import dcc, html
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
 from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_config_section_header,
+    create_modal_databases_label,
     create_modal_footer,
     create_modal_header,
     create_modal_input_section_header,
@@ -45,10 +46,13 @@ def _get_example_sequences():
     """Return a list of example protein sequences from the protein database.
 
     These are real entries from ``protein.csv`` covering diverse EC classes.
+    The ``task_name`` is the name the example picker prefills into the Task
+    Name field (see ``callbacks.populate_example_sequence``).
     """
     return [
         {
             "label": "A0A009IHW8 — DNA glycosylase (EC 3.2.2.-)",
+            "task_name": "A0A009IHW8",
             "value": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -58,6 +62,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A024SC78 — Esterase (EC 3.1.1.74)",
+            "task_name": "A0A024SC78",
             "value": (
                 "MRSLAILTTLLAGHAFAYPKPAPQSVNRRDWPSINEFLSELAKVMPIGDTITAACD"
                 "LISDGEDAAASLFGISETENDPCGDVTVLFARGTCDPGNVGVLVGPWFFDSLQTALGSRTLGVKGVPYPASVQ"
@@ -67,6 +72,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A059TC02 — Cinnamyl-alcohol dehydrogenase (EC 1.2.1.44)",
+            "task_name": "A0A059TC02",
             "value": (
                 "MRSVSGQVVCVTGAGGFIASWLVKILLEKGYTVRGTVRNPDDPKNGHLRELEGAKE"
                 "RLTLCKADLLDYQSLREAINGCDGVFHTASPVTDDPEQMVEPAVIGTKNVINAAAEANVRRVVFTSSIGAVYM"
@@ -77,6 +83,7 @@ def _get_example_sequences():
         },
         {
             "label": "A0A067CMC7 — Nuclease (EC 3.1.31.-)",
+            "task_name": "A0A067CMC7",
             "value": (
                 "MLEVPVWIPILAFAVGLGLGLLIPHLQKPFQRFSTVNDIPKEFFEHERTLRGKVVS"
                 "VTDGDTIRVRHVPWLANGDGDFKGKLTETTLQLRVAGVDCPETAKFGRTGQPFGEEAKAWLKGELQDQVVSF"
@@ -86,12 +93,50 @@ def _get_example_sequences():
         },
         {
             "label": "A0A075D5I4 — Methyltransferase (EC 2.1.1.-)",
+            "task_name": "A0A075D5I4",
             "value": (
                 "MAEKQQAVAEFYDNSTGAWEVFFGDHLHDGFYDPGTTATIAGSRAAVVRMIDEALRF"
                 "ANISDDPAKKPKTMLDVGCGIGGTCLHVAKKYGIQCKGITISSEQVKCAQGFAEEQGLEKKVSFDVGDALDMP"
                 "YKDGTFDLVFTIQCIEHIQDKEKFIREMVRVAAPGAPIVIVSYAHRNLSPSEGSLKPEEKKVLKKICDNIVLS"
                 "WVCSSADYVRWLTPLPVEDIKAADWTQNITPFYPLLMKEAFTWKGFTSLLMKGGWSAIKVVLAVRMMAKAADDG"
                 "VLKFVAVTCRKSK"
+            ),
+        },
+        {
+            "label": "O04846 — Alpha carbonic anhydrase 1 (EC filter: 4.2.1.1)",
+            "task_name": "O04846-carbonic-anhydrase",
+            "ec": ["4.2.1.1"],
+            "value": (
+                "MKIMMMIKLCFFSMSLICIAPADAQTEGVVFGYKGKNGPNQWGHLNPHFTTCAVGKLQSPIDIQRRQIFYNH"
+                "KLNSIHREYYFTNATLVNHVCNVAMFFGEGAGDVIIENKNYTLLQMHWHTPSEHHLHGVQYAAELHMVHQAK"
+                "DGSFAVVASLFKIGTEEPFLSQMKEKLVKLKEERLKGNHTAQVEVGRIDTRHIERKTRKYYRYIGSLTTPPC"
+                "SENVSWTILGKVRSMSKEQVELLRSPLDTSFKNNSRPCQPLNGRRVEMFHDHERVDKKETGNKKKKPN"
+            ),
+        },
+        {
+            "label": "O13289 — Peroxisomal catalase (cofactor filter: heme)",
+            "task_name": "O13289-catalase-heme",
+            "cofactors": ["heme"],
+            "value": (
+                "MAPTFTNSNGQPIPEPFATQRVGQHGPLLLQDFNLIDSLAHFDRERIPERVVHAKGSGAYGVFEVTDDITDI"
+                "CAAKFLDTVGKKTRIFTRFSTVGGELGSADTARDPRGFATKFYTEEGNLDLVYNNTPVFFIRDPSKFPHFIH"
+                "TQKRNPETHLKDANMFWDYLTSNEESIHQVMVLFSDRGTPASYREMNGYSGHTYKWSNKKGEWFYVQVHFIS"
+                "DQGIKTLTNEEAGALAGSNPDYAQEDLFKNIAAGNYPSWTAYIQTMTEAEAKEAEFSVFDLTKVWPHKKYPL"
+                "RRFGKFTLNENPKNYFAEVEQAAFSPAHTVPYMEPSADPVLQSRLFSYADTHRHRLGTNYTQIPVNCPVTGA"
+                "VFNPHMRDGAMTVNGNLGSHPNYLASDKPVEFKQFSLQEDQEVWNGAATPFHWKATPADFKQAQELWKVLKR"
+                "YPNQQEHLAHNIAVHAAGADAAIQDRVFAYFGKVSQDLADAIKKEVLELSPRK"
+            ),
+        },
+        {
+            "label": "J9VWW9 — Superoxide dismutase [Mn] (EC 1.15.1.1 + cofactor Mn(2+))",
+            "task_name": "J9VWW9-SOD-Mn",
+            "ec": ["1.15.1.1"],
+            "cofactors": ["Mn(2+)"],
+            "value": (
+                "MITAITRTALPRATLRTSLATMSTIRAKHTLPPLPYAYDALEPSISAEIMNLHHTKHHQTYVNGLNAAEESL"
+                "QKASADGDFKTAISLQPALKFNGGGHINHSLFWKNLAPTGSAQVKVPTSGVFYDQVQADFGGFENLKKEMNA"
+                "KTAAIQGSGWGWLGYNKATKKLEIVTTPNQDPLLSHVPIIGIDIWEHAFYLQYKNVKPDYLNAIWNVINYEE"
+                "AESRLKAAQ"
             ),
         },
     ]
@@ -104,7 +149,7 @@ def modal():
         A ``dbc.Modal`` component with inputs for:
         - Task name
         - Protein sequence (textarea)
-        - Database selection (single-select)
+        - Database selection (multi-select, all pre-selected)
         - EC number filter (multi-select, dynamically populated)
         - Cofactor filter (multi-select, disabled placeholder)
         - Top-N results limit
@@ -112,8 +157,9 @@ def modal():
     """
     db_options = get_sequence_database_options()
 
-    # Default to the first database if available.
-    default_db = db_options[0]["value"] if db_options else None
+    # Pre-select every database — hits from all of them are merged and ranked
+    # together, so the default is the broadest search.
+    all_db_values = [opt["value"] for opt in db_options]
 
     return dbc.Modal(
         # Modal ID follows the convention: id-modal-<slug>
@@ -220,20 +266,20 @@ def modal():
                         className="bg-light p-3 rounded mb-2",
                         children=[
                             create_modal_config_section_header(),
-                            # Database Selection (single-select)
+                            # Database Selection (multi-select, all pre-selected)
                             dbc.Row(
                                 [
-                                    dbc.Col(
-                                        dbc.Label("Database", className="col-form-label fw-bold"),
-                                        width=3,
+                                    create_modal_databases_label(
+                                        TOOL_DEF["slug"],
+                                        "Entry, Sequence and EC number columns, plus any metadata the file carries.",
                                     ),
                                     dbc.Col(
                                         dcc.Dropdown(
-                                            id=f"id-dropdown-{TOOL_DEF['slug']}-database",
+                                            id=f"id-dropdown-{TOOL_DEF['slug']}-databases",
                                             options=db_options,
-                                            value=default_db,
-                                            multi=False,
-                                            placeholder="Select a sequence database...",
+                                            value=all_db_values,
+                                            multi=True,
+                                            placeholder="Select one or more sequence databases...",
                                             className="themed-control",
                                         ),
                                         width=9,
@@ -264,7 +310,7 @@ def modal():
                                 className="mb-2",
                                 align="center",
                             ),
-                            # Cofactor Filter (multi-select, disabled — coming soon)
+                            # Cofactor Filter (multi-select, dynamically populated)
                             dbc.Row(
                                 [
                                     dbc.Col(
@@ -277,8 +323,7 @@ def modal():
                                             options=[],
                                             value=[],
                                             multi=True,
-                                            placeholder="Coming soon — no cofactor data loaded",
-                                            disabled=True,
+                                            placeholder="Filter by cofactor (optional)...",
                                             className="themed-control",
                                         ),
                                         width=9,

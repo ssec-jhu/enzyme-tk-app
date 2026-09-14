@@ -118,7 +118,7 @@ def _verify_token(token: str | None) -> bool:
 # ----------------
 
 
-def _compute_stats(jobs: list[JobInfo]) -> list:
+def _build_admin_page_stats(jobs: list[JobInfo]) -> list:
     """Build the five summary stat cards from all jobs.
 
     Args:
@@ -617,7 +617,7 @@ def refresh_admin_dashboard(n_intervals: int, refresh_token: int) -> tuple:
         raise PreventUpdate
     scheduler = get_task_scheduler()
     jobs = scheduler.admin_list_all_jobs()
-    return _compute_stats(jobs), _sessions_to_rows(jobs), _jobs_to_rows(jobs)
+    return _build_admin_page_stats(jobs), _sessions_to_rows(jobs), _jobs_to_rows(jobs)
 
 
 @callback(
@@ -748,7 +748,6 @@ def run_admin_purge(submit_n_clicks: int) -> tuple:
         f"Purged everything — {summary.get('jobs_deleted', 0)} jobs, "
         f"{summary.get('sessions_cleared', 0)} sessions, "
         f"{summary.get('tasks_revoked', 0)} tasks revoked, "
-        # f"{format_bytes(summary.get('volume_bytes_freed', 0))} freed "
         f"({summary.get('volume_files_deleted', 0)} files)."
     )
     return time.time(), message

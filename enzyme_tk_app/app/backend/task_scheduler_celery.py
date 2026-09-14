@@ -63,7 +63,7 @@ from enzyme_tk_app.app.backend.celery_app import (
     HARD_TIMEOUT_GRACE_SECONDS,
     effective_ttl,
 )
-from enzyme_tk_app.app.backend.models import TERMINAL_STATUSES, JobInfo, JobStatus
+from enzyme_tk_app.app.backend.models import ACTIVE_STATUSES, TERMINAL_STATUSES, JobInfo, JobStatus
 from enzyme_tk_app.app.backend.task_scheduler import TaskScheduler
 from enzyme_tk_app.app.backend.tasks import run_tool_task
 
@@ -529,6 +529,28 @@ class CeleryTaskScheduler(TaskScheduler):
             if job is not None:
                 jobs.append(job)
         return jobs
+
+    def count_active_jobs(self, session_id: str) -> int:
+        """Count *session_id*'s jobs that are still PENDING or STARTED.
+
+        Deliberately status-only.  ``list_jobs`` would route every job through
+        ``_read_job``, whose ``hgetall`` + ``json.loads(params)`` pulls back the
+        whole submission — and ``sequence-structure-similarity`` puts a raw
+        base64 PDB/CIF upload in ``params["structure_content"]``.  That would
+        make a *rejected* submit the most expensive request in the app.
+        ``get_job_status`` reads one field with ``hget`` and keeps the read-time
+        timeout repair, so a dead STARTED job stops holding a slot on the next
+        read.
+
+        The session set is the source of ids, so ``get_job_status``'s ownership
+        check is a guaranteed hit — kept anyway rather than hand-rolling a
+        cheaper read that would have to duplicate the timeout repair.
+        """
+        return sum(
+            1
+            for job_id in self._redis.smembers(self._session_key(session_id))
+            if self.get_job_status(job_id, session_id) in ACTIVE_STATUSES
+        )
 
     def admin_list_all_jobs(self) -> list[JobInfo]:
         """List every job across all sessions (admin only).

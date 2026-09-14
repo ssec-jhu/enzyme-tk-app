@@ -1,38 +1,23 @@
 """Shared UI helpers for tool results pages.
 
-Provides :func:`build_result_stat_cards` which automatically renders a
-stat-card strip from a job's ``_stat_cards`` key using the shared
-``jobs-stat-card`` / ``jobs-stats-row`` CSS classes.
+Provides :func:`build_status_badge` and :func:`build_stat_card`, the small
+renderers shared by the My Tasks table and the task-results page header.
+A job's ``_stat_cards`` are rendered by that header itself
+(``my_tasks_view_results._build_job_info_header``), which merges them into
+one ``jobs-stats-row`` alongside Duration and Expires In.
 
 Also provides :func:`build_result_input_params` which auto-renders the job's
 input parameters in a label → value table.
 
-Provides shared ``TABLE_STYLE_*`` constants for ``dash_table.DataTable``.
-``DataTable`` does **not** support ``className`` — it only accepts
-``style_*`` keyword arguments.  These constants ensure every tool's
-results table looks identical without duplicating style dicts.
-
 Provides :func:`shared_col_defs` and :func:`build_ag_grid` for tools
-that render results via ``dag.AgGrid``.  Tool-specific columns (e.g. SVG
-previews) are prepended by each tool; the shared columns cover
-similarity scores, reaction metadata, molecular descriptors, etc.
+that render results via ``dag.AgGrid`` — every results table in the app.
+Tool-specific columns (e.g. SVG previews) are prepended by each tool; the
+shared columns cover similarity scores, reaction metadata, molecular
+descriptors, etc.
 
-Usage (DataTable)::
-
-    from enzyme_tk_app.app.components.results_helpers import (
-        TABLE_STYLE_CELL,
-        TABLE_STYLE_DATA_CONDITIONAL,
-        TABLE_STYLE_HEADER,
-        TABLE_STYLE_TABLE,
-    )
-
-    dash_table.DataTable(
-        ...,
-        style_table=TABLE_STYLE_TABLE,
-        style_header=TABLE_STYLE_HEADER,
-        style_cell=TABLE_STYLE_CELL,
-        style_data_conditional=TABLE_STYLE_DATA_CONDITIONAL,
-    )
+``build_ag_grid`` also renders the shared CSV-download toolbar above the
+grid, so every tool's results table gets the same export control without
+any per-tool code.
 
 Usage (AG Grid)::
 
@@ -42,16 +27,19 @@ Usage (AG Grid)::
     )
 
     column_defs = [my_tool_specific_col] + shared_col_defs()
-    grid = build_ag_grid(column_defs, df_payload)
+    results_table = build_ag_grid(column_defs, df_payload)
 """
 
 from __future__ import annotations
 
 import dash_ag_grid as dag
-from dash import html
+import dash_bootstrap_components as dbc
+from dash import Input, Output, State, callback, html
+from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
+    ICON_RESULTS_DOWNLOAD,
     ICON_STATUS_FAILURE,
     ICON_STATUS_PENDING,
     ICON_STATUS_REVOKED,
@@ -60,6 +48,35 @@ from enzyme_tk_app.app.components.icons import (
     ICON_STATUS_TIMEOUT,
 )
 from enzyme_tk_app.app.utils import columns as col
+
+# ---------------------------------------------------------------------------
+# Results grid & CSV export identifiers
+# ---------------------------------------------------------------------------
+# Only one results table renders per page — ``my_tasks_view_results`` calls a
+# single tool's ``results_layout`` — so these ids can be static.  Give
+# ``build_ag_grid`` an id argument and move the export callback to MATCH if a
+# page ever needs two grids.
+
+GRID_ID = "id-grid-results"
+"""Id of the results AG Grid built by :func:`build_ag_grid`."""
+
+JOB_ID_SPAN_ID = "id-span-job-id"
+"""Id of the task-id span in the results page header; its ``title`` is the bare job id."""
+
+_BTN_DOWNLOAD_ID = "id-btn-results-download"
+_RADIO_SCOPE_ID = "id-radio-results-download-scope"
+
+# AG Grid's own fallback when a column def omits ``width``.
+_AG_GRID_DEFAULT_COL_WIDTH = 200
+
+# Export scopes offered by the toolbar radios.  The values double as the
+# filename suffix, so they read the same as the labels the user picked.
+SCOPE_FILTERED = "filtered"
+SCOPE_ALL = "unfiltered"
+
+# Job ids are 36-char UUIDs; the My Tasks table already shows the first 6, so
+# the download matches what the user sees there.
+_JOB_ID_CHARS = 6
 
 # ---------------------------------------------------------------------------
 # Shared status → icon mapping
@@ -74,40 +91,35 @@ STATUS_ICONS: dict[JobStatus, str] = {
     JobStatus.TIMEOUT: ICON_STATUS_TIMEOUT,
 }
 
-# ---------------------------------------------------------------------------
-# Shared DataTable style constants
-# ---------------------------------------------------------------------------
-# ``dash_table.DataTable`` does NOT support ``className``.  It only
-# accepts ``style_*`` keyword arguments, so these must be Python dicts
-# rather than CSS classes.  Import these in every tool's ``results.py``.
-
-TABLE_STYLE_TABLE: dict = {"overflowX": "auto"}
-"""Outer table wrapper — enables horizontal scroll for wide tables."""
-
-TABLE_STYLE_HEADER: dict = {
-    "backgroundColor": "#1E3A5F",
-    "color": "white",
-    "fontWeight": "600",
-    "textAlign": "left",
+STYLE_RESULTS_TOOLBAR: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "0.75rem",
+    "marginBottom": "0.5rem",
 }
-"""Column header cells — dark blue background, white text."""
+"""Download button + scope radios row sitting above every results grid."""
 
-TABLE_STYLE_CELL: dict = {
-    "padding": "0.5rem 0.75rem",
-    "fontFamily": "Inter, sans-serif",
-    "fontSize": "0.85rem",
-    "textAlign": "left",
-    "border": "1px solid #E2E8F0",
-}
-"""Default styling for every data cell."""
 
-TABLE_STYLE_DATA_CONDITIONAL: list[dict] = [
-    {
-        "if": {"row_index": "odd"},
-        "backgroundColor": "#F7FAFC",
-    },
-]
-"""Alternating-row striping for readability."""
+def build_status_badge(status: JobStatus) -> html.Span:
+    """Render a colored status badge.
+
+    Shared by the My Tasks table and the task-results page header so both
+    show a job's status identically.
+
+    Args:
+        status: The job's current status.
+
+    Returns:
+        An ``html.Span`` with the appropriate CSS class and icon.
+    """
+    icon_class = STATUS_ICONS.get(status, ICON_STATUS_PENDING)
+    return html.Span(
+        className=f"badge-status badge-{status.value}",
+        children=[
+            html.I(className=f"{icon_class} badge-status-icon"),
+            status.value,
+        ],
+    )
 
 
 def build_stat_card(value: int | str, label: str) -> html.Div:
@@ -129,55 +141,19 @@ def build_stat_card(value: int | str, label: str) -> html.Div:
     )
 
 
-def build_result_stat_cards(job: JobInfo) -> html.Div | None:
-    """Build a stat-card strip from the job's ``_stat_cards`` key, if present.
-
-    Tools opt-in by returning a ``_stat_cards`` key from ``compute.py``::
-
-        return {
-            "_stat_cards": [
-                {"label": "Elapsed", "value": "12.3s"},
-                {"label": "Status",  "value": "OK"},
-            ],
-            ...
-        }
-
-    Each item must have ``label`` and ``value`` string keys.
-    If the result has no ``_stat_cards``, this returns ``None``.
-
-    Args:
-        job: A completed ``JobInfo`` whose ``result`` dict may contain
-            a ``_stat_cards`` list of ``{"label": ..., "value": ...}`` dicts.
-
-    Returns:
-        An ``html.Div`` with a heading and a row of stat cards, or
-        ``None`` if no ``_stat_cards`` data is present.
-    """
-    result = job.result or {}
-    meta_items = result.get("_stat_cards")
-    if not meta_items or not isinstance(meta_items, list):
-        return None
-
-    cards = [
-        build_stat_card(item.get("value", ""), item.get("label", "")) for item in meta_items if isinstance(item, dict)
-    ]
-    if not cards:
-        return None
-
-    return html.Div(
-        children=[
-            html.H4("Summary", className="jobs-section-title"),
-            html.Div(className="jobs-stats-row", children=cards),
-        ],
-    )
-
-
 # Keys that are internal to the framework and should never be shown
 # to the user in the input parameters section.
 _INTERNAL_KEYS = frozenset({"_stat_cards", "_params_exclude"})
 
 # Parameter keys that contain SMILES strings eligible for a structure preview.
 _SMILES_PARAM_KEYS = frozenset({"smiles"})
+
+# The query-structure <img> is the compare lightbox's only source for the query
+# side: assets/dashAgGridComponentFunctions.js finds it by class and reads the
+# SMILES off the data attribute.  Rename either and the JS must change in the
+# same edit — test_smiles_rendering pins both ends.
+QUERY_PREVIEW_CLASS = "jobs-params-preview"
+QUERY_SMILES_ATTR = "data-smiles"
 
 
 def _pretty_label(key: str) -> str:
@@ -216,14 +192,18 @@ def _render_smiles_preview(smiles: str) -> html.Img | None:
         else:
             from enzyme_tk_app.app.utils.smiles_rendering import smiles_to_svg_data_uri  # noqa: PLC0415
 
-            uri = smiles_to_svg_data_uri(smiles.strip(), width=300, height=200)
+            # Same canvas the tools draw their result molecules on
+            # (substrate_product_similarity/compute.py), so the compare
+            # lightbox puts two structures side by side at one stroke weight.
+            uri = smiles_to_svg_data_uri(smiles.strip(), width=500, height=300)
     except Exception:  # noqa: BLE001 — graceful degradation
         return None
 
     if not uri:
         return None
 
-    return html.Img(src=uri, className="jobs-params-preview")
+    # The data attribute is what the lightbox captions the query panel with.
+    return html.Img(src=uri, className=QUERY_PREVIEW_CLASS, **{QUERY_SMILES_ATTR: smiles.strip()})
 
 
 def build_result_input_params(job: JobInfo) -> html.Div | None:
@@ -273,7 +253,8 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
             continue
 
         # The value might be a complex object (e.g. list, dict) so we convert it
-        # to a string here.
+        # to a string here.  A list keeps its repr — "['protein.csv', 'x.csv']" —
+        # so multi-select params (databases, algorithms, filters) all read alike.
         str_value = str(value)
         # The label is derived from the key by replacing underscores and hyphens
         # with spaces and title-casing it.
@@ -318,6 +299,71 @@ def build_result_input_params(job: JobInfo) -> html.Div | None:
 # ---------------------------------------------------------------------------
 # Shared AG Grid column definitions & grid builder
 # ---------------------------------------------------------------------------
+
+
+def numeric_col_def(
+    field: str,
+    header: str | None = None,
+    width: int | None = None,
+    decimals: int | None = None,
+    exponential: bool = False,
+) -> dict:
+    """Return the column def for a numeric column.
+
+    Always sets ``agNumberColumnFilter`` so the column filters as a number
+    rather than a string.  Formatting is opt-in because the app renders three
+    different kinds of number: integers (counts, positions, masses) that must
+    stay unformatted, fractions and percentages that need fixed decimals, and
+    e-values that only read sensibly in exponential form.
+
+    Args:
+        field: The dataframe column name.
+        header: Optional display name; defaults to AG Grid's own.
+        width: Optional column width in pixels.
+        decimals: Decimal places for a fixed-point float.  Leave ``None`` for
+            integers — formatting them renders ``269`` as ``269.0000``.
+        exponential: Render in exponential notation with *decimals* places
+            (default 2), for values like an e-value of ``3.09e-163``.
+
+    Returns:
+        An AG Grid ``columnDef`` dict.
+    """
+    col_def: dict = {"field": field, "filter": "agNumberColumnFilter"}
+    if header:
+        col_def["headerName"] = header
+    if width:
+        col_def["width"] = width
+
+    if exponential:
+        fn = f"params.value != null ? params.value.toExponential({decimals if decimals is not None else 2}) : ''"
+        col_def["valueFormatter"] = {"function": fn}
+    elif decimals is not None:
+        col_def["valueFormatter"] = {"function": f"params.value != null ? params.value.toFixed({decimals}) : ''"}
+
+    return col_def
+
+
+def sequence_col_def(field: str, width: int = 300, header: str | None = None) -> dict:
+    """Return the column def for an amino-acid sequence column.
+
+    Every tool that shows protein sequences must use this so they render
+    identically.  Sequences are truncated to one line (see the
+    ``ag-cell-sequence`` class in ``09-ag-grid.css``) to keep row heights
+    uniform; ``build_ag_grid`` adds a ``tooltipField`` so the full sequence
+    shows on hover, and cell text selection keeps it copy-pasteable.
+
+    Args:
+        field: The dataframe column holding the sequence.
+        width: Column width in pixels.
+        header: Optional display name; defaults to AG Grid's own.
+
+    Returns:
+        An AG Grid ``columnDef`` dict.
+    """
+    col_def = {"field": field, "width": width, "cellClass": "ag-cell-sequence"}
+    if header:
+        col_def["headerName"] = header
+    return col_def
 
 
 def shared_col_defs() -> list[dict]:
@@ -388,15 +434,115 @@ def shared_col_defs() -> list[dict]:
     ]
 
 
-def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
-    """Build an AG Grid component from column definitions and a dataframe payload.
+def _build_export_toolbar() -> html.Div:
+    """Build the CSV download button and export-scope radios shown above the grid.
+
+    Returns:
+        An ``html.Div`` flex row with the download button on the left and
+        the vertically stacked scope radios beside it.
+    """
+    return html.Div(
+        style=STYLE_RESULTS_TOOLBAR,
+        children=[
+            html.Button(
+                id=_BTN_DOWNLOAD_ID,
+                className="btn-toolbar",
+                n_clicks=0,
+                children=[html.I(className=ICON_RESULTS_DOWNLOAD), "Download CSV"],
+            ),
+            # dbc renders component labels (``_children_props``), so each option
+            # carries its own native ``title`` tooltip without extra ids.
+            dbc.RadioItems(
+                id=_RADIO_SCOPE_ID,
+                className="jobs-toolbar-radios",
+                value=SCOPE_FILTERED,
+                inline=True,
+                options=[
+                    {
+                        "label": html.Span(
+                            "Filtered",
+                            title="Export only the rows left by the column filters, in the current sort order.",
+                        ),
+                        "value": SCOPE_FILTERED,
+                    },
+                    {
+                        "label": html.Span(
+                            "Unfiltered",
+                            title="Export every row in the table, ignoring column filters and sorting.",
+                        ),
+                        "value": SCOPE_ALL,
+                    },
+                ],
+            ),
+        ],
+    )
+
+
+def _csv_export_params(scope: str, column_defs: list[dict], job_id: str | None) -> dict:
+    """Build AG Grid ``csvExportParams`` for the requested export scope.
+
+    Args:
+        scope: Either :data:`SCOPE_FILTERED` or :data:`SCOPE_ALL`.
+        column_defs: The grid's current column definitions.
+        job_id: The task id; its first :data:`_JOB_ID_CHARS` characters name
+            the file.  Falls back to a generic name when absent.
+
+    Returns:
+        A ``csvExportParams`` dict for ``dag.AgGrid``.
+    """
+    # SVG columns hold ~20 KB base64 data URIs each; the SMILES they were drawn
+    # from is exported instead, so the pictures stay reproducible from the CSV.
+    keys = [cd["field"] for cd in column_defs if cd.get("field") and cd.get("cellRenderer") != "SvgRenderer"]
+
+    return {
+        "fileName": f"enzymetk-{job_id[:_JOB_ID_CHARS]}-{scope}.csv" if job_id else f"enzymetk-results-{scope}.csv",
+        "columnKeys": keys,
+        # AG Grid defaults to "filteredAndSorted"; "all" ignores filters and sort.
+        "exportedRows": "all" if scope == SCOPE_ALL else "filteredAndSorted",
+    }
+
+
+@callback(
+    Output(GRID_ID, "exportDataAsCsv"),
+    Output(GRID_ID, "csvExportParams"),
+    Input(_BTN_DOWNLOAD_ID, "n_clicks"),
+    State(_RADIO_SCOPE_ID, "value"),
+    State(GRID_ID, "columnDefs"),
+    State(JOB_ID_SPAN_ID, "title"),
+    prevent_initial_call=True,
+)
+def download_results_csv(
+    n_clicks: int | None,
+    scope: str,
+    column_defs: list[dict] | None,
+    job_id: str | None,
+) -> tuple[bool, dict]:
+    """Trigger AG Grid's client-side CSV export for the results table.
+
+    dash-ag-grid resets ``exportDataAsCsv`` to ``False`` once it has fired,
+    so repeat clicks work without any reset plumbing here.
+    """
+    if not n_clicks:
+        raise PreventUpdate
+
+    return True, _csv_export_params(scope, column_defs or [], job_id)
+
+
+def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
+    """Build a results table — the shared CSV export toolbar plus an AG Grid.
 
     Filters *column_defs* to only those whose ``field`` exists in
     ``df_payload["columns"]``, sets a default ``tooltipField`` on
-    every column, and returns a fully configured ``dag.AgGrid``.
+    every column, and returns the configured grid wrapped together with
+    :func:`_build_export_toolbar` so every tool gets the same download
+    control for free.
 
     Non-field column defs (e.g. selection or row-number columns without
     a ``field`` key) are passed through unmodified.
+
+    Every column is floored at its declared ``width`` and the grid is sized
+    with ``responsiveSizeToFit``, so the columns share out any width a short
+    table leaves over; tools never set ``minWidth`` themselves.
 
     Cell text selection is enabled (``enableCellTextSelection`` +
     ``ensureDomOrder``) so users can copy/paste string content.
@@ -409,7 +555,8 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
             (list[dict]) keys from the compute result.
 
     Returns:
-        A configured ``dag.AgGrid`` component.
+        An ``html.Div`` containing the export toolbar and the configured
+        ``dag.AgGrid``.
 
     Raises:
         ValueError: If *df_payload* is not a dict or is missing the
@@ -439,7 +586,16 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
         if field is not None:
             cd.setdefault("tooltipField", field)
 
-    return dag.AgGrid(
+    # Floor every column at the width its def asked for, so the responsiveSizeToFit
+    # pass below can only ever grow columns.  How wide a table ends up is decided by
+    # the data, not the def list: a tool names every column it *might* get and the
+    # filter above drops the rest, so Reaction Similarity offers 32 defs and renders
+    # the 7 ReactionDist returns.
+    for cd in filtered_defs:
+        cd.setdefault("minWidth", cd.get("width", _AG_GRID_DEFAULT_COL_WIDTH))
+
+    grid = dag.AgGrid(
+        id=GRID_ID,
         columnDefs=filtered_defs,
         rowData=df_payload["data"],
         defaultColDef={
@@ -466,6 +622,15 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> dag.AgGrid:
             "enableCellTextSelection": True,
             "ensureDomOrder": True,
         },
+        # Spend leftover width on the columns instead of leaving a grey gutter to the
+        # right of a short table.  Paired with the minWidth floors above this only ever
+        # grows: a table wider than the page is already at its floor, so nothing shrinks
+        # and it keeps scrolling horizontally.  (``flex`` is the obvious alternative and
+        # does nothing here — dash-ag-grid 35.3.0 records it in the column state and
+        # never applies it.)
+        columnSize="responsiveSizeToFit",
         style={"width": "100%"},
         className="ag-theme-balham",
     )
+
+    return html.Div(children=[_build_export_toolbar(), grid])

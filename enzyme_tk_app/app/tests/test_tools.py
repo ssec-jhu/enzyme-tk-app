@@ -24,9 +24,11 @@ import re
 from unittest.mock import MagicMock, patch
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
 from enzyme_tk_app.app.tools import TOOLS, ToolDef, _discover_tools, _modal_funcs, tool_modals
+
+from .conftest import find_components, get_text
 
 # ---------------------------------------------------------------------------
 # Helpers — find tool folders on disk
@@ -250,6 +252,20 @@ def test_modal_ids_follow_naming_convention():
         assert pattern.match(modal_id), f"Modal id '{modal_id}' doesn't match the expected pattern 'id-modal-<slug>'"
 
 
+def test_every_databases_dropdown_has_an_info_tooltip():
+    """A Databases dropdown must ship an info tooltip describing its contents."""
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        dropdowns = [str(d.id) for d in find_components(modal, dcc.Dropdown) if getattr(d, "id", None)]
+        if not any(d.endswith("-databases") for d in dropdowns):
+            continue  # Not a database-backed tool (e.g. the timer template).
+
+        target = f"id-icon-{slug}-databases-info"
+        tooltips = [t for t in find_components(modal, dbc.Tooltip) if t.target == target]
+        assert len(tooltips) == 1, f"{slug}: Databases row has no info tooltip"
+        assert get_text(tooltips[0]).strip(), f"{slug}: Databases info tooltip is empty"
+
+
 # ---------------------------------------------------------------------------
 # Callbacks — do callback modules load without errors?
 # ---------------------------------------------------------------------------
@@ -265,6 +281,153 @@ def test_callbacks_importable():
             importlib.import_module(f"enzyme_tk_app.app.tools.{folder_name}.callbacks")
         except ModuleNotFoundError:
             pass  # No callbacks.py — that's fine
+
+
+def test_every_example_prefills_a_task_name():
+    """Selecting any example must prefill a non-blank Task Name.
+
+    Task Name is the one field that blocks submit, so an example that leaves it
+    blank is not runnable in one click — the whole point of the example picker.
+    Walking the live dropdowns rather than listing the example dicts here means
+    a newly added example, or a whole new tool, is checked the moment it shows
+    up.  Every ``populate_example_*`` callback returns the Task Name last.
+
+    The name carries no tool prefix — the My Tasks table already has a Tool
+    column beside Task Name — so there is no shape to assert beyond non-blank.
+    """
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        dropdowns = [d for d in find_components(modal, dcc.Dropdown) if str(getattr(d, "id", "")).endswith("-example")]
+        if not dropdowns:
+            continue  # Tool ships no examples.
+
+        module = importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+        populate = next(fn for name, fn in vars(module).items() if name.startswith("populate_example"))
+
+        for option in dropdowns[0].options:
+            task_name = populate(option["value"])[-1]
+            label = option["label"]
+            assert isinstance(task_name, str), f"{slug}: example '{label}' prefilled no Task Name"
+            assert task_name.strip(), f"{slug}: example '{label}' prefilled a blank Task Name"
+
+
+def _smiles_tools():
+    """Yield ``(slug, modal, callbacks module)`` for every tool that takes a structure.
+
+    A SMILES tool is one whose modal carries an ``id-textarea-<slug>-smiles``;
+    the sequence tools use ``-sequence``, so they are skipped and their protein
+    examples are never handed to a SMILES parser.
+    """
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        textareas = [t for t in find_components(modal, dbc.Textarea) if str(getattr(t, "id", "")).endswith("-smiles")]
+        if not textareas:
+            continue
+
+        yield slug, modal, importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+
+
+def _tools_with_callbacks():
+    """Yield ``(slug, callbacks module)`` for every discovered tool that has callbacks."""
+    for tool in TOOLS:
+        slug = tool["slug"]
+        try:
+            yield slug, importlib.import_module(f"enzyme_tk_app.app.tools.{slug.replace('-', '_')}.callbacks")
+        except ModuleNotFoundError:
+            continue
+
+
+def test_every_tool_enforces_the_active_job_limit():
+    """Every tool's submit path must import the per-session job cap.
+
+    The cap is only as good as its weakest tool: one tool that skips it is an
+    unlimited submission endpoint, and nothing else in the app would notice.
+    Walking the live registry means tool #7 is held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot tell
+    a guard placed before ``submit_job`` from one placed after it.  That half is
+    covered behaviourally in ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_active_job_limit", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_active_job_limit from "
+            "utils.submission_limits — this tool is an uncapped submission endpoint"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
+def test_every_smiles_field_is_validated():
+    """A tool that takes a structure must import a validator into its callbacks.
+
+    The Run button is only as good as the check behind it: without one, a typo
+    is accepted, submitted, and either dies in the worker or — for the reaction
+    tools, whose enzymetk step reads the query as SMARTS — comes back as a
+    successful job full of meaningless scores.  Walking the live modals means a
+    new SMILES tool is held to this the moment it appears.
+    """
+    checked = 0
+    for slug, _modal, module in _smiles_tools():
+        validator = getattr(module, "validate_reaction_smiles", None) or getattr(module, "validate_smiles", None)
+        assert validator is not None, (
+            f"{slug}: has a SMILES field but its callbacks.py imports no validator "
+            "from utils.smiles_validation — the Run button cannot be gating on it"
+        )
+        checked += 1
+
+    assert checked, "No SMILES tool was found — the id-textarea-<slug>-smiles convention must have changed"
+
+
+def test_every_smiles_field_debounces():
+    """A SMILES textarea must send its value on a pause, not on every keystroke.
+
+    Validating per keystroke puts several callback round-trips in flight at once,
+    and the field ends up showing whichever verdict landed last — reproducibly, an
+    earlier keystroke's, so a corrected structure stays marked invalid.  The value
+    must be a **number** of milliseconds: ``True`` would defer to blur and leave
+    Run disabled under a click that arrives first.
+
+    A unit test cannot catch the race itself; it can stop the fix being removed.
+    """
+    checked = 0
+    for slug, modal, _module in _smiles_tools():
+        for textarea in find_components(modal, dbc.Textarea):
+            if not str(getattr(textarea, "id", "")).endswith("-smiles"):
+                continue
+            debounce = getattr(textarea, "debounce", None)
+            assert isinstance(debounce, int | float) and not isinstance(debounce, bool), (
+                f"{slug}: SMILES textarea has debounce={debounce!r}; it must be a number of "
+                "milliseconds so a burst of keystrokes cannot strand an earlier verdict"
+            )
+            assert debounce > 0
+            checked += 1
+
+    assert checked, "No SMILES textarea was found — the id-textarea-<slug>-smiles convention must have changed"
+
+
+def test_every_example_smiles_passes_its_own_tools_validator():
+    """An example the modal offers must survive the gate that tool puts on Run.
+
+    Read off the live dropdowns and through the tool's own
+    ``populate_example_*`` callback — which returns the SMILES first — so an
+    example is checked exactly as the user's click delivers it.  Otherwise a
+    shipped example could leave Run disabled with no way to tell why.
+    """
+    for slug, modal, module in _smiles_tools():
+        validator = getattr(module, "validate_reaction_smiles", None) or getattr(module, "validate_smiles", None)
+        dropdowns = [d for d in find_components(modal, dcc.Dropdown) if str(getattr(d, "id", "")).endswith("-example")]
+        if not dropdowns:
+            continue  # Tool ships no examples.
+
+        populate = next(fn for name, fn in vars(module).items() if name.startswith("populate_example"))
+
+        for option in dropdowns[0].options:
+            smiles = populate(option["value"])[0]
+            message = validator(smiles)
+            assert message is None, f"{slug}: example '{option['label']}' is rejected by its own validator: {message}"
 
 
 # ---------------------------------------------------------------------------

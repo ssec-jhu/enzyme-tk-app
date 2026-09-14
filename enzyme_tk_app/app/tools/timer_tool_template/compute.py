@@ -20,9 +20,10 @@ Special return-dict keys
 ~~~~~~~~~~~~~~~~~~~~~~~~
 ``_stat_cards`` : list[dict]
     A list of ``{"label": "...", "value": "..."}`` dicts rendered as
-    stat cards at the top of the results page by
-    ``build_result_stat_cards()`` in ``results_helpers.py``.  Every tool
-    should include at least one or two timing/summary stats here.
+    stat cards at the top of the results page by the page header
+    (``my_tasks_view_results._build_job_info_header``), which merges them
+    in alongside Duration and Expires In.  Every tool should include at
+    least one or two timing/summary stats here.
 
 ``_params_exclude`` : list[str]
     Keys from ``params`` that should **not** appear in the "Input
@@ -81,6 +82,7 @@ def run(params: dict) -> dict:
 
     Args:
         params: Dictionary submitted by the modal callback.  Keys:
+            - ``"task_name"`` (str): human-readable label for the job.
             - ``"seconds"`` (int): how long the task should run.
             - ``"simulate_failure"`` (bool, optional): if ``True``, raise
               an exception halfway through to test the failure path.
@@ -123,8 +125,8 @@ def run(params: dict) -> dict:
     return {
         # ── _stat_cards: stat cards shown at the top of the results page ──
         # Each item is a dict with "label" (small uppercase text) and
-        # "value" (large bold text).  The shared ``build_result_stat_cards``
-        # helper renders these automatically — no custom code needed.
+        # "value" (large bold text).  The results-page header renders these
+        # automatically — no custom code needed.
         "_stat_cards": [
             {"label": "Timer Set to", "value": f"{seconds}s"},
             {"label": "Actual Elapsed", "value": f"{round(elapsed, 3)}s"},
@@ -139,7 +141,7 @@ def run(params: dict) -> dict:
         "_params_exclude": ["simulate_failure"],
         # ── Tabular data ────────────────────────────────────────────
         # Serialised as {"columns": [...], "data": [records]} so it
-        # can be fed directly into ``dash_table.DataTable``.
+        # can be fed directly into ``build_ag_grid()`` by ``results.py``.
         "dataframe": {
             "columns": df.columns.tolist(),
             "data": df.to_dict(orient="records"),

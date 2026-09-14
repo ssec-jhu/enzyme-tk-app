@@ -24,7 +24,7 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
-from enzyme_tk_app.app.tests.conftest import find_components, make_job
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases
 from enzyme_tk_app.app.tools.sequence_structure_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks import (
     display_uploaded_filename,
@@ -184,24 +184,27 @@ def test_populate_example_raises_on_falsy_id(some_id):
 
 
 def test_populate_example_sequence_only():
-    """A sequence-only example returns (sequence, no_update, no_update)."""
+    """A sequence-only example returns (sequence, no_update, no_update, task_name)."""
     # "A0A009IHW8-seq" is a sequence-only example (structure_file is None)
-    seq, contents, filename = populate_example_sequence("A0A009IHW8-seq")
+    seq, contents, filename, task_name = populate_example_sequence("A0A009IHW8-seq")
 
     assert seq.startswith("MSLEQKKGADIIS")
     assert contents is no_update
     assert filename is no_update
+    assert task_name == "A0A009IHW8-sequence"
 
 
 def test_populate_example_with_structure():
     """An example with a structure file returns base64-encoded content."""
     # "A0A009IHW8-struct" ships with a .cif structure file
-    seq, contents, filename = populate_example_sequence("A0A009IHW8-struct")
+    seq, contents, filename, task_name = populate_example_sequence("A0A009IHW8-struct")
 
     assert seq.startswith("MSLEQKKGADIIS")
     # contents should be a data URI with base64-encoded CIF data
     assert contents.startswith("data:chemical/x-cif;base64,")
     assert filename == "A0A009IHW8-chai.cif"
+    # The two A0A009IHW8 examples differ only by the sequence/structure suffix.
+    assert task_name == "A0A009IHW8-structure"
 
 
 # ── display_uploaded_filename ─────────────────────────────────────────────────
@@ -248,29 +251,45 @@ def test_validate_form_disables_when_field_missing(task_name, sequence, database
 # ── submit_structure_similarity_job ───────────────────────────────────────────
 
 
-def test_submit_job_rejects_invalid_database_name():
-    """Database names with disallowed characters must be rejected before reaching the scheduler."""
-    with patch("enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.ctx") as mock_ctx:
+def test_submit_job_rejects_database_the_dropdown_does_not_offer():
+    """A database name the dropdown is not offering must be rejected before the scheduler.
+
+    "valid-db" is offered, so the rejection can only come from the traversal
+    attempt beside it — one bad name in the list fails the whole submission.
+    """
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.get_foldseek_database_options",
+            return_value=offered_databases("valid-db"),
+        ),
+    ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_structure_similarity_job(
             submit_clicks=1,
             launch_clicks=0,
             task_name="Bad DB test",
             sequence="MKTAYIAK",
-            # bad database names
+            # one offered name and one malicious one
             databases=["valid-db", "../etc/passwd"],
             structure_contents=None,
             structure_filename=None,
         )
 
-    # Must return an error message for the malicious database name.
-    assert "Invalid database name" in result
+    # Must return an error message naming the malicious database name.
+    assert "Unknown database" in result
     assert "../etc/passwd" in result
 
 
 def test_submit_job_rejects_unsupported_structure_extension():
     """An uploaded structure file with a disallowed extension must be rejected."""
-    with patch("enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.ctx") as mock_ctx:
+    with (
+        patch("enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.get_foldseek_database_options",
+            return_value=offered_databases("pdb"),
+        ),
+    ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_structure_similarity_job(
             submit_clicks=1,
@@ -312,6 +331,11 @@ def test_submit_job_sequence_mode_calls_scheduler():
             patch(
                 "enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.get_task_scheduler",
                 return_value=mock_scheduler,
+            ),
+            # the dropdown offers "pdb", so the name below passes validation
+            patch(
+                "enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks.get_foldseek_database_options",
+                return_value=offered_databases("pdb"),
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"

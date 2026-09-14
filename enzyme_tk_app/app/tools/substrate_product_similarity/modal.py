@@ -38,6 +38,7 @@ from dash import dcc, html
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE
 from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_config_section_header,
+    create_modal_databases_label,
     create_modal_footer,
     create_modal_header,
     create_modal_input_section_header,
@@ -50,29 +51,61 @@ from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options
 def _get_example_smiles():
     """Return a list of example SMILES strings for substrates and products.
 
-    Each example includes a human-readable label, the SMILES string, and
-    the molecule role (substrate or product).
+    Each example includes a human-readable label, the SMILES string, the
+    molecule role (substrate or product), and the ``task_name`` — the name the
+    example picker prefills into the Task Name field (see
+    ``callbacks.populate_example_smiles``).
     """
     return [
         {
             "label": "Substrate: Glucose",
             "value": "OC[C@H]1OC(O)[C@H](O)[C@@H](O)[C@@H]1O",
             "role": MoleculeRole.SUBSTRATE.value,
+            "task_name": "glucose",
         },
         {
             "label": "Substrate: L-Alanine",
             "value": "C[C@@H](N)C(=O)O",
             "role": MoleculeRole.SUBSTRATE.value,
+            "task_name": "l-alanine",
+        },
+        {
+            "label": "Substrate: Bisphenol A",
+            "value": "CC(C)(c1ccc(O)cc1)c1ccc(O)cc1",
+            "role": MoleculeRole.SUBSTRATE.value,
+            "task_name": "bisphenol-a",
+        },
+        {
+            "label": "Substrate: Triclocarban",
+            "value": "O=C(Nc1ccc(Cl)cc1)Nc1ccc(Cl)c(Cl)c1",
+            "role": MoleculeRole.SUBSTRATE.value,
+            "task_name": "triclocarban",
         },
         {
             "label": "Product: Pyruvate",
             "value": "CC(=O)C(=O)O",
             "role": MoleculeRole.PRODUCT.value,
+            "task_name": "pyruvate",
         },
         {
             "label": "Product: Ethanol",
             "value": "CCO",
             "role": MoleculeRole.PRODUCT.value,
+            "task_name": "ethanol",
+        },
+        {
+            "label": "Product: Indigo",
+            # Raw string: the cis double-bond marker is a literal backslash, and a
+            # plain "\N" is a SyntaxError (Python reads it as a named-unicode escape).
+            "value": r"O=C1Nc2ccccc2/C1=C1\Nc2ccccc2C1=O",
+            "role": MoleculeRole.PRODUCT.value,
+            "task_name": "indigo",
+        },
+        {
+            "label": "Product: PFOA",
+            "value": "OC(=O)C(F)(F)C(F)(F)C(F)(F)C(F)(F)C(F)(F)C(F)(F)C(F)(F)F",
+            "role": MoleculeRole.PRODUCT.value,
+            "task_name": "pfoa",
         },
     ]
 
@@ -190,6 +223,20 @@ def modal():
                                                 rows=3,
                                                 className="themed-control",
                                                 style={"fontFamily": "monospace", "fontSize": "0.9rem"},
+                                                # Milliseconds, not True.  Validating every keystroke
+                                                # puts several round-trips in flight at once and the
+                                                # field ends up showing whichever verdict landed last
+                                                # — reproducibly, an earlier keystroke's.  True would
+                                                # defer to blur and strand Run disabled under a click.
+                                                debounce=300,
+                                            ),
+                                            # Why the molecule was rejected.  Bootstrap reveals it via
+                                            # `.is-invalid ~ .invalid-feedback`, so it must stay a
+                                            # sibling *after* the textarea; validate_substrate_product_form
+                                            # fills it and flips the textarea's `invalid`.
+                                            dbc.FormFeedback(
+                                                id=f"id-feedback-{TOOL_DEF['slug']}-smiles",
+                                                type="invalid",
                                             ),
                                             html.Div(
                                                 className="mt-1",
@@ -245,9 +292,10 @@ def modal():
                             # Database Selection
                             dbc.Row(
                                 [
-                                    dbc.Col(
-                                        dbc.Label("Databases", className="col-form-label fw-bold"),
-                                        width=3,
+                                    create_modal_databases_label(
+                                        TOOL_DEF["slug"],
+                                        "Reaction SMILES split into individual substrate and product "
+                                        "molecules, plus the reaction metadata.",
                                     ),
                                     dbc.Col(
                                         [

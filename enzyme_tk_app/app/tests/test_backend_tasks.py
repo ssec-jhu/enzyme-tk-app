@@ -210,6 +210,43 @@ def test_run_tool_task_captures_stdout(fake_redis, mock_compute, tmp_path):
     assert "Done!" in log_text
 
 
+@pytest.mark.parametrize("crashes", [False, True], ids=["success", "crash"])
+def test_run_tool_task_captures_library_logging(fake_redis, mock_compute, tmp_path, caplog, crashes):
+    """``logging`` output from the tool's libraries reaches the offloaded log.
+
+    Why this matters: ``redirect_stderr`` only rebinds ``sys.stderr``, so
+    handlers installed earlier (Celery's, at worker startup) write past it and
+    library ``logger.info`` calls never reach the user-visible job log.  The
+    task therefore attaches its own root handler for the duration of the run.
+    That handler must also be removed on *every* exit path — the worker process
+    is reused, so a leaked handler would bleed one job's logs into the next.
+    """
+    # Mirror the Celery worker, which sets the root level at startup; without
+    # it a library's logger.info() is dropped before reaching any handler.
+    caplog.set_level(logging.INFO)
+    handlers_before = list(logging.getLogger().handlers)
+
+    def run_with_logging(params):
+        logging.getLogger("enzymetk.predict_Funce_step").info("Loaded EC level 1 model")
+        if crashes:
+            raise ValueError("boom")
+        return {"result": "ok"}
+
+    mock_compute.run.side_effect = run_with_logging
+
+    from enzyme_tk_app.app.backend.tasks import run_tool_task
+
+    job_id = "job-liblog-crash" if crashes else "job-liblog"
+    run_tool_task("test-tool", {}, "sess-1", job_id)
+
+    log_text = (tmp_path / "job_outputs" / job_id / config.JOB_LOG_FILENAME).read_text()
+    assert "Loaded EC level 1 model" in log_text
+    # The formatter must tag level + logger name so library logging is
+    # distinguishable from the tool's plain print() output.
+    assert "INFO enzymetk.predict_Funce_step:" in log_text
+    assert logging.getLogger().handlers == handlers_before, "capture handler leaked onto the root logger"
+
+
 def test_run_tool_task_timeout(fake_redis, mock_compute):
     """SoftTimeLimitExceeded from compute.run() stores TIMEOUT status.
 

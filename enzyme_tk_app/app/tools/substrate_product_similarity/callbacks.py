@@ -7,13 +7,23 @@ This module defines callbacks that:
 - Submit a substrate/product similarity job to the backend scheduler
 """
 
-from dash import Input, Output, State, callback, ctx
+from dash import Input, Output, State, callback, ctx, no_update
 from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
+from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
+from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
+
+# Safe at module scope: smiles_validation imports rdkit inside its functions, so
+# nothing heavy loads until the user actually types into the SMILES field.
+from enzyme_tk_app.app.utils.smiles_validation import validate_smiles
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
+
+# Build lookup dict: encoded dropdown value ("role||smiles") -> task name.
+_TASK_NAMES_BY_VALUE = {f"{ex['role']}||{ex['value']}": ex["task_name"] for ex in _get_example_smiles()}
 
 
 @callback(
@@ -48,45 +58,56 @@ def toggle_substrate_product_similarity_modal(launch_clicks, cancel_clicks):
 
 
 @callback(
-    # Populate the SMILES textarea and role selector when an example is selected.
+    # Populate the SMILES textarea, role selector and Task Name when an example is selected.
     Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     Output(f"id-radio-{TOOL_DEF['slug']}-role", "value"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_smiles(example_value):
-    """Populate the SMILES textarea and role selector when an example is selected.
+    """Populate the SMILES textarea, role selector and Task Name from an example.
 
     The example value is encoded as ``"role||smiles"`` so both the molecule
     role (substrate/product) and the SMILES string can be set from a single
-    dropdown selection.
+    dropdown selection.  The Task Name is prefilled with the example's own
+    name so a run is submittable in one click — it is the one field that
+    otherwise blocks submit.  An already-typed name is overwritten, like every
+    other example-filled field.
 
     Args:
         example_value: The encoded example string (``"role||smiles"``).
 
     Returns:
-        Tuple of (smiles_string, role_value) to populate the form fields.
+        Tuple of (smiles_string, role_value, task_name).  The task name is
+        ``no_update`` for a value that is not one of the shipped examples.
     """
-    if example_value and "||" in example_value:
-        # The example value is expected to be in the format "role||smiles",
-        #  e.g. "substrate||CCO".
-        role, smiles = example_value.split("||", 1)
-        return smiles, role
-    raise PreventUpdate
+    if not example_value or "||" not in example_value:
+        raise PreventUpdate
+
+    # The example value is expected to be in the format "role||smiles",
+    #  e.g. "substrate||CCO".
+    role, smiles = example_value.split("||", 1)
+    task_name = _TASK_NAMES_BY_VALUE.get(example_value)
+    return smiles, role, task_name or no_update
 
 
 @callback(
     Output(f"id-btn-{TOOL_DEF['slug']}-submit", "disabled"),
+    Output(f"id-textarea-{TOOL_DEF['slug']}-smiles", "invalid"),
+    Output(f"id-feedback-{TOOL_DEF['slug']}-smiles", "children"),
     Input(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
 )
 def validate_substrate_product_form(task_name, smiles, selected_databases, selected_algorithms):
-    """Enable/disable the submit button based on form validation.
+    """Enable/disable the submit button and mark an unusable SMILES.
 
-    Requires a non-empty task name, SMILES string, at least one
-    selected database, and at least one selected algorithm.
+    Requires a non-empty task name, a molecule SMILES that actually parses, at
+    least one selected database, and at least one selected algorithm.  This
+    field takes one structure, so a reaction pasted into it is rejected here
+    with a message naming the ``>>`` rather than deep inside ``SubstrateDist``.
 
     Args:
         task_name: The task name input value.
@@ -95,15 +116,18 @@ def validate_substrate_product_form(task_name, smiles, selected_databases, selec
         selected_algorithms: List of selected algorithm values.
 
     Returns:
-        Boolean indicating whether the submit button should be disabled.
+        Tuple of (submit disabled, textarea invalid, feedback message).
     """
+    smiles_error = validate_smiles(smiles)
+    # A blank field is not a mistake yet — it disables Run without turning red.
+    show_error = bool(smiles and smiles.strip() and smiles_error)
+
     has_name = task_name and task_name.strip()
-    has_smiles = smiles and smiles.strip()
     has_databases = selected_databases and len(selected_databases) > 0
     has_algorithms = selected_algorithms and len(selected_algorithms) > 0
-    if has_name and has_smiles and has_databases and has_algorithms:
-        return False
-    return True
+    disabled = not (has_name and not smiles_error and has_databases and has_algorithms)
+
+    return disabled, show_error, smiles_error if show_error else ""
 
 
 @callback(
@@ -152,16 +176,21 @@ def submit_substrate_product_similarity_job(
 
     # Server-side validation — the client disables the submit button
     # when fields are empty, but a crafted request could bypass that.
-    if (
-        not task_name
-        or not task_name.strip()
-        or not smiles
-        or not smiles.strip()
-        or not databases
-        or not algorithms
-        or not role
-    ):
+    if not task_name or not task_name.strip() or not algorithms or not role:
         raise PreventUpdate
+
+    # Reject an unusable molecule here rather than inside SubstrateDist, where an
+    # unparseable string reaches mfpgen.GetFingerprint(None) and raises a C++
+    # signature dump.  Reports the empty case itself, like validate_db_names, so
+    # the guard above must not test the SMILES and swallow that message.
+    error = validate_smiles(smiles)
+    if error:
+        return error
+
+    # Database names become file paths on the backend.
+    error = validate_db_names(databases, get_reaction_database_options())
+    if error:
+        return error
 
     # Validate top_n
     error = validate_top_n(top_n)
@@ -169,20 +198,27 @@ def submit_substrate_product_similarity_job(
         return error
     top_n = int(top_n)
 
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
+
     # get the task scheduler and submit the job with the collected parameters
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
         tool_slug=TOOL_DEF["slug"],
         # The parameters dict will be passed to the backend job for processing.
         # We include all the relevant form inputs so the backend has everything it
-        # needs to run the similarity search.
+        # needs to run the similarity search.  Key order mirrors the modal's field
+        # order — the results page renders the Input Parameters rows in this order.
         params={
             "task_name": task_name.strip(),
-            "databases": databases,  # list of selected database filenames
+            "role": role,  # "substrate" or "product"
             "smiles": smiles.strip(),
+            "databases": databases,  # list of selected database filenames
             "algorithms": algorithms,  # list of selected algorithm values
             "top_n": top_n,
-            "role": role,  # "substrate" or "product"
         },
         # We also pass the session ID from Flask's `g` so the backend
         # can associate the job with the user's session if needed.

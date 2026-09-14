@@ -27,9 +27,8 @@ from enzyme_tk_app.app.components.icons import (
     ICON_JOB_CLEAR,
     ICON_JOB_VIEW,
     ICON_JOBS_PAGE,
-    ICON_STATUS_PENDING,
 )
-from enzyme_tk_app.app.components.results_helpers import STATUS_ICONS, build_stat_card
+from enzyme_tk_app.app.components.results_helpers import build_stat_card, build_status_badge
 from enzyme_tk_app.app.tools import TOOL_TITLE_MAP, TOOLS
 from enzyme_tk_app.app.utils.formatting import (
     compute_duration,
@@ -54,26 +53,7 @@ _TOOL_MAX_DURATION: dict[str, int] = {t["slug"]: t.get("max_duration", 3600) for
 # ----------------
 
 
-def _build_status_badge(status: JobStatus) -> html.Span:
-    """Render a colored status badge.
-
-    Args:
-        status: The job's current status.
-
-    Returns:
-        An ``html.Span`` with the appropriate CSS class and icon.
-    """
-    icon_class = STATUS_ICONS.get(status, ICON_STATUS_PENDING)
-    return html.Span(
-        className=f"badge-status badge-{status.value}",
-        children=[
-            html.I(className=f"{icon_class} badge-status-icon"),
-            status.value,
-        ],
-    )
-
-
-def _build_stats(jobs: list[JobInfo]) -> list:
+def _build_my_tasks_page_stats(jobs: list[JobInfo]) -> list:
     """Build the stats summary cards from a list of jobs.
 
     Args:
@@ -166,7 +146,7 @@ def _build_job_row(job: JobInfo) -> html.Tr:
             ),
             html.Td(task_name or "—"),
             html.Td(tool_title),
-            html.Td(_build_status_badge(job.status)),
+            html.Td(build_status_badge(job.status)),
             html.Td(format_timestamp(job.submitted_at)),
             html.Td("TBD" if job.status in ACTIVE_STATUSES else compute_duration(job.started_at, job.completed_at)),
             html.Td(format_duration(max_dur)),
@@ -332,7 +312,7 @@ def load_jobs_table(n_intervals: int) -> tuple:
     """
     scheduler = get_task_scheduler()
     jobs = scheduler.list_jobs(g.session_id)
-    return _build_stats(jobs), _build_jobs_table(jobs)
+    return _build_my_tasks_page_stats(jobs), _build_jobs_table(jobs)
 
 
 @callback(

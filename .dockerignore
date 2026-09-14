@@ -38,7 +38,17 @@ AGENTS.md
 
 # Docker (prevent recursive copy)
 Dockerfile
-docker-compose.yml
+docker-compose*.yml
 
 # Large data directories not needed in image
 enzyme_tk_app/app/data/
+
+# Local dev environments — never belong in the image, and each one adds
+# its own torch install to the build context (~6GB combined).
+.venv/
+.claude/
+.planning/
+graphify-out/
+
+# anything under scripts
+scripts/*

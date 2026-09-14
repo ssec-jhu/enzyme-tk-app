@@ -45,7 +45,7 @@ class ToolDef(TypedDict):
             ``SoftTimeLimitExceeded``, which the task catches and records
             as ``TIMEOUT``.  A small hard-kill buffer (60 s) is added
             automatically so cleanup code can run.  Defaults to
-            ``DEFAULT_MAX_DURATION`` (3600 s) in ``backend.config``.
+            ``DEFAULT_MAX_DURATION`` (3600 s) in ``backend.celery_app``.
     """
 
     slug: str

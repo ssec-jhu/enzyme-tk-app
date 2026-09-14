@@ -22,7 +22,7 @@ The user will provide a scope. Resolve it to concrete test files:
 |----------------------------------|--------------------------------------------------------------------|
 | `"review tests for tools/timer"` | `enzyme_tk_app/app/tests/test_tools_timer.py`                      |
 | `"audit test_results"`           | `enzyme_tk_app/app/tests/test_results.py`                          |
-| `"review all tests"`             | Every `test_*.py` under `enzyme_tk_app/app/tests/`                 |
+| `"review all tests"`             | Every `test_*.py` under `enzyme_tk_app/app/tests/` **and** `scripts/db_build/` |
 | `"review tests for backend"`     | All `test_backend_*.py` files                                      |
 
 If the scope is ambiguous, **ask the user** before proceeding.
@@ -76,6 +76,22 @@ to change**. Common offenders:
 - Asserting on **enum values** or constants imported from the source.
 - Pattern-based assertions (`re.search`, `in`, substring) that test for
   the *presence* of a key term rather than an exact match.
+- `assert col_def["headerName"] == col_def["field"]` — comparing a header to its
+  own field is an invariant, not UI copy (Func-E's grid guarantees it; see
+  `test_tools_funce.py`). Only a hard-coded label literal is brittle.
+- A spelled-out list of **dataframe / column field names** compared as a whole
+  (e.g. `EXPECTED_FIELDS` in `test_tools_funce.py`, asserted against
+  `_get_column_defs()`). Field names are a library's output contract, not prose,
+  and `create-ag-grid` §2.6 requires them written out one per line rather than
+  generated. Do **not** propose replacing such a list with a loop/comprehension,
+  or with an import of the very constant the module under test uses — either
+  change makes the test agree with the code instead of pinning it.
+- A string (or regex) read out of **another language's source file** —
+  `test_smiles_rendering.py` greps `assets/dashAgGridComponentFunctions.js` for
+  `_QUERY_PREVIEW_CLASS` / `_QUERY_SMILES_ATTR` and scrapes `_STACK_ASPECT_RATIO`
+  out of it, because Python and JS share those values across a boundary no import
+  crosses. The scrape *is* the test. Do not propose importing the constant instead
+  (there is nothing to import) or dropping it as brittle.
 
 ### 4. Uncovered Early Returns & Guard Clauses
 

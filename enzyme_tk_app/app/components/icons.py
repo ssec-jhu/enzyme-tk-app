@@ -12,6 +12,7 @@ ICON_TOOL_REACTION = "fa-solid fa-flask-vial"
 ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
 ICON_TOOL_STRUCTURE = "fa-solid fa-cube"
 ICON_TOOL_TIMER = "fa-solid fa-hourglass-half"
+ICON_TOOL_ACTIVITY = "fa-solid fa-bolt"
 ICON_DATA_WARNING = "fa-solid fa-triangle-exclamation"
 
 # --- Footer: Social Links ---
@@ -20,6 +21,7 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 # --- Tool Modals ---
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
 ICON_MODAL_UPLOAD = "fa-solid fa-upload"
+ICON_MODAL_INFO = "fa-solid fa-circle-info"
 
 # --- Modal Section Headers ---
 ICON_SECTION_INPUT = "fa-solid fa-flask"
@@ -40,6 +42,9 @@ ICON_STATUS_SUCCESS = "fa-solid fa-circle-check"
 ICON_STATUS_FAILURE = "fa-solid fa-circle-xmark"
 ICON_STATUS_REVOKED = "fa-solid fa-ban"
 ICON_STATUS_TIMEOUT = "fa-solid fa-hourglass-end"
+
+# --- Results Tables ---
+ICON_RESULTS_DOWNLOAD = "fa-solid fa-download"
 
 # --- Admin Page ---
 ICON_ADMIN_PAGE = "fa-solid fa-user-shield"

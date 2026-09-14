@@ -47,7 +47,7 @@ You now have your own copy (fork) of the repository where you can make changes i
 
 - **Coding Standards**: Follow PEP 8 for Python code (or your organization’s standards). Use `tox -e check-style` to ensure code formatting aligns with the repository’s requirements.
 - **Testing**: Ensure your changes pass all tests. Include relevant tests for any new features you add.
-- **Documentation**: Update the documentation for any significant code changes. This includes comments, docstrings, and relevant updates to the `README.md`.
+- **Documentation**: Update the documentation for any significant code changes. This includes comments, docstrings, and relevant updates to the docs — `README.md` for anything a local user does, `docs/deployment-guide.md` for operator settings, `docs/developer-guide.md` for conventions and internals.
 
 ## Keeping Your Fork Updated
 

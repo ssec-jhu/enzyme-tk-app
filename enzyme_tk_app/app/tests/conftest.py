@@ -19,6 +19,25 @@ from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
 from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.utils import submission_limits
+
+
+@pytest.fixture(autouse=True)
+def _submission_limit_off(monkeypatch):
+    """Pin the submission cap OFF for every test unless a test opts in.
+
+    ``tox.ini`` sets ``passenv = *``, so a developer with ``APP_IN_PRODUCTION_MODE=1``
+    exported would otherwise run the whole suite with the cap live — and every submit
+    callback would reach for the real scheduler at ``redis://localhost:6379/0``.
+
+    ``monkeypatch.setattr`` is required, not ``setenv``: the constants bind at import
+    time, so changing the environment afterwards cannot flip them (the same reason
+    ``test_backend_config.py`` patches ``config``'s globals directly).
+    """
+    monkeypatch.setattr(submission_limits, "PRODUCTION_MODE", False)
+    # Pinned too, so the suite's expected messages do not move if the policy constant does.
+    monkeypatch.setattr(submission_limits, "MAX_ACTIVE_JOBS_PER_SESSION", 3)
+
 
 # Directory containing test data files (CSV fixtures, etc.).
 TEST_DATA_DIR = Path(__file__).parent / "data"
@@ -31,6 +50,20 @@ TEST_REACTIONS_CSV = TEST_DATA_DIR / "test_reactions_20.csv"
 # Small 22-row sequence CSV extracted from the production database
 # (20 valid rows from protein.csv + 2 invalid rows appended for testing).
 TEST_SEQUENCES_CSV = TEST_DATA_DIR / "test_sequences_20.csv"
+
+
+# ── Database dropdown helpers ────────────────────────────────────────────────
+
+
+def offered_databases(*names):
+    """Build the dropdown option list a tool's ``get_*_database_options()`` would return.
+
+    ``validate_db_names`` checks the submitted names against exactly this list,
+    so a callback test that submits an invented database name patches its
+    tool's option builder with ``return_value=offered_databases(...)`` to say
+    "the dropdown is offering these".
+    """
+    return [{"label": name, "value": name} for name in names]
 
 
 # ── Reaction data helpers ────────────────────────────────────────────────────
@@ -48,11 +81,18 @@ def make_reaction_df(reactions: list[str]) -> pd.DataFrame:
 
 @pytest.fixture()
 def _patch_reactions_dir(reactions_dir, monkeypatch):
-    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture."""
+    """Patch ``REACTIONS_DIR`` so ``run()`` reads the 20-row test fixture.
+
+    Both copies of the constant are patched: ``compute`` uses it to build the
+    file path, and ``data_loading`` uses it to build the dropdown options that
+    ``validate_db_names`` now checks membership against.
+    """
+    patched_dir = reactions_dir / REACTIONS_DIR.name
     monkeypatch.setattr(
         "enzyme_tk_app.app.tools.substrate_product_similarity.compute.REACTIONS_DIR",
-        reactions_dir / REACTIONS_DIR.name,
+        patched_dir,
     )
+    monkeypatch.setattr("enzyme_tk_app.app.utils.data_loading.REACTIONS_DIR", patched_dir)
 
 
 @pytest.fixture()

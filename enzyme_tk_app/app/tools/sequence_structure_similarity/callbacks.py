@@ -9,7 +9,6 @@ This module defines callbacks that:
 """
 
 import base64
-import re
 from pathlib import Path
 
 from dash import Input, Output, State, callback, ctx, html, no_update
@@ -20,6 +19,8 @@ from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
+from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options, validate_db_names
+from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example id -> entry.
 _EXAMPLES_BY_ID = {ex["value"]: ex for ex in _get_example_entries()}
@@ -61,22 +62,26 @@ def toggle_structure_similarity_modal(launch_clicks, cancel_clicks):
     Output(f"id-textarea-{TOOL_DEF['slug']}-sequence", "value"),
     Output(f"id-upload-{TOOL_DEF['slug']}-structure", "contents"),
     Output(f"id-upload-{TOOL_DEF['slug']}-structure", "filename"),
+    Output(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     Input(f"id-dropdown-{TOOL_DEF['slug']}-example", "value"),
     prevent_initial_call=True,
 )
 def populate_example_sequence(example_id):
-    """Populate the sequence textarea and optionally the structure upload.
+    """Populate the sequence textarea, Task Name and optionally the structure upload.
 
     When an example with a bundled structure file is selected, the
     structure file is read from disk, base64-encoded, and injected into
     the ``dcc.Upload`` component.  For sequence-only examples, the
-    upload fields are left unchanged via ``no_update``.
+    upload fields are left unchanged via ``no_update``.  The Task Name is
+    prefilled with the example's own name so a run is submittable in one
+    click — it is the one field that otherwise blocks submit.  An
+    already-typed name is overwritten, like every other example-filled field.
 
     Args:
         example_id: The ID of the selected example entry.
 
     Returns:
-        Tuple of (sequence, structure_contents, structure_filename).
+        Tuple of (sequence, structure_contents, structure_filename, task_name).
     """
     # Don't update anything if the example ID is invalid or not found.
     if not example_id:
@@ -90,6 +95,7 @@ def populate_example_sequence(example_id):
     # Extract the sequence and structure info from the entry.
     sequence = entry["sequence"]
     structure_file = entry.get("structure_file")
+    task_name = entry["task_name"]
 
     # This is only for the example sequences that ship with a structure
     if structure_file:
@@ -98,10 +104,10 @@ def populate_example_sequence(example_id):
         encoded = base64.b64encode(raw_bytes).decode("ascii")
         mime_type = _MIME_BY_EXT.get(file_path.suffix.lower(), "application/octet-stream")
         contents = f"data:{mime_type};base64,{encoded}"
-        return sequence, contents, structure_file
+        return sequence, contents, structure_file, task_name
 
     # return the sequence and leave the upload unchanged for sequence-only examples
-    return sequence, no_update, no_update
+    return sequence, no_update, no_update, task_name
 
 
 @callback(
@@ -208,21 +214,15 @@ def submit_structure_similarity_job(
     if not task_name or not task_name.strip() or not sequence or not sequence.strip() or not databases:
         raise PreventUpdate
 
-    # Validate database names — only allow alphanumeric, underscores, and hyphens.
-    # this should not happen if the dropdown options are properly generated from the filesystem,
-    # but we check again here to be safe since these values will be used in file paths on the backend.
-    sanitized_dbs = []
-    for db_name in databases:
-        # Strip whitespace
-        safe = str(db_name).strip()
-        # Reject any names that contain characters other than letters, numbers, underscores, or hyphens.
-        if not re.match(r"^[0-9A-Za-z_-]+$", safe):
-            return f"Invalid database name: {db_name}. Name must only contain numbers, letters, and _ or -"
-        sanitized_dbs.append(safe)
-
-    # sanity check: ensure we have at least one valid database after sanitization
-    if not sanitized_dbs:
-        return "No valid databases found in the selection. Check the database names and try again."
+    # Validate database names — they become file paths on the backend, so they
+    # are checked even though the dropdown only offers legitimate options.
+    # FoldSeek databases are directories, hence no suffix.  Names are passed
+    # through as-is: coercing with str() would turn a crafted 123 into the
+    # allowlist-passing "123", and stripping would silently retarget a
+    # directory whose real name has surrounding whitespace.
+    error = validate_db_names(databases, get_foldseek_database_options())
+    if error:
+        return error
 
     # Validate structure file extension if provided.
     if structure_filename:
@@ -237,13 +237,21 @@ def submit_structure_similarity_job(
     # Determine mode for the status message.
     mode = "structure" if structure_contents else "sequence"
 
+    # Key order mirrors the modal's field order — the results page renders the
+    # Input Parameters rows in this order.
     params = {
         "task_name": task_name.strip(),
         "sequence": sequence.strip(),
-        "databases": sanitized_dbs,
         "structure_content": structure_contents if structure_contents else None,
         "structure_filename": structure_filename if structure_contents else None,
+        "databases": databases,
     }
+
+    # Last guard, so a malformed submit still shows its own field error first.
+    # No-op unless the deployment switched the limit on.
+    error = validate_active_job_limit(g.session_id)
+    if error:
+        return error
 
     # ready to submit the job to the backend scheduler
     scheduler = get_task_scheduler()
@@ -254,6 +262,6 @@ def submit_structure_similarity_job(
     )
 
     # common feedback to the user amongst all tools
-    db_list = ", ".join(sanitized_dbs)
+    db_list = ", ".join(databases)
     msg = f"Job submitted — ID: {job_id} ({mode} mode, databases: {db_list})"
     return msg

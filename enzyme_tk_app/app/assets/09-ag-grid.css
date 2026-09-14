@@ -114,10 +114,108 @@
     user-select: none;
 }
 
+/* ---- Compare panels — query beside the clicked result -------- */
+
+.svg-compare {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 1rem;
+    max-width: 94vw;
+    max-height: 88vh;
+    /* Panel clicks no longer close the overlay (SMILES must be selectable). */
+    cursor: default;
+}
+
+.svg-compare-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.svg-compare-label {
+    color: #ffffff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.svg-compare-smiles {
+    max-width: 100%;
+    max-height: 4.5em;
+    overflow-y: auto;
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.75rem;
+    line-height: 1.4;
+    text-align: center;
+    word-break: break-all;
+    user-select: text;
+}
+
+/* Two panels split the viewport.  :not(:only-child) outranks the
+   .svg-overlay img rule above, so a lone result (no query structure on
+   the page) keeps the original 90vw / 85vh size. */
+.svg-compare-panel:not(:only-child) img {
+    max-width: 46vw;
+    max-height: 70vh;
+}
+
+/* ---- Stacked — wide structures use the full width ----------- */
+
+/* dashAgGridComponentFunctions.js adds the class when a structure is wider
+   than 2.5:1: a 1250x200 reaction draws 644 px wide side by side but 1232 px
+   stacked.  align-items overrides the flex-start above — in a column the
+   panel would otherwise size to fit-content, so the longer of the two SMILES
+   captions would shift its image up to ~40 px against the other. */
+.svg-compare-stacked {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+}
+
+/* Same caps as the mobile block below, so the two never disagree when a
+   reaction is stacked on a phone. */
+.svg-compare-stacked .svg-compare-panel:not(:only-child) img {
+    max-width: 88vw;
+    max-height: 32vh;
+}
+
+/* Wide structures stack at any width (above); below tablet everything does. */
+@media (max-width: 768px) {
+    .svg-compare {
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .svg-compare-panel:not(:only-child) img {
+        max-width: 88vw;
+        max-height: 32vh;
+    }
+}
+
 .cell-wrap-dash-ag-grid{
     word-break: normal !important;
     white-space: normal !important;
     line-height:120% !important;
     /*padding: 10 !important;*/
     font-size: 10px !important;
+}
+
+/* ---- Sequence cells ----------------------------------------- */
+
+/* Shared class for protein/amino-acid sequence columns, so every tool
+   renders sequences identically. Sequences can be hundreds of residues,
+   so they are truncated to a single line to keep row heights uniform;
+   build_ag_grid sets a tooltipField on every column, so the full sequence
+   shows on hover, and enableCellTextSelection keeps it copy-pasteable. */
+.ag-cell-sequence {
+    font-family: monospace;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }

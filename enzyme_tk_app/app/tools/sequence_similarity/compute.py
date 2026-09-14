@@ -4,6 +4,17 @@ Loads the selected protein sequence database, applies EC number and
 cofactor pre-filters, then runs ``enzymetk.sequence_search_blast.BLAST``
 to find the most similar sequences.
 
+**The two pre-filters read their columns differently, and must.**  An
+``EC number`` cell holds atomic tokens separated by ``;`` (``"3.2.2.-; 3.2.2.6"``),
+so splitting on ``;`` is the whole parse.  A ``Cofactor`` cell is a UniProt
+annotation blob where ``;`` also separates ``Xref=``, ``Evidence=`` and ``Note=``
+sub-fields *and* successive ``COFACTOR:`` blocks — only its ``Name=`` values are
+cofactors, and ``extract_cofactor_names()`` is the one parser for them, shared with
+the dropdown that offers those names.  Each filter keeps a row that carries *any*
+selected value; a row whose cell is blank — or whose database has no ``Cofactor``
+column at all, since ``Cofactor`` is optional metadata — lists nothing and so
+survives no filter.
+
 .. note::
 
    The BLAST function requires the **diamond** binary to be available
@@ -21,16 +32,33 @@ from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.utils.columns import (
     COL_BITSCORE,
     COL_COFACTOR,
+    COL_DATABASE,
     COL_EC_NUMBER,
     COL_ENTRY,
     COL_QUERY,
-    COL_RESIDUE_0INDEX,
     COL_SEQUENCE,
     COL_TARGET,
 )
 from enzyme_tk_app.app.utils.data_loading import (
+    extract_cofactor_names,
     load_sequence_data,
+    scan_sequence_databases,
 )
+
+
+def _database_cards(searched: int, total_sequences: int, skipped: list[str]) -> list[dict]:
+    """Return the database-related stat cards, shared by every return path.
+
+    A skipped database gets its own card naming the files, so a partial
+    search is never mistaken for a complete one.
+    """
+    cards = [
+        {"label": "Databases Searched", "value": str(searched)},
+        {"label": "Total Sequences", "value": f"{total_sequences:,}"},
+    ]
+    if skipped:
+        cards.append({"label": "Databases Skipped", "value": ", ".join(skipped)})
+    return cards
 
 
 def run(params: dict) -> dict:
@@ -39,13 +67,14 @@ def run(params: dict) -> dict:
     Args:
         params: Dictionary with keys:
             - ``"task_name"`` (str): human-readable label for the job.
-            - ``"database"`` (str): CSV filename to search.
+            - ``"databases"`` (list[str]): database filenames to search.  All
+              selections are merged into one reference set and ranked
+              together; unreadable ones are skipped and reported.
             - ``"sequence"`` (str): query protein sequence.
             - ``"ec_filter"`` (list[str]): EC numbers to pre-filter
               the database (empty list means no filter).
-            - ``"cofactor_filter"`` (list[str]): cofactor values to
-              pre-filter (empty list means no filter).  The column
-              does not exist yet — this is a placeholder.
+            - ``"cofactor_filter"`` (list[str]): cofactor names to
+              pre-filter the database (empty list means no filter).
             - ``"top_n"`` (int): max number of results to return.
             - ``"predict_catalytic"`` (bool): whether to run catalytic
               residue prediction on the results.
@@ -60,35 +89,62 @@ def run(params: dict) -> dict:
         - ``dataframe``: ``{"columns": [...], "data": [records]}``.
 
     Raises:
-        ValueError: When the database file is missing.
+        ValueError: When none of the selected databases can be read.
         ImportError: When ``enzymetk.sequence_search_blast`` or the
             diamond binary is not available.
     """
     # Lazy import — enzymetk + diamond are heavy; only load in the worker.
     from enzymetk.sequence_search_blast import BLAST  # noqa: PLC0415
 
-    database_filename: str = params["database"]
+    databases: list[str] = params["databases"]
     query_sequence: str = params["sequence"]
     ec_filter: list[str] = params.get("ec_filter", [])
     cofactor_filter: list[str] = params.get("cofactor_filter", [])
     top_n: int = max(1, min(500, int(params["top_n"])))
     predict_catalytic: bool = params.get("predict_catalytic", False)
 
+    if not databases:
+        raise ValueError("At least one database must be selected.")
+
     run_time_start = time.monotonic()
 
     # ------------------------------------------------------------------
-    # Load and pre-filter the database
+    # Load and merge the selected databases
     # ------------------------------------------------------------------
-    # Sanitise client-supplied filename: strip directory components
-    # to prevent path-traversal and enforce a .csv suffix.
-    safe_name = Path(database_filename).name
-    if not safe_name.endswith(".csv"):
-        raise ValueError(f"Invalid database filename (must be .csv): {database_filename}")
-    csv_path = SEQUENCES_DIR / safe_name
-    if not csv_path.exists():
-        raise ValueError(f"Database file not found: {safe_name}")
+    # Every selection is loaded and tagged with its source, then concatenated
+    # into one reference set.  BLAST then builds a single index over the union
+    # rather than one per database, and the bitscore ranking below is global.
+    # An unreadable database is skipped (and reported) rather than failing the
+    # whole run — but if none survive, that is an error, not "no hits".
+    # The worker reads params straight out of Redis, so it re-derives the set of
+    # usable databases itself rather than trusting the submit callback's check.
+    usable, _problems = scan_sequence_databases()
+    usable_names = set(usable)
 
-    db_df = load_sequence_data(csv_path)
+    frames = []
+    databases_skipped: list[str] = []
+    for name in databases:
+        # Sanitise client-supplied filename: strip directory components so a
+        # name can never escape data/sequences/.
+        safe_name = Path(name).name
+        # Skipped names carry the same spelling as every other surface: the
+        # filename exactly as it appears in data/sequences/, extension included.
+        # A name that is not currently a compliant database — deleted since
+        # submission, or never one — is skipped rather than failing the run.
+        if safe_name not in usable_names:
+            databases_skipped.append(safe_name)
+            continue
+        db_path = SEQUENCES_DIR / safe_name
+        frame = load_sequence_data(db_path)
+        # Named exactly as the file is named in data/sequences/ — see the
+        # data_loading module docstring.
+        frame[COL_DATABASE] = db_path.name
+        frames.append(frame)
+
+    if not frames:
+        raise ValueError(f"None of the selected databases could be read: {', '.join(databases_skipped)}")
+
+    db_df = pd.concat(frames, ignore_index=True)
     total_db_size = len(db_df)
 
     # Pre-filter by EC number if the user selected any.
@@ -103,12 +159,26 @@ def run(params: dict) -> dict:
         )
         db_df = db_df[mask]
 
-    # Pre-filter by cofactor if the column exists and filters are given.
-    # The "cofactor" column does not exist in the current CSV but will
-    # be added in a future data update.
-    # TODO: Update this logic if the cofactor column contains multiple
-    if cofactor_filter and COL_COFACTOR in db_df.columns:
-        db_df = db_df[db_df[COL_COFACTOR].isin(cofactor_filter)]
+    # Reduce each raw UniProt annotation blob to its "Name=" values once — the
+    # filter matches on them and the grid shows them.  A database with no Cofactor
+    # column lists no cofactors, so none of its rows match once a filter is active:
+    # the same rule as a blank cell, and the reason this cannot use .isin().
+    has_cofactors = COL_COFACTOR in db_df.columns
+    cofactor_names = (
+        db_df[COL_COFACTOR].map(extract_cofactor_names)
+        if has_cofactors
+        else pd.Series([set()] * len(db_df), index=db_df.index)
+    )
+    if has_cofactors:
+        # "; " is the source file's own separator and no cofactor name contains one —
+        # unlike ", ", which is ambiguous inside "6,7-dimethyl-8-(1-D-ribityl)lumazine".
+        db_df[COL_COFACTOR] = cofactor_names.map(lambda names: "; ".join(sorted(names)))
+
+    # Pre-filter by cofactor if the user selected any — a row survives when it lists
+    # *any* of them, matching how the EC filter above treats a multi-selection.
+    if cofactor_filter:
+        wanted = set(cofactor_filter)
+        db_df = db_df[cofactor_names.map(lambda names: bool(wanted & names))]
 
     filtered_size = len(db_df)
 
@@ -121,13 +191,12 @@ def run(params: dict) -> dict:
         if cofactor_filter:
             active_filters.append(f"Cofactor(s): {', '.join(cofactor_filter)}")
         no_results_message = (
-            f"No sequences in the database matched the selected filter(s) "
+            f"No sequences in the selected database(s) matched the filter(s) "
             f"({'; '.join(active_filters)}). Try broadening or removing the filter."
         )
         return {
             "_stat_cards": [
-                {"label": "Database", "value": safe_name},
-                {"label": "Total Sequences", "value": f"{total_db_size:,}"},
+                *_database_cards(len(frames), total_db_size, databases_skipped),
                 {"label": "After Filtering", "value": "0"},
                 {"label": "Results Returned", "value": "0"},
                 {"label": "Run Time", "value": f"{run_time}s"},
@@ -164,8 +233,7 @@ def run(params: dict) -> dict:
         run_time = round(time.monotonic() - run_time_start, 3)
         return {
             "_stat_cards": [
-                {"label": "Database", "value": safe_name},
-                {"label": "Total Sequences", "value": f"{total_db_size:,}"},
+                *_database_cards(len(frames), total_db_size, databases_skipped),
                 {"label": "After Filtering", "value": f"{filtered_size:,}"},
                 {"label": "Results Returned", "value": "0"},
                 {"label": "Run Time", "value": f"{run_time}s"},
@@ -188,17 +256,17 @@ def run(params: dict) -> dict:
     # The BLAST output has a "target" column containing the Entry IDs.
     if COL_TARGET in result_df.columns:
         meta_df = db_df.drop(columns=[_LABEL_COL], errors="ignore")
+        # One row per (entry, source database): a repeated Entry inside a
+        # single CSV would otherwise multiply every hit row on merge.
+        meta_df = meta_df.drop_duplicates(subset=[COL_ENTRY, COL_DATABASE])
         result_df = result_df.merge(meta_df, left_on=COL_TARGET, right_on=COL_ENTRY, how="left")
 
-    # Drop columns that add no value to the consumer:
+    # Drop the join artifacts, and only those — every remaining column is
+    # database metadata and reaches the results grid:
     # - query: always the literal string "query" in every row.
     # - Entry: duplicate of "target" (the merge join key).
-    # - Residue_0index: redundant with Residue_1index.
     # - _LABEL_COL: internal label that may have leaked through.
-    result_df = result_df.drop(
-        columns=[COL_QUERY, COL_ENTRY, COL_RESIDUE_0INDEX, _LABEL_COL],
-        errors="ignore",
-    )
+    result_df = result_df.drop(columns=[COL_QUERY, COL_ENTRY, _LABEL_COL], errors="ignore")
 
     # ------------------------------------------------------------------
     # Catalytic residue prediction (placeholder)
@@ -213,8 +281,7 @@ def run(params: dict) -> dict:
 
     return {
         "_stat_cards": [
-            {"label": "Database", "value": safe_name},
-            {"label": "Total Sequences", "value": f"{total_db_size:,}"},
+            *_database_cards(len(frames), total_db_size, databases_skipped),
             {"label": "After Filtering", "value": f"{filtered_size:,}"},
             {"label": "Results Returned", "value": str(len(result_df))},
             {"label": "Run Time", "value": f"{run_time}s"},

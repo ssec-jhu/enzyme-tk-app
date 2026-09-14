@@ -19,7 +19,7 @@ def test_abc_cannot_be_instantiated():
 
 
 def test_abc_has_required_abstract_methods():
-    """The ABC declares all 10 abstract methods from the design contract.
+    """The ABC declares all 11 abstract methods from the design contract.
 
     Why this matters: if someone accidentally removes ``@abstractmethod``
     from a method, Python would let a subclass skip implementing it.
@@ -33,6 +33,7 @@ def test_abc_has_required_abstract_methods():
         "get_job",
         "get_job_status",
         "list_jobs",
+        "count_active_jobs",
         "admin_list_all_jobs",
         "delete_job",
         "clear_jobs",

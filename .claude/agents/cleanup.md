@@ -141,6 +141,14 @@ Scan all CSS files in `enzyme_tk_app/app/assets/` for class selectors.
 Then check if each class is referenced in any `.py` file (via
 `className=`) or in other CSS files.
 
+**Not every live class comes from Python.** The AG Grid cell renderers in
+`assets/dashAgGridComponentFunctions.js` set their classes from JavaScript
+(`.svg-overlay`, `.svg-overlay-close`, `.svg-compare*`), so the scan below
+searches all of `enzyme_tk_app/` — `.js` hits count as usage. Never delete a
+rule on the strength of a Python-only grep. `.svg-compare-stacked` is the
+sharpest case: it is applied by `classList.add` only when an image is wider
+than 2.5:1, so its single reference is that one string literal.
+
 ```bash
 python3 - <<'PYEOF'
 import re, subprocess

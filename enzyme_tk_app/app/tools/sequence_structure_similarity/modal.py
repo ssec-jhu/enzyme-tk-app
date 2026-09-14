@@ -35,6 +35,7 @@ from dash import dcc, html
 from enzyme_tk_app.app.components.icons import ICON_MODAL_EXAMPLE, ICON_MODAL_UPLOAD
 from enzyme_tk_app.app.components.modal_helpers import (
     create_modal_config_section_header,
+    create_modal_databases_label,
     create_modal_footer,
     create_modal_header,
     create_modal_input_section_header,
@@ -48,16 +49,18 @@ def _get_example_entries():
     """Return example entries for the FoldSeek similarity search.
 
     Each entry has a ``value`` (used as dropdown value), a display
-    ``label``, the protein ``sequence``, and an optional
+    ``label``, a ``task_name`` (the name the example picker prefills into
+    the Task Name field), the protein ``sequence``, and an optional
     ``structure_file`` name (relative to ``data/structures/``).
 
     Returns:
-        List of dicts with keys: value, label, sequence, structure_file.
+        List of dicts with keys: value, label, task_name, sequence, structure_file.
     """
     return [
         {
             "value": "A0A009IHW8-seq",
             "label": "A0A009IHW8 — DNA glycosylase (sequence only)",
+            "task_name": "A0A009IHW8-sequence",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -69,6 +72,7 @@ def _get_example_entries():
         {
             "value": "A0A009IHW8-struct",
             "label": "A0A009IHW8 — DNA glycosylase (sequence + structure)",
+            "task_name": "A0A009IHW8-structure",
             "sequence": (
                 "MSLEQKKGADIISKILQIQNSIGKTTSPSTLKTKLSEISRKEQENARI"
                 "QSKLSDLQKKKIDIDNKLLKEKQNLIKEEILERKKLEVLTKKQQKDEIEHQKKLKREIDAIKASTQYITDVSI"
@@ -80,6 +84,7 @@ def _get_example_entries():
         {
             "value": "A0A067CMC7-seq",
             "label": "A0A067CMC7 — Nuclease (sequence only)",
+            "task_name": "A0A067CMC7-sequence",
             "sequence": (
                 "MLEVPVWIPILAFAVGLGLGLLIPHLQKPFQRFSTVNDIPKEFFEHERTLRGKVVS"
                 "VTDGDTIRVRHVPWLANGDGDFKGKLTETTLQLRVAGVDCPETAKFGRTGQPFGEE"
@@ -91,6 +96,7 @@ def _get_example_entries():
         {
             "value": "1AKI-struct",
             "label": "1AKI — Lysozyme (sequence + structure)",
+            "task_name": "1AKI-lysozyme-structure",
             "sequence": (
                 "KVFGRCELAAAMKRHGLDNYRGYSLGNWVCAAKFESNFNTQATNRNTDGSTDYGILQINS"
                 "RWWCNDGRTPGSRNLCNIPCSALLSSDITASVNCAKKIVSDGNGMNAWVAWRNRCKGTDVQ"
@@ -275,9 +281,10 @@ def modal():
                             # Database Selection (multi-select)
                             dbc.Row(
                                 [
-                                    dbc.Col(
-                                        dbc.Label("Databases", className="col-form-label fw-bold"),
-                                        width=3,
+                                    create_modal_databases_label(
+                                        TOOL_DEF["slug"],
+                                        "Pre-built FoldSeek indexes of protein structures, "
+                                        "ready for structural search.",
                                     ),
                                     # Database multi-select dropdown, populated dynamically from available FoldSeek DBs.
                                     dbc.Col(

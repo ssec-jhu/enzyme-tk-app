@@ -33,6 +33,7 @@ from enzyme_tk_app.app.utils.data_loading import (
 )
 from enzyme_tk_app.app.utils.formatting import round_column_values
 from enzyme_tk_app.app.utils.smiles_rendering import generate_cached_svg_uris, smiles_to_svg_data_uri
+from enzyme_tk_app.app.utils.smiles_validation import validate_smiles
 
 # Temporary column name used as the join key for SubstrateDist.
 _ROW_ID = "_row_id"
@@ -140,6 +141,16 @@ def run(params: dict) -> dict:
     if not similarity_algorithms:
         raise ValueError("At least one similarity algorithm must be selected.")
 
+    if not databases:
+        raise ValueError("At least one database must be selected.")
+
+    # The modal validates too, but a replayed job reaches this function directly —
+    # and an unparseable query reaches mfpgen.GetFingerprint(None) inside
+    # SubstrateDist, which raises a C++ signature dump rather than a message.
+    invalid = validate_smiles(smiles)
+    if invalid:
+        raise ValueError(invalid)
+
     # Start a timer to measure total run time of the function.
     run_time_start = time.monotonic()
 
@@ -153,14 +164,16 @@ def run(params: dict) -> dict:
         # Sanitise client-supplied filename: strip directory components
         # to prevent path-traversal and enforce a .csv suffix.
         safe_name = Path(db_filename).name
+        # Skipped names carry the same spelling as every other surface: the
+        # filename exactly as it appears in data/reactions/, extension included.
         if not safe_name.endswith(".csv"):
-            databases_skipped.append(db_filename)
+            databases_skipped.append(safe_name)
             continue
         csv_path = REACTIONS_DIR / safe_name
         # A file can be missing if it was removed or renamed after
         # get_reaction_database_options() built the dropdown list.
         if not csv_path.exists():
-            databases_skipped.append(db_filename)
+            databases_skipped.append(safe_name)
             continue
 
         databases_loaded += 1
@@ -195,8 +208,8 @@ def run(params: dict) -> dict:
             smiles_column_name=COL_MOL_SMILES,
             smiles_string=smiles,
         )
-        # This may raise an exception if the input SMILES is invalid or
-        # if enzymetk encounters an error.
+        # The query already passed validate_smiles above; anything raised here is
+        # enzymetk's own failure and propagates to run_tool_task as a traceback.
         result_df = sd.execute(sim_input)
 
         # Join EnzymeTK output back to expanded metadata.
@@ -205,9 +218,15 @@ def run(params: dict) -> dict:
         sim_scores = result_df.drop(columns=[COL_MOL_SMILES], errors="ignore")
         merged = expanded_df.merge(sim_scores, on=_ROW_ID, how="inner")
 
-        # Tag each row with its source database
-        merged[COL_DATABASE] = csv_path.stem.replace("_", " ").title()
+        # Tag each row with its source database, named exactly as the file is
+        # named in data/reactions/ — see the data_loading module docstring.
+        merged[COL_DATABASE] = csv_path.name
         all_results.append(merged)
+
+    # A total wipeout is an error, not a result: an empty grid here would be
+    # indistinguishable from a legitimate "no similar molecules found".
+    if not databases_loaded:
+        raise ValueError(f"None of the selected databases could be read: {', '.join(databases_skipped)}")
 
     if not all_results:
         run_time = round(time.monotonic() - run_time_start, 3)

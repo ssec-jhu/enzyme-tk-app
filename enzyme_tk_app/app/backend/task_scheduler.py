@@ -103,6 +103,17 @@ class TaskScheduler(ABC):
         """List all jobs belonging to *session_id*."""
 
     @abstractmethod
+    def count_active_jobs(self, session_id: str) -> int:
+        """Count *session_id*'s jobs that are still PENDING or STARTED.
+
+        Exists so the submission cap
+        (:mod:`~enzyme_tk_app.app.utils.submission_limits`) can ask "how many
+        slots is this session holding?" without ``list_jobs`` deserialising
+        every job's params — which for a structure upload is a multi-megabyte
+        base64 blob.
+        """
+
+    @abstractmethod
     def admin_list_all_jobs(self) -> list[JobInfo]:
         """List every job across all sessions (admin use only)."""
 

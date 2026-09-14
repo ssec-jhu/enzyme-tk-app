@@ -1,8 +1,13 @@
 celery[redis]==5.6.3
-dash==4.4.0
-dash-ag-grid==35.2.0
+dash==4.4.1
+dash-ag-grid==35.3.0
 dash-bootstrap-components==2.0.4
-enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@b45509fcf5cd138370eb7cb90b5d5e326232178a
-gunicorn==26.0.0
-pandas==3.0.3
+# TODO: Pin the version of enzymetk once a stable release is available.
+enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@funce-updates
+gunicorn==26.2.0
+pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
+# Func-E reaction encoding.  rxnfp itself is installed in the Dockerfile, not here:
+# it needs --no-deps, which a requirements file cannot express per-package.
+transformers<5  # rxnfp calls encode_plus/batch_encode_plus, removed in transformers 5
+unimol_tools

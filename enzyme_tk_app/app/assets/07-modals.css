@@ -57,6 +57,21 @@
     color: var(--text-tertiary);
 }
 
+/* --- Invalid input ------------------------------------------------------- */
+
+/* Bootstrap's own `.form-control.is-invalid` ties `.themed-control` above on
+   specificity (0,2,0) and loses on source order, so the red border is restated
+   here.  The `:focus` variant also replaces the navy focus ring, which would
+   otherwise read as "this field is fine" the moment the user clicks back in. */
+.modal-body .themed-control.is-invalid {
+    border-color: var(--status-failure);
+}
+
+.modal-body .themed-control.is-invalid:focus {
+    border-color: var(--status-failure);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-failure) 25%, transparent);
+}
+
 /* Checkboxes & Radios */
 .modal-body .themed-control .form-check-input:checked,
 .modal-body .themed-control.form-check-input:checked {
@@ -158,4 +173,18 @@
     background-color: var(--bg-body);
     color: var(--text-secondary);
     border: 1px solid var(--border-color);
+}
+
+/* --- Field info icon ----------------------------------------------------- */
+
+.modal-body .field-info-icon {
+    margin-left: 0.35rem;
+    color: var(--text-tertiary);
+    font-size: 0.85rem;
+    cursor: help;
+}
+
+.modal-body .field-info-icon:hover,
+.modal-body .field-info-icon:focus-visible {
+    color: var(--primary-color);
 }

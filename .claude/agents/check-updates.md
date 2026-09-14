@@ -31,6 +31,13 @@ currently pinned version.  Skip:
   unchanged)
 - lines that are comments or blank
 
+Then read the `Dockerfile` too: a package needing per-package pip flags cannot live in a
+requirements file, so it is pinned there instead and would otherwise be missed.  Today that
+is `rxnfp==0.1.0` (installed `--no-deps`), `setuptools<81`, and `torch>=2.6` (a floor, not a
+pin — installed from `ARG TORCH_INDEX_URL`, the CPU channel by default).  Audit them like any
+other pin, but report them as Dockerfile pins — they are edited through the `edit-dockerfile`
+agent, not by writing `requirements_v2/`.
+
 ### Step 2 — Query Latest Versions
 
 For each pinned package, query PyPI for the latest stable version.
@@ -83,6 +90,12 @@ Run tests using the updated requirements.  Because `tox.ini` hardcodes
 **temporarily** point tox at the new files.  Do this by creating a
 temporary `tox_v2.ini` at the project root that is a copy of `tox.ini`
 with all `requirements/` paths replaced by `requirements_v2/`.
+
+Copy the **whole** file: `[testenv:test]`'s `set_env` must survive the copy.
+It points `PIP_EXTRA_INDEX_URL` at the PyTorch CPU channel on Linux, and
+without it a linux run resolves the CUDA torch stack (~2.8 GB of wheels) and
+fills the disk.  It also means torch resolves to a `+cpu` local version
+there — that is the mechanism working, not an outdated pin to report.
 
 Then run:
 

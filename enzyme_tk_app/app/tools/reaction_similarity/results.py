@@ -4,8 +4,8 @@ Renders the top-N similar reactions as an interactive ``dag.AgGrid``
 with sorting, filtering, and inline SVG reaction images.
 
 The stat cards (databases searched, reactions scanned, results returned,
-elapsed time) are rendered automatically by the shared
-``build_result_stat_cards`` helper in ``my_tasks_view_results.py``.
+elapsed time) are rendered automatically from this tool's ``_stat_cards``
+by the results-page header in ``my_tasks_view_results.py``.
 """
 
 from __future__ import annotations
@@ -14,7 +14,7 @@ from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo
 from enzyme_tk_app.app.components.results_helpers import build_ag_grid, shared_col_defs
-from enzyme_tk_app.app.utils.columns import COL_RXN_SVG
+from enzyme_tk_app.app.utils.columns import COL_RXN_SVG, COL_UNMAPPED_SMILES
 
 
 def _get_column_defs() -> list[dict]:
@@ -30,6 +30,8 @@ def _get_column_defs() -> list[dict]:
         {
             "field": COL_RXN_SVG,
             "cellRenderer": "SvgRenderer",
+            # Captions this reaction under its image in the compare lightbox.
+            "cellRendererParams": {"smilesField": COL_UNMAPPED_SMILES},
             "width": 450,
             # autoHeight tells AG Grid to automatically expand the row height
             # to fit the cell's content. Without it, content that doesn't fit in
@@ -59,5 +61,5 @@ def results_layout(job: JobInfo) -> html.Div:
             html.P("No similar reactions found.", style={"color": "var(--text-secondary)"}),
         )
 
-    grid = build_ag_grid(_get_column_defs(), df_payload)
-    return html.Div(children=[grid])
+    results_table = build_ag_grid(_get_column_defs(), df_payload)
+    return html.Div(children=[results_table])

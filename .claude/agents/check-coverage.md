@@ -37,6 +37,7 @@ Your job is to run the test suite, parse coverage, and report which functions in
 
    ```python
    """Parse coverage.xml + source AST to report uncovered functions."""
+
    import ast
    import xml.etree.ElementTree as ET
    from pathlib import Path
@@ -51,12 +52,9 @@ Your job is to run the test suite, parse coverage, and report which functions in
        for cls in pkg.iter("class"):
            fname = cls.attrib["filename"]
            rate = float(cls.attrib["line-rate"]) * 100
-           missed = [
-               int(ln.attrib["number"])
-               for ln in cls.iter("line")
-               if int(ln.attrib["hits"]) == 0
-           ]
+           missed = [int(ln.attrib["number"]) for ln in cls.iter("line") if int(ln.attrib["hits"]) == 0]
            files.append((fname, rate, missed))
+
 
    # --- Pass 2: map uncovered lines → functions via AST ---
    def get_function_ranges(filepath):
@@ -72,6 +70,7 @@ Your job is to run the test suite, parse coverage, and report which functions in
                end = getattr(node, "end_lineno", node.lineno)
                funcs.append((node.name, node.lineno, end))
        return sorted(funcs, key=lambda x: x[1])
+
 
    def lines_to_functions(filepath, missed_lines):
        """Map missed line numbers to function names."""
@@ -92,6 +91,7 @@ Your job is to run the test suite, parse coverage, and report which functions in
        if module_level:
            result["(module-level)"] = module_level
        return result
+
 
    # --- Report ---
    print(f"Overall coverage: {overall:.0f}%")

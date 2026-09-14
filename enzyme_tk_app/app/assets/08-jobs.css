@@ -190,6 +190,48 @@
     background: color-mix(in srgb, var(--status-failure) 8%, white);
 }
 
+/* --- Results table export scope radios ----------------------------------- */
+
+/* Bootstrap's form-check defaults are 1rem and blue; these match the
+   adjacent .btn-toolbar so the scope radios read as one control with it.
+   Each label carries a native title tooltip, hence cursor: help. */
+.jobs-toolbar-radios .form-check {
+    margin-bottom: 0;
+    min-height: auto;
+}
+
+/* Tighter than Bootstrap's 1rem so the pair reads as one control. */
+.jobs-toolbar-radios .form-check-inline {
+    margin-right: 0.75rem;
+}
+
+.jobs-toolbar-radios .form-check-inline:last-child {
+    margin-right: 0;
+}
+
+.jobs-toolbar-radios .form-check-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: help;
+}
+
+/* The title lives on the label's inner span, so stretch it to fill the
+   label — otherwise the tooltip only fires over the glyphs themselves. */
+.jobs-toolbar-radios .form-check-label > span {
+    display: inline-block;
+    padding: 0.3rem 0;
+}
+
+.jobs-toolbar-radios .form-check-input:checked {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.jobs-toolbar-radios .form-check-input:focus {
+    border-color: var(--secondary-color);
+    box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--secondary-color) 25%, transparent);
+}
+
 /* --- Empty state --------------------------------------------------------- */
 .jobs-empty {
     text-align: center;

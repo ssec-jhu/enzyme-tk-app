@@ -4,8 +4,8 @@ Renders the top-N similar molecules as an interactive ``dag.AgGrid``
 with sorting, filtering, and inline SVG molecule images.
 
 The stat cards (databases searched, molecules compared, etc.) are
-rendered automatically by the shared ``build_result_stat_cards`` helper
-in ``my_tasks_view_results.py``.
+rendered automatically from this tool's ``_stat_cards`` by the results-page
+header in ``my_tasks_view_results.py``.
 """
 
 from __future__ import annotations
@@ -28,6 +28,8 @@ def _get_column_defs() -> list[dict]:
             # The "molecule_svg" column displays an inline SVG image of the molecule.
             "field": COL_MOL_SVG,
             "cellRenderer": "SvgRenderer",
+            # Captions this molecule under its image in the compare lightbox.
+            "cellRendererParams": {"smilesField": COL_MOL_SMILES},
             "width": 200,
             # autoHeight tells AG Grid to automatically expand the row height
             # to fit the cell's content. Without it, content that doesn't fit in
@@ -73,5 +75,5 @@ def results_layout(job: JobInfo) -> html.Div:
         )
 
     # If we have a valid dataframe with data, render it as an AG Grid using our helper function.
-    grid = build_ag_grid(_get_column_defs(), df_payload)
-    return html.Div(children=[grid])
+    results_table = build_ag_grid(_get_column_defs(), df_payload)
+    return html.Div(children=[results_table])

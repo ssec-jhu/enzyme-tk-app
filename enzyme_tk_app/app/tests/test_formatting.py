@@ -1,7 +1,6 @@
 """Tests for enzyme_tk_app.app.utils.formatting.
 
-Covers the four public helpers: format_timestamp, compute_duration,
-format_duration, and expires_in.
+One comment-banner section per public helper in the module.
 """
 
 from __future__ import annotations
