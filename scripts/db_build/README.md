@@ -51,7 +51,9 @@ run_easy_0-50_ESRP_{1,2,3,4}_model_1_500000_checkpoint.pth
 ```
 
 plus the `_history.pkl` and `_optimizer.pkl` from the same training run (another ~600 MB the app never
-opens, kept because they are part of the released artifact). The archive nests its payload three
+opens, kept because they are part of the released artifact). Budget for the unpacking, not just the
+settled size: the archive and its contents coexist briefly, so this unit needs ~2.9 GB free even though
+it leaves ~1.57 GB behind — which makes the minimal tier ~5.6 GB at its peak against ~4.2 GB settled. The archive nests its payload three
 directories deep (`data/Funce/models/`), which `_extract_archive()` flattens — it descends the whole
 single-directory chain, so a repacked archive at a different depth still lands correctly.
 
