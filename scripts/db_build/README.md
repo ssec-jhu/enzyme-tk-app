@@ -30,44 +30,54 @@ you have.
 | `download_prostt5_weights()` | `foldseek databases ProstT5` | `foldseek_models/weights/prostt5-f16.gguf` | that file | ~2 GB |
 | `download_esm3_weights()` | Hugging Face `EvolutionaryScale/esm3-sm-open-v1` | `.hf_cache/` | the checkpoint in the cache | ~5.4 GB |
 | `download_unimol_weights()` | Hugging Face `dptech/Uni-Mol2` | `unimol_weights/modelzoo/164M/checkpoint.pt` | that file | ~660 MB |
-| `check_funce_models()` | none yet — checks and names what is missing | `funce_models/` | all 8 files | ~1.5 GB |
+| `download_funce_models()` | Hugging Face `arianemora/enzyme-tk` → `data_funce.zip` | `funce_models/` (unpacked) | all 8 files | ~1.35 GB |
+| `download_reactions()` | Hugging Face `arianemora/enzyme-tk` → `enzymemap_v2_brenda2023_reactions.csv` | `reactions/enzymemap_v2_brenda2023_reactions.csv` | that file | ~130 MB |
 
 Nothing here is gated: **no Hugging Face account, token or login is needed.**
 
-Two of these are not app data in the usual sense. The **ESM3** snapshot is a build-time cache only
-`build_enzyme_db.py` reads — it goes in a hidden `.hf_cache/` so one mount carries it and it survives
-`docker run --rm`, and an `HF_HOME` you already have wins, so a shared model cache is reused instead of
-downloading 5.4 GB again. The **Func-E** ensemble has no public source yet, so its unit only checks and
-names the eight files it wants, two per EC level:
+The last two come from **this project's own** Hugging Face dataset,
+[`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk), named once as
+`ETK_HUGGING_FACE_DATASET_REPO` and fetched through the shared
+`fetch_dataset_file_from_hugging_face()` helper — so publishing another file there is a one-line unit.
+That route is taken for **resume and integrity**, not speed: an interrupted 1.35 GB download picks up
+where it stopped and the result is hash-checked, while measured throughput (~33 MB/s) is about the same
+as a single-stream `curl`.
+
+`data_funce.zip` unpacks to 16 files — the eight the app reads, two per EC level:
 
 ```
 run_easy_0-50_ESRP_{1,2,3,4}_model_1_500000_conf.pkl
 run_easy_0-50_ESRP_{1,2,3,4}_model_1_500000_checkpoint.pth
 ```
 
-(the `_history.pkl` and `_optimizer.pkl` files a training run leaves beside them are another ~600 MB the
-app never reads, so they need not be shipped). When those checkpoints are published, that unit becomes a
-download in one line.
+plus the `_history.pkl` and `_optimizer.pkl` from the same training run (another ~600 MB the app never
+opens, kept because they are part of the released artifact). The archive nests its payload three
+directories deep (`data/Funce/models/`), which `_extract_archive()` flattens — it descends the whole
+single-directory chain, so a repacked archive at a different depth still lands correctly.
+
+The **ESM3** snapshot is the odd one out: a build-time cache only `build_enzyme_db.py` reads. It goes in
+a hidden `.hf_cache/` so one mount carries it and it survives `docker run --rm`, and an `HF_HOME` you
+already have wins, so a shared model cache is reused instead of downloading 5.4 GB again.
 
 ### Checked and reported, never downloaded
 
 | Item | Path | Comes from |
 |---|---|---|
 | Sequence tables | `sequences/*.{csv,tsv,csv.gz,tsv.gz}` with `Entry`, `Sequence`, `EC number` | You |
-| Reaction tables | `reactions/*.csv` | You |
+| Reaction tables | `reactions/*.csv` | Repo demo set, `download_reactions()`, or you |
 | Embedding pickles | `sequence_embeddings/*.pkl` | `build_enzyme_db.py` |
 | Custom FoldSeek DBs | `foldseek_db/<name>/` | `build_enzyme_db.py` |
 
-`report()` prints one line per item — all ten — as `OK` or `MISSING`, with the function name or `MANUAL`
-that supplies it. It runs at the end of every `download_data.py` run, so "what do I still need?" is
-answered by running the script with everything commented out:
+`report()` prints one line per item — all eight — as `OK` or `MISSING`, with the function name that
+supplies it. It runs at the end of **every** `download_data.py` run, so "what do I still need?" is
+answered by naming a unit that is already satisfied, or any unit at all:
 
 ```
 ============================================================
 Data directory: /app-data
-  OK       sequences/                 MANUAL - CSV/TSV with Entry, Sequence, EC number
-  MISSING  reactions/                 MANUAL - reaction CSVs
-  OK       foldseek_db/               download_foldseek_db_pdb() / _afdb_swissprot()
+  OK       sequences/                 ships a demo set; add CSV/TSV with Entry, Sequence, EC number
+  OK       reactions/                 ships a demo set; add your own reaction CSVs
+  OK       foldseek_db/               ships a demo set; pdb / afdb units add more
   ...
 ============================================================
 ```
@@ -82,7 +92,7 @@ docker build -t etk-db-build scripts/db_build
 
 Every command below uses that same image and the same two mounts. `/app` carries the scripts and your
 input file; `/data` is the app's data directory, read-write here. Because the scripts are mounted
-rather than baked in, **commenting out a unit or editing a CONFIG value takes effect on the next run,
+rather than baked in, **naming different units or editing a CONFIG value takes effect on the next run,
 with no rebuild** — you never rebuild the image to change what runs.
 
 ### I want the weights and databases the app needs
@@ -97,21 +107,30 @@ so it is safe to re-run and safe to interrupt.
 
 ### I only want to know what I already have
 
-Comment out every unit in `download_data.py`'s `main()`, leaving `report()`, and run the same command.
-It downloads nothing and prints one `OK`/`MISSING` line per data item the app looks for.
+Name a unit you already have — `report()` runs at the end of every invocation regardless:
+
+```bash
+docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py prostt5
+```
+
+It prints one `OK`/`MISSING` line per data item the app looks for.
 
 ### I only want one thing — say, just the PDB database
 
-Comment out the other units and run the same command. Each is independent; none of them depends on
-another having run.
+Name it. Each unit is independent; none depends on another having run.
+
+```bash
+docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py pdb
+```
 
 ### I want a FoldSeek database or embeddings from my own sequences
 
 Two steps, in this order — **the builder downloads nothing**, so the weights have to be there first.
 
-1. Get the models it needs: ProstT5 for a FoldSeek database, ESM3 for embeddings. Comment out the rest
-   and run the default command above. (Skip this if `report()` already shows them as `OK`.)
-2. Drop your CSV/TSV in `scripts/db_build/`, point `INPUT_FILE` at it, and run the builder by name:
+1. Get the models it needs: `download_data.py prostt5` for a FoldSeek database, `download_data.py esm3`
+   for embeddings. (Skip this if `report()` already shows them as `OK`.)
+2. Drop your CSV/TSV in `scripts/db_build/` — or in the app's `data/sequences/`, where `resolve_input()`
+   also looks — point `INPUT_FILE` at its **name**, and run the builder:
 
 ```bash
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build build_enzyme_db.py
@@ -127,43 +146,48 @@ variable the app itself reads, so the app and the prep scripts cannot drift apar
 
 ## Choose what runs
 
-Both scripts end in a `main()` that is nothing but a list of units. Comment out what you do not want:
+`download_data.py` takes its selection on the command line — no editing needed:
 
-```python
-def main():
-    download_foldseek_db_pdb()  # comment out to skip
-    download_foldseek_db_afdb_swissprot()  # comment out to skip
-    download_prostt5_weights()  # comment out to skip
-    download_esm3_weights()  # comment out to skip
-    download_unimol_weights()  # comment out to skip
-    check_funce_models()  # comment out to skip
-    # sequences/ and reactions/ are your own data; report() names them with everything else.
-    report()
+```bash
+python download_data.py            # minimal: prostt5, unimol, funce          (~4.2 GB)
+python download_data.py --full     # adds reactions, pdb, afdb, esm3         (~20 GB)
+python download_data.py prostt5    # one named unit
 ```
 
+The minimal tier is what a clone cannot ship: model weights. The large FoldSeek reference databases
+and the full EnzymeMap set are deliberately not in it, because `data/foldseek_db/` and
+`data/reactions/` already carry demo sets that make those tools runnable, and `esm3` is only needed by
+`build_enzyme_db.py`.
+
+`build_enzyme_db.py` still ends in a `main()` that is a list of units — comment out what you do not
+want:
+
 ```python
 def main():
-    records = read_sequences(HERE / INPUT_FILE)
+    records = read_sequences(resolve_input(INPUT_FILE))
     print(f"Read {len(records)} sequences from {INPUT_FILE}")
 
     build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database
     build_enzyme_db_esm3(records)  # comment out to skip the ESM3 embeddings
 ```
 
-`download_data.py` has no settings at all — which units run is the only choice it offers.
+`download_data.py` has no settings to edit — every source is a constant and which units run is chosen
+on the command line. Each unit prints a `[n/m]` banner and its elapsed time, so a `--full` run says
+which of the seven downloads it is on rather than going quiet for twenty minutes.
 
 ## Build from your own sequences
 
 Input is a **CSV or TSV, plain or gzipped**, with an `Entry` column and a `Sequence` column — the same
 contract the app applies to `data/sequences/`, minus `EC number`. Every other column is ignored, so the
-full 17-column `enzymes.tsv` works as-is. `enzymes_sample_10.tsv` ships here as a 10-sequence sample:
-use it for a first run.
+full 17-column `enzymes.tsv` works as-is. The app's own `data/sequences/enzymes_demo_set.tsv` ships as
+a 100-sequence demo set and is the default `INPUT_FILE`; `enzymes_sample_10.tsv` sits here as a smaller
+10-sequence file if you want a faster first run.
 
 Edit the CONFIG block at the top of [`build_enzyme_db.py`](build_enzyme_db.py):
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `INPUT_FILE` | `enzymes_sample_10.tsv` | CSV/TSV of sequences (`.gz` fine), relative to this folder |
+| `INPUT_FILE` | `enzymes_demo_set.tsv` | CSV/TSV of sequences (`.gz` fine); looked for beside this script, then in the app's `data/sequences/`. An absolute path is used as given |
 | `LIMIT` | `0` | `0` = every sequence; `>0` = first N only, for a quick test |
 | `DEVICE` | `""` | ESM3 only: `""` = auto (GPU if present), or `"cpu"` / `"cuda"` |
 | `FORCE` | `False` | Rebuild the FoldSeek database even if it already exists |

@@ -29,10 +29,10 @@ To run it on your own machine, start at [Quickstart](#quickstart).
 > **Func-E scores any valid reaction SMILES** — you do not need a pre-computed pair. A
 > dot-joined side (`A.B>>C`) works too, so multi-substrate reactions are fine; leaving
 > groups are still better left out. On the **protein** side it only ranks enzymes that are
-> already in a `sequence_embeddings/` table, so add your own sequences with
-> `build_enzyme_db.py` (see [Data Directories](#data-directories)). Func-E also needs the
-> weights under `data/unimol_weights/`; without them its card shows a **"Missing data"**
-> badge.
+> already in a `sequence_embeddings/` table — the shipped `enzymes_demo_set.pkl` holds 100, and
+> you add your own with `build_enzyme_db.py` (see [Data Directories](#data-directories)). Func-E
+> also needs the weights under `data/unimol_weights/` and `data/funce_models/`; without them its
+> card shows a **"Missing data"** badge.
 
 ![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
 
@@ -41,7 +41,7 @@ To run it on your own machine, start at [Quickstart](#quickstart).
 
 - **Docker** with Compose v2 (`docker compose`, not `docker-compose`). Nothing else — no local Python, no conda env.
 - **~8 GB RAM** free for the containers. A Func-E job alone budgets ~3 GB.
-- **Disk:** ~5 GB for the image, plus up to **~20 GB** if you download the full reference data set. You can start with far less — see below.
+- **Disk:** ~5 GB for the image. The demo reference data ships in the repo, so nothing more is needed to run four of the six tools; the other two want ~4.2 GB of model weights, and the full reference set is ~20 GB. See [Data Directories](#data-directories).
 
 
 ## Quickstart
@@ -53,21 +53,37 @@ git clone https://github.com/ssec-jhu/enzyme-tk-app
 cd enzyme-tk-app
 ```
 
-**2. Get the reference data**
+**2. Get the model weights — optional**
 
-The tools search against reference databases and model weights that are too large for git.
-[`scripts/db_build/`](scripts/db_build/README.md) fetches them into `enzyme_tk_app/app/data/`
-in one Docker image — no Hugging Face account or token needed:
+**Skip this and the app still works.** Small **demo sets** ship in the repo — verbatim slices of
+the full reference data — so **Reaction Similarity**, **Substrate/Product Similarity**,
+**Sequence Similarity** and the **Timer Tool Template** are runnable straight from a clone, with
+worked examples that return real hits.
+
+Two tools need model weights that are far too large for git: **Sequence and Structure-Based
+Similarity** (~2 GB of ProstT5) and **Func-E** (~2 GB of UniMol weights and ensemble checkpoints).
+Until you fetch them their cards show a **"Missing data"** badge naming what is absent. [`scripts/db_build/`](scripts/db_build/README.md)
+fetches them into `enzyme_tk_app/app/data/` in one Docker image — no Hugging Face account or token
+needed:
 
 ```bash
 docker build -t etk-db-build scripts/db_build
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 ```
 
-> **You can skip this step.** The app starts fine without it — tools whose data is missing
-> just show a **"Missing data"** badge on their card instead of a "Launch →" button, and
-> nothing crashes. The **Timer Tool Template** needs no data at all, so it is always
-> runnable. Comment units out of `download_data.py` to fetch only what you want.
+That is the **minimal** tier, ~4.2 GB — the weights and nothing else. It deliberately leaves out the
+full FoldSeek `PDB` and `AFDB_SWISSPROT` databases (~10 GB), because the shipped demo FoldSeek
+database already satisfies that tool. Add `--full` for everything, or name a single unit:
+
+```bash
+docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py --full
+```
+
+> Everything in the minimal tier is public and needs no account or token. The Func-E checkpoints
+> and the full EnzymeMap reference come from the project's own Hugging Face dataset,
+> [`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk); the rest come
+> from their upstreams. Each unit announces itself as `[n/m]` with an elapsed time, so a long run
+> tells you where it is.
 
 **3. Start the app**
 
@@ -109,10 +125,16 @@ docker compose down -v           # stop and delete job results
 ## Data Directories
 
 `docker-compose.yml` bind-mounts `./enzyme_tk_app/app/data` read-only at `/app-data` for both
-`web` and `worker`. The large sets are **gitignored** — put them there with
-[`scripts/db_build/`](scripts/db_build/README.md) before starting the stack. A tool whose
-directory is missing still loads: its card shows a **"Missing data"** badge instead, and the
-app does not crash.
+`web` and `worker`. A tool whose directory is missing still loads: its card shows a
+**"Missing data"** badge instead, and the app does not crash.
+
+**Demo sets ship in the repo** (~1 MB, the `*_demo_set` files below). Each is a strict
+**row-subset of the full reference file, copied verbatim** — same columns, same values, no
+generated data — chosen so that every example the tool ships returns real hits. They exist so a
+clone is runnable immediately; they are not meant to be scientifically complete. The large sets
+they are drawn from are **gitignored** — put them there with
+[`scripts/db_build/`](scripts/db_build/README.md), and both the demo set and your own data will be
+offered side by side in every Databases dropdown.
 
 Because the mount is read-only, nothing here can be regenerated by the running app —
 [`scripts/db_build/`](scripts/db_build/README.md) fills it instead, writing **straight into
@@ -120,26 +142,25 @@ this directory**, so there is nothing to copy afterwards. Two scripts in one Doc
 `download_data.py` fetches the public weights and structure databases (none of them gated —
 no Hugging Face account, token or login), and `build_enzyme_db.py` turns **your own** sequence
 file into a FoldSeek database plus an embeddings pickle. The **Supplied by** column says
-which. Comment every unit out of `download_data.py` and its closing `report()` is an inventory
-on its own: one `OK`/`MISSING` line per item below. It also leaves a hidden `.hf_cache/`
-here (~5.4 GB, build time only, never read by the app).
+which. `report()` runs at the end of every `download_data.py` invocation, so naming any single unit
+gives you an inventory: one `OK`/`MISSING` line per item below. A `--full` run also leaves a
+hidden `.hf_cache/` here (~5.4 GB, build time only, never read by the app).
 
 | Directory | Used by | Supplied by | Contents |
 |-----------|---------|-------------|----------|
-| `sequences/` | Sequence Similarity | You | Reference protein tables — CSV or TSV, plain or gzipped (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`), each with an `Entry`, `Sequence`, and `EC number` column, and each shown by its exact filename, extension included. Any other column is metadata: the app never enumerates it and passes it straight through to the results grid — except an optional `Cofactor` column, whose UniProt annotations are offered as a filter and shown in the grid as plain names (`Mg(2+); Mn(2+)`). A file missing a required column is **not** offered in the dropdown — the tool card names it and the columns it lacks instead |
-| `reactions/`, `structures/` | the other similarity tools | You — the sample `structures/` ship in the repo | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown, shown by its exact filename, extension included |
-| `foldseek_db/` | Sequence and Structure-Based Similarity | `download_data.py` for `PDB` (~6.4 GB) and `AFDB_SWISSPROT` (~3.9 GB); `build_enzyme_db.py` for one built from your own sequences | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
+| `sequences/` | Sequence Similarity | **Repo** (`enzymes_demo_set.tsv`, 100 rows) + you | Reference protein tables — CSV or TSV, plain or gzipped (`.csv`, `.tsv`, `.csv.gz`, `.tsv.gz`), each with an `Entry`, `Sequence`, and `EC number` column, and each shown by its exact filename, extension included. Any other column is metadata: the app never enumerates it and passes it straight through to the results grid — except an optional `Cofactor` column, whose UniProt annotations are offered as a filter and shown in the grid as plain names (`Mg(2+); Mn(2+)`). A file missing a required column is **not** offered in the dropdown — the tool card names it and the columns it lacks instead |
+| `reactions/`, `structures/` | the other similarity tools | **Repo** (`enzymemap_demo_set.csv`, 110 rows; the three sample `structures/`); `download_data.py --full` for the full 62,896-reaction EnzymeMap set (~130 MB); or your own | Reference CSVs and sample CIF/PDB files — every CSV becomes an option in the tool's database dropdown, shown by its exact filename, extension included |
+| `foldseek_db/` | Sequence and Structure-Based Similarity | **Repo** (`enzymes_demo_set/`, built from the 100 demo sequences); `download_data.py --full` for `PDB` (~6.4 GB) and `AFDB_SWISSPROT` (~3.9 GB); `build_enzyme_db.py` for one built from your own sequences | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | `download_data.py` | ProstT5 weights for sequence-to-structure prediction — `prostt5-f16.gguf` (~2 GB) |
-| `sequence_embeddings/` | Func-E Activity Prediction | `build_enzyme_db.py` | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
-| `funce_models/` | Func-E Activity Prediction | Manual — no public source yet; `download_data.py` only checks and names the eight files it wants | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
+| `sequence_embeddings/` | Func-E Activity Prediction | **Repo** (`enzymes_demo_set.pkl`, the same 100 sequences); `build_enzyme_db.py` for your own | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
+| `funce_models/` | Func-E Activity Prediction | `download_data.py` (minimal tier) — the `data_funce.zip` archive from the project's Hugging Face dataset, unpacked here | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
 | `unimol_weights/` | Func-E Activity Prediction | `download_data.py` | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
 
 Every database-backed tool selects **multiple** databases at once (all of them by default)
 and merges the selections into one search, so a directory holding a single file makes the
-multi-select indistinguishable from a single-select. Keeping a couple of small slices
-beside the full sets — e.g. 20-row slices of `sequences/protein.csv` and of the
-`reactions/` EnzymeMap CSV — is the cheapest way to exercise multi-database behaviour
-locally without loading the 100 MB+ originals. A database that cannot be read is skipped
+multi-select indistinguishable from a single-select. The shipped demo sets are what makes that
+visible on a fresh clone, and once you add the full sets they sit beside them in the same
+dropdown — which is the cheapest way to exercise multi-database behaviour. A database that cannot be read is skipped
 and named in a **Databases Skipped** stat card; the job only fails if *every* selection is
 unreadable.
 
@@ -150,17 +171,24 @@ unreadable.
 
 Run `download_data.py` from [`scripts/db_build/`](scripts/db_build/README.md) — one Docker image, no
 Hugging Face account or token, everything written straight into `enzyme_tk_app/app/data/` so there is
-nothing to copy afterwards. It fetches the FoldSeek `PDB` and `AFDB_SWISSPROT` databases, the ProstT5
-and UniMol weights, and the ESM3 snapshot the builder below needs; `funce_models/` has no public source
-yet, so it only names the files it is missing. Comment out the units you do not want — its closing
-`report()` still prints `OK`/`MISSING` for every data item the app looks for.
+nothing to copy afterwards. With no arguments it fetches the **minimal** set: the ProstT5, UniMol and
+Func-E weights (~4.2 GB), which is everything the shipped demo sets cannot supply. `--full` adds the
+FoldSeek `PDB` and `AFDB_SWISSPROT` databases and the ESM3 snapshot the builder below needs (~20 GB),
+plus the full EnzymeMap reactions CSV, and naming a unit (`prostt5`, `unimol`, `funce`,
+`reactions`, `pdb`, `afdb`, `esm3`) runs just that one. The Func-E checkpoints and the EnzymeMap
+reference come from the project's own dataset at
+[`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk); the rest come from
+their upstreams. Its closing `report()` prints `OK`/`MISSING` for every data item the app looks
+for, on every run.
 
 ### How do I build a FoldSeek database or an embeddings table from my own sequences?
 
 Use `build_enzyme_db.py` from the same folder. It takes one CSV or TSV (plain or gzipped) with `Entry`
 and `Sequence` columns and writes either or both artifacts directly where the tools read them — a
 FoldSeek database in `data/foldseek_db/<name>/` and an ESM3 embeddings pickle at
-`data/sequence_embeddings/<name>.pkl`. Drop your file in that folder, point `INPUT_FILE` at it, and run.
+`data/sequence_embeddings/<name>.pkl`, both named after the input file. That is how the shipped
+`enzymes_demo_set/` and `enzymes_demo_set.pkl` were made, from `data/sequences/enzymes_demo_set.tsv`.
+Drop your file in that folder (or in `data/sequences/`), point `INPUT_FILE` at its name, and run.
 It **downloads nothing**: it needs ProstT5 for the database and ESM3 for the embeddings, and stops
 telling you to run `download_data.py` if either is absent. See that folder's
 [README](scripts/db_build/README.md) for the full steps, including the GPU build and the memory ceiling
@@ -174,8 +202,9 @@ the [Deployment Guide](docs/deployment-guide.md#environment-variables).
 
 ### A tool card says "Missing data"
 
-Its reference data or model weights are not in `enzyme_tk_app/app/data/`. The badge's tooltip
-names exactly which files are missing; get them with step 2 of the
+Its model weights are not in `enzyme_tk_app/app/data/`. On a fresh clone that is **Sequence and
+Structure-Based Similarity** and **Func-E** — the demo sets cover every other tool's data. The badge's
+tooltip names exactly which files are missing; get them with step 2 of the
 [Quickstart](#quickstart).
 
 
