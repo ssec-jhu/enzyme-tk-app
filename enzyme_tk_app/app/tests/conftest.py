@@ -19,7 +19,7 @@ from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
 from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
-from enzyme_tk_app.app.utils import submission_limits
+from enzyme_tk_app.app.utils import captcha, submission_limits
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +37,21 @@ def _submission_limit_off(monkeypatch):
     monkeypatch.setattr(submission_limits, "PRODUCTION_MODE", False)
     # Pinned too, so the suite's expected messages do not move if the policy constant does.
     monkeypatch.setattr(submission_limits, "MAX_ACTIVE_JOBS_PER_SESSION", 3)
+
+
+@pytest.fixture(autouse=True)
+def _captcha_off(monkeypatch):
+    """Pin the submission captcha OFF for every test unless a test opts in.
+
+    A separate fixture from ``_submission_limit_off`` because it pins a separate binding:
+    ``captcha.PRODUCTION_MODE`` and ``submission_limits.PRODUCTION_MODE`` are two module-level
+    reads of the same ``APP_IN_PRODUCTION_MODE``, and patching one does nothing to the other.
+    Without this, a developer with the switch exported (``tox.ini`` sets ``passenv = *``) would
+    see every submit-callback test fail on a missing captcha payload.
+
+    ``monkeypatch.setattr``, not ``setenv``: the constant binds at import.
+    """
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", False)
 
 
 # Directory containing test data files (CSV fixtures, etc.).

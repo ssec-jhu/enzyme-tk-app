@@ -360,6 +360,51 @@ def test_every_tool_enforces_the_active_job_limit():
     assert checked, "No tool with callbacks was found — discovery must have changed"
 
 
+def test_every_tool_verifies_the_captcha():
+    """Every tool's submit path must import the production captcha guard.
+
+    Same reasoning as the job cap above, one bypass further out.  The cap is keyed on a session
+    cookie the client can simply discard; the captcha is what makes discarding it cost a proof
+    of work.  A tool that skips it is exactly the endpoint the cap was trying to close.
+
+    An import check has teeth because ``tox run -e format`` removes unused imports (F401), so
+    the symbol cannot survive as decoration — but it cannot tell a guard placed before
+    ``submit_job`` from one placed after it.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_captcha", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_captcha from utils.captcha — "
+            "this tool can be submitted by a bot that discards its session cookie"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
+def test_every_modal_carries_a_captcha_store():
+    """Every tool modal must render the Store its submit callback reads as State.
+
+    The guard above is only reachable if the modal actually supplies a payload.  A tool that
+    imports ``validate_captcha`` but renders no Store would pass the import walk and then, in
+    production, refuse every submission forever — and in *local* mode it is worse than that: a
+    ``State`` pointing at a component absent from the layout stops the callback firing at all,
+    so Run would be dead for everyone.  That is why the Store is rendered unconditionally while
+    the widget holder is production-only.
+    """
+    checked = 0
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        stores = [
+            s for s in find_components(modal, dcc.Store) if str(getattr(s, "id", "")) == f"id-store-{slug}-captcha"
+        ]
+        assert len(stores) == 1, f"{slug}: modal must render exactly one id-store-{slug}-captcha, found {len(stores)}"
+        checked += 1
+
+    assert checked, "No tool modal was found — discovery must have changed"
+
+
 def test_every_smiles_field_is_validated():
     """A tool that takes a structure must import a validator into its callbacks.
 

@@ -654,7 +654,7 @@ def test_subprod_submit_returns_error_when_smiles_invalid(smiles):
     ):
         mock_ctx.triggered_id = f"id-btn-{slug}-submit"
         result = submit_substrate_product_similarity_job(
-            1, 0, "My Query", ["db.csv"], smiles, ["tanimoto"], 10, "substrate"
+            1, 0, "My Query", ["db.csv"], smiles, ["tanimoto"], 10, "substrate", None
         )
 
     assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
@@ -782,7 +782,9 @@ def test_subprod_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.substrate_product_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_substrate_product_similarity_job(0, 1, "t", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate")
+        result = submit_substrate_product_similarity_job(
+            0, 1, "t", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate", None
+        )
 
     assert result == ""
     mock_sched.assert_not_called()
@@ -795,7 +797,7 @@ def test_subprod_submit_raises_prevent_update_when_fields_empty():
         pytest.raises(PreventUpdate),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        submit_substrate_product_similarity_job(1, 0, "", None, "", None, 10, None)
+        submit_substrate_product_similarity_job(1, 0, "", None, "", None, 10, None, None)
 
 
 def test_subprod_submit_returns_error_when_top_n_invalid():
@@ -815,7 +817,7 @@ def test_subprod_submit_returns_error_when_top_n_invalid():
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_substrate_product_similarity_job(
-            1, 0, "My Task", ["db.csv"], "CCO", ["tanimoto"], None, "substrate"
+            1, 0, "My Task", ["db.csv"], "CCO", ["tanimoto"], None, "substrate", None
         )
 
     assert "Invalid" in result
@@ -844,7 +846,7 @@ def test_subprod_submit_returns_job_id():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_substrate_product_similarity_job(
-                1, 0, "Glucose search", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate"
+                1, 0, "Glucose search", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate", None
             )
 
     assert "job-sub-789" in result

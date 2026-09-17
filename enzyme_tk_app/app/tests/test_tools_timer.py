@@ -143,7 +143,7 @@ def test_submit_requires_a_task_name():
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         with pytest.raises(PreventUpdate):
-            submit_timer_job(1, 0, "   ", 5, False)
+            submit_timer_job(1, 0, "   ", 5, False, None)
 
 
 def test_submit_clears_results_on_launch():
@@ -157,7 +157,7 @@ def test_submit_clears_results_on_launch():
         ) as mock_get_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_timer_job(0, 1, "smoke test", 5, False)
+        result = submit_timer_job(0, 1, "smoke test", 5, False, None)
     assert result == ""
     mock_get_sched.assert_not_called()
 
@@ -185,7 +185,7 @@ def test_submit_rejects_bad_duration(duration, expected_fragment):
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_timer_job(1, 0, "smoke test", duration, False)
+        result = submit_timer_job(1, 0, "smoke test", duration, False, None)
     assert expected_fragment in result
 
 
@@ -226,10 +226,85 @@ def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "at the cap", 10, False)
+            result = submit_timer_job(1, 0, "at the cap", 10, False, None)
 
     assert "3" in result
     assert "Cancel" in result
+    tool_scheduler.submit_job.assert_not_called()
+
+
+def _submit_with_captcha_on(monkeypatch, payload, task_name="captcha test", duration=10):
+    """Run the timer submit with the captcha live, returning (result, tool_scheduler).
+
+    The captcha's own logic is covered in ``test_captcha.py``; what these tests pin is that the
+    guard is wired into the submit path at all, and *where* — which the import-presence walk in
+    ``test_tools.py`` deliberately cannot see.
+    """
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+    from enzyme_tk_app.app.utils import captcha  # noqa: PLC0415
+
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", True)
+    monkeypatch.setattr(captcha, "_HMAC_SECRET", "timer-test-secret")
+    monkeypatch.setattr(captcha, "COST", 100)
+
+    tool_scheduler = MagicMock()
+    tool_scheduler.submit_job.return_value = "job-captcha-1"
+
+    with server.test_request_context():
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-captcha"
+        with (
+            patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+                return_value=tool_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_timer_job(1, 0, task_name, duration, False, payload)
+
+    return result, tool_scheduler
+
+
+def test_submit_is_refused_without_a_captcha_solution(monkeypatch):
+    """With the captcha live, a submit carrying no payload must never reach the scheduler."""
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None)
+
+    assert "verification" in result.lower()
+    tool_scheduler.submit_job.assert_not_called()
+
+
+def test_a_solved_captcha_lets_the_submit_through(monkeypatch):
+    """The guard must be passable — a real solved payload submits normally."""
+    import altcha  # noqa: PLC0415
+
+    from enzyme_tk_app.app.utils import captcha  # noqa: PLC0415
+
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", True)
+    monkeypatch.setattr(captcha, "_HMAC_SECRET", "timer-test-secret")
+    monkeypatch.setattr(captcha, "COST", 100)
+    challenge = altcha.Challenge.from_dict(captcha.new_challenge("sess-captcha"))
+    payload = altcha.Payload(challenge, altcha.solve_challenge(challenge)).to_base64()
+
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, payload)
+
+    assert "job-captcha-1" in result
+    tool_scheduler.submit_job.assert_called_once()
+
+
+def test_a_malformed_submit_shows_its_own_error_before_the_captcha(monkeypatch):
+    """Field validators run first: a bad duration reports itself, not "tick the box".
+
+    This is the ordering rule the guard's comment states, and the only test that can catch a
+    future edit moving the captcha above the field validators — where every typo would be
+    reported as a failed verification.
+    """
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None, duration=500)
+
+    assert "Duration" in result
+    assert "verification" not in result.lower()
     tool_scheduler.submit_job.assert_not_called()
 
 
@@ -254,7 +329,7 @@ def test_submit_calls_scheduler():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "  smoke test  ", 10, False)
+            result = submit_timer_job(1, 0, "  smoke test  ", 10, False, None)
 
     # Verify the scheduler was called with the right arguments — task_name is
     # stripped, and comes first so it heads the Input Parameters table.
@@ -287,7 +362,7 @@ def test_submit_with_simulate_failure_flag():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "smoke test", 5, True)
+            result = submit_timer_job(1, 0, "smoke test", 5, True, None)
 
     assert "simulate failure" in result
     # Verify simulate_failure=True was passed through to the scheduler.
@@ -536,7 +611,7 @@ def test_submit_accepts_boundary_duration(duration, job_id):
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "smoke test", duration, False)
+            result = submit_timer_job(1, 0, "smoke test", duration, False, None)
 
     assert job_id in result
     mock_scheduler.submit_job.assert_called_once()

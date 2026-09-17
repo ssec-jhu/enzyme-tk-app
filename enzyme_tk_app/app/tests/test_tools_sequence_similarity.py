@@ -1372,7 +1372,7 @@ def test_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.sequence_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_sequence_similarity_job(0, 1, "t", ["db.csv"], "MKTAY", None, None, 10, False)
+        result = submit_sequence_similarity_job(0, 1, "t", ["db.csv"], "MKTAY", None, None, 10, False, None)
 
     assert result == ""
     mock_sched.assert_not_called()
@@ -1396,7 +1396,7 @@ def test_submit_returns_job_id():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_sequence_similarity_job(
-                1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, 10, False
+                1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, 10, False, None
             )
 
     assert "job-abc-123" in result
@@ -1415,7 +1415,7 @@ def test_submit_returns_error_when_top_n_invalid():
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_sequence_similarity_job(
-            1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, None, False
+            1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, None, False, None
         )
 
     # validate_top_n returns an error string for None — no job should be submitted.
@@ -1443,7 +1443,7 @@ def test_submit_message_includes_ec_filter_count():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_sequence_similarity_job(
-                1, 0, "EC Task", ["test_sequences_20.csv"], "MKTAYIAKQR", ec_filter, None, 10, False
+                1, 0, "EC Task", ["test_sequences_20.csv"], "MKTAYIAKQR", ec_filter, None, 10, False, None
             )
 
     # Must mention both the job ID and the filter summary.
@@ -1470,7 +1470,7 @@ def test_submit_message_includes_cofactor_filter_count():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_sequence_similarity_job(
-                1, 0, "Cofactor Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, ["FAD", "heme b"], 10, False
+                1, 0, "Cofactor Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, ["FAD", "heme b"], 10, False, None
             )
 
     assert "job-cof-789" in result
@@ -1497,7 +1497,7 @@ def test_submit_message_without_filters_has_no_filtered_by():
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_sequence_similarity_job(
-                1, 0, "Task", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False
+                1, 0, "Task", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False, None
             )
 
     assert "job-no-filter" in result
@@ -1511,7 +1511,7 @@ def test_submit_raises_prevent_update_when_fields_empty():
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         with pytest.raises(PreventUpdate):
-            submit_sequence_similarity_job(1, 0, "", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False)
+            submit_sequence_similarity_job(1, 0, "", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False, None)
 
 
 @pytest.mark.parametrize(
@@ -1538,7 +1538,7 @@ def test_submit_rejects_database_that_is_not_offered(tmp_path, database):
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_sequence_similarity_job(1, 0, "Task", [database], "MKTAY", None, None, 10, False)
+        result = submit_sequence_similarity_job(1, 0, "Task", [database], "MKTAY", None, None, 10, False, None)
 
     assert "Unknown database" in result
     mock_scheduler.submit_job.assert_not_called()

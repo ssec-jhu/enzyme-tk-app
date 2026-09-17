@@ -882,7 +882,7 @@ def test_submit_returns_error_when_smiles_invalid(smiles):
         patch("enzyme_tk_app.app.tools.funce.callbacks.get_task_scheduler", return_value=mock_scheduler),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10)
+        result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10, None)
 
     assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
     mock_scheduler.submit_job.assert_not_called()

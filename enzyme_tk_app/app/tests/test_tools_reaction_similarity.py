@@ -532,7 +532,7 @@ def test_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{SLUG}"
-        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], 10)
+        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], 10, None)
 
     assert result == ""
     mock_sched.assert_not_called()
@@ -560,7 +560,7 @@ def test_submit_returns_error_when_smiles_invalid(smiles):
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
-        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], smiles, ["tanimoto"], 10)
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], smiles, ["tanimoto"], 10, None)
 
     assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
     mock_scheduler.submit_job.assert_not_called()
@@ -578,7 +578,7 @@ def test_submit_returns_error_when_top_n_invalid():
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
-        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], None)
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], None, None)
 
     assert isinstance(result, str) and len(result) > 0, "Expected a non-empty error message string"
     mock_scheduler.submit_job.assert_not_called()
@@ -606,7 +606,7 @@ def test_submit_returns_job_id():
         ):
             mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
             result = submit_reaction_similarity_job(
-                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10
+                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10, None
             )
 
     assert "job-rxn-123" in result

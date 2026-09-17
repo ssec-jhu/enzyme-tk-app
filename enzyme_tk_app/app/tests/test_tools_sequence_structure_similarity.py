@@ -274,6 +274,7 @@ def test_submit_job_rejects_database_the_dropdown_does_not_offer():
             databases=["valid-db", "../etc/passwd"],
             structure_contents=None,
             structure_filename=None,
+            captcha_payload=None,
         )
 
     # Must return an error message naming the malicious database name.
@@ -300,6 +301,7 @@ def test_submit_job_rejects_unsupported_structure_extension():
             structure_contents="data:application/octet-stream;base64,AAAA",
             # filename with unsupported extension
             structure_filename="protein.xyz",
+            captcha_payload=None,
         )
 
     assert "Unsupported file type" in result
@@ -349,6 +351,7 @@ def test_submit_job_sequence_mode_calls_scheduler():
                 databases=["pdb"],
                 structure_contents=None,
                 structure_filename=None,
+                captcha_payload=None,
             )
     # Verify that the scheduler's submit_job method was called once with the expected parameters.
     mock_scheduler.submit_job.assert_called_once()

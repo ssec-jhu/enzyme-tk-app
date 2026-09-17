@@ -1,3 +1,7 @@
+# Self-hosted proof-of-work captcha on job submission.  Pure stdlib, zero
+# dependencies of its own, MIT.  Only the verification half lives here — the
+# widget is vendored into enzyme_tk_app/app/assets/.
+altcha==2.1.0
 celery[redis]==5.6.3
 dash==4.4.1
 dash-ag-grid==35.3.0
