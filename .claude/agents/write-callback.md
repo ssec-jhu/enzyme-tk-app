@@ -145,21 +145,49 @@ Missing/empty required field → `raise PreventUpdate` (nothing meaningful happe
 A value that is present but *invalid* → `return` the error message string, so the user sees
 it in the modal's submission-results div.
 
-**The per-session job cap is the LAST guard**, after every field validator and immediately
-before `get_task_scheduler()`:
+**Two production guards close every submit callback, in this order**, after every field
+validator and immediately before `get_task_scheduler()`:
 
 ```python
+error = validate_captcha(captcha_payload, g.session_id)
+if error:
+    return error
+
 error = validate_active_job_limit(g.session_id)
 if error:
     return error
 ```
 
-Last, because a malformed submit should show *its own* field error rather than a capacity
-message that tells the user nothing about the typo they made. It returns a message or `None`
-like every validator above it, and is a no-op unless the deployment set
-`APP_IN_PRODUCTION_MODE`. `test_every_tool_enforces_the_active_job_limit` fails any tool whose
-`callbacks.py` omits the import; a behavioural test in `test_tools_timer.py` is what catches a
-guard placed *after* `submit_job`, which the import walk cannot see.
+Both come last because a malformed submit should show *its own* field error rather than a
+capacity message — or a "tick the box" message — that tells the user nothing about the typo
+they made. Both return a message or `None` like every validator above them, and both are
+no-ops unless the deployment set `APP_IN_PRODUCTION_MODE`.
+
+The **captcha goes first of the two**: it costs no Redis round trip, so an unverified caller
+never gets the cap's O(N) session-set read for free. Its payload arrives as the **last**
+`State` and therefore the **last** parameter, and it needs an Args line in the docstring like
+any other:
+
+```python
+@callback(
+    Output(f"id-div-{TOOL_DEF['slug']}-results", "children"),
+    Input(f"id-btn-{TOOL_DEF['slug']}-submit", "n_clicks"),
+    State(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
+    # Last State, last parameter: the solved proof of work. The Store is rendered
+    # for every tool by create_modal_footer() — you never declare it yourself.
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
+    prevent_initial_call=True,
+)
+def submit_my_tool_job(submit_clicks, task_name, captcha_payload): ...
+```
+
+The proof is signed over the session id, so it cannot be retargeted at another session — which
+is what makes discarding the session cookie cost a solve instead of nothing, and why the cap
+below it is worth more than it used to be. `test_every_tool_enforces_the_active_job_limit` and
+`test_every_tool_verifies_the_captcha` fail any tool whose `callbacks.py` omits either import,
+and `test_every_modal_carries_a_captcha_store` fails a modal missing the Store; the behavioural
+tests in `test_tools_timer.py` are what catch a guard placed *after* `submit_job` or in the
+wrong order, which an import walk cannot see.
 
 **Database names are the canonical case.** They come from the browser and become filesystem
 paths, so they go through the one shared validator — never a per-tool regex. The second

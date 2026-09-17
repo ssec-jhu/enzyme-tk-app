@@ -159,6 +159,34 @@ The cap is the constant `MAX_ACTIVE_JOBS_PER_SESSION` (3) in
 jobs to reach it — Timer Tool at `seconds=280` three times. `docker compose up
 -d web` with no override puts it back.
 
+### Production mode also turns the captcha on
+
+The same switch adds a **proof-of-work captcha to every tool modal**, so a
+production-mode run is not just the default run with a cap. What changes:
+
+- `ETK_SECRET_KEY` must be set or the container **exits at startup** with a
+  `RuntimeError` — the captcha derives its signing key from it. `.env` already
+  carries one; `docker compose logs web` shows the message if it does not.
+- Every modal footer grows an ALTCHA widget on its left, and the startup line
+  reads `submission captcha: on`.
+- **Run will be refused until the widget has solved**, with *"Please complete the
+  verification check in this dialog, then press Run."* in the submission-results
+  div. The solve starts when the modal opens and takes ~2 s, so open the modal,
+  fill the form, then check the widget says verified before clicking — a first
+  click inside that window is a hiccup, not a regression. Poll for it rather
+  than sleeping blind:
+
+  ```js
+  document.querySelector("div.etk-captcha altcha-widget")?.getAttribute("state");
+  ```
+
+- The widget is mounted by `assets/12-altcha-bridge.js` into an empty holder div,
+  **not** by Dash. An empty `div.etk-captcha` with no `altcha-widget` inside it
+  after the modal opens means the bridge or the vendored `assets/11-altcha.js`
+  failed — check the browser console, which is where that failure is reported.
+- Verifying anything *else* in production mode? Leave the switch off unless the
+  captcha is what you are checking. Its only visible surface is the modal footer.
+
 ---
 
 ## 4. Assert on facts, not on the screenshot

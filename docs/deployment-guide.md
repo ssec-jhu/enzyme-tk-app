@@ -59,13 +59,28 @@ cookie). Re-run the script to rotate the secrets — it prompts before overwriti
 `.env`. **Never commit `.env`.** If the secrets are left unset, the admin login fails closed
 and the dashboard is unreachable.
 
+`ETK_SECRET_KEY` does double duty: the submission captcha derives its own signing key from it
+(domain-separated, so the two uses never share key material), which is why production mode
+requires it even on a deployment with no admin dashboard — see
+[Submission captcha](#submission-captcha). Rotating it therefore logs every admin out *and*
+invalidates any captcha challenge in flight; the latter costs a user one retry.
+
+`.env` never enters a Docker image. [`.dockerignore`](../.dockerignore) excludes it, so the
+`COPY . .` at the end of the `Dockerfile` leaves it out of the build context — otherwise a
+local `docker compose build` would bake the running deployment's secrets into a published
+layer. Nothing inside the image reads it anyway: the app takes every setting from the process
+environment, and `docker-compose.yml` performs its `${VAR}` substitution on the **host** before
+the container starts. The same goes for the `Makefile`, which sources `.env` on the host and is
+itself excluded from the image.
+
 The same script sets the production switch, so a deployment is one command:
 
 ```bash
 ./scripts/generate-env.sh --production
 ```
 
-That uncomments `APP_IN_PRODUCTION_MODE=true`; `--local` turns it back off. A **plain rerun
+That uncomments `APP_IN_PRODUCTION_MODE=true` **and** writes the secrets the switch now
+requires — with production mode on and `ETK_SECRET_KEY` unset, the app refuses to start. A **plain rerun
 preserves whatever the existing `.env` had**, so rotating secrets on a live deployment cannot
 silently drop it back to local defaults — and the script prints the resulting mode either way.
 This only affects Docker Compose: `main.bicep` hardcodes the switch on for Azure.
@@ -90,13 +105,13 @@ HTTP. Anything compose leaves unset falls back to the default below.
 | `HARD_TIMEOUT_GRACE_SECONDS` | `60` | Extra seconds past a job's timeout before the hard kill, so that handler can write `TIMEOUT` to Redis first. Also part of each job's Redis TTL (`max_duration + grace + JOB_TTL_SECONDS`) |
 | `ETK_DATA_DIR` | `enzyme_tk_app/app/data` (compose sets `/app-data`) | Root of the read-only tool data mount; every data directory derives from it (`enzyme_tk_app/app/paths.py`) |
 | `ETK_ADMIN_TOKEN` | *(empty)* | Login token for `/admin`. Empty means the login **fails closed** and the dashboard is unreachable. `web` only |
-| `ETK_SECRET_KEY` | *(empty)* | Signs the admin session cookie. Required whenever `ETK_ADMIN_TOKEN` is set — the app refuses to start otherwise. Unset with no token: a random per-process key, so admins are logged out on restart. `web` only |
+| `ETK_SECRET_KEY` | *(empty)* | Signs the admin session cookie, **and** is the source of the submission captcha's signing key (derived, domain-separated — no second secret). Required whenever `ETK_ADMIN_TOKEN` is set **or** `APP_IN_PRODUCTION_MODE` is on — the app refuses to start otherwise. Unset with neither: a random per-process key, so admins are logged out on restart. `web` only |
 | `ETK_ADMIN_SESSION_TTL_SECONDS` | `300` (5 min) | Sliding idle window for an unlocked admin session. Every authenticated check slides it forward, including the dashboard's 10 s poll, so an open tab never expires. `web` only |
-| `APP_IN_PRODUCTION_MODE` | `false` | **The production switch, and the only one.** See [Production Mode](#production-mode). `web` only |
+| `APP_IN_PRODUCTION_MODE` | `false` | **The production switch, and the only one.** Gates two features — the per-session job cap and the submission captcha — and requires `ETK_SECRET_KEY`. See [Production Mode](#production-mode). `web` only |
 
 ### Source files
 
-A new variable is not necessarily a `backend/config.py` edit — they are read in four places:
+A new variable is not necessarily a `backend/config.py` edit — they are read in five places:
 
 | File | Reads | Reaches |
 |------|-------|---------|
@@ -104,18 +119,22 @@ A new variable is not necessarily a `backend/config.py` edit — they are read i
 | `enzyme_tk_app/app/backend/celery_app.py` | `DEFAULT_MAX_DURATION`, `HARD_TIMEOUT_GRACE_SECONDS` | `worker` (the soft/hard task limits) + `web` (`effective_ttl()` at submit time) |
 | `enzyme_tk_app/app/paths.py` | `ETK_DATA_DIR` | `web` + `worker` |
 | `enzyme_tk_app/app/utils/submission_limits.py` | `APP_IN_PRODUCTION_MODE` | `web` only |
+| `enzyme_tk_app/app/utils/captcha.py` | `APP_IN_PRODUCTION_MODE` (its **own** binding — two modules read the same variable independently) | `web` only. Reads `ETK_SECRET_KEY` indirectly, through `config.SECRET_KEY`, to derive the challenge signing key |
 
 A variable must stay in step across **four** places: the table above,
 [`scripts/template.env`](../scripts/template.env) (what an operator actually copies),
 `docker-compose.yml`, and `main.bicep`. A flag live in one deployment and missing from the
-other is the failure mode this list exists to prevent.
+other is the failure mode this list exists to prevent. The submission captcha deliberately
+added **no** variable to any of them — it derives its key from `ETK_SECRET_KEY` and keeps its
+cost and TTL as constants in `utils/captcha.py`.
 
 ### Production checklist
 
 Before exposing the app to anyone but yourself:
 
 - [ ] `./scripts/generate-env.sh --production` — sets `APP_IN_PRODUCTION_MODE=true` and fresh secrets.
-- [ ] `ETK_ADMIN_TOKEN` and `ETK_SECRET_KEY` both set, both random, neither committed.
+- [ ] `ETK_ADMIN_TOKEN` and `ETK_SECRET_KEY` both set, both random, neither committed — and neither baked into an image, which [`.dockerignore`](../.dockerignore) enforces.
+- [ ] `ETK_SECRET_KEY` in particular is now **mandatory** with the production switch on, admin dashboard or not: the app raises at startup without it, because the submission captcha derives its signing key from it ([Submission captcha](#submission-captcha)).
 - [ ] The app is behind a **TLS-terminating reverse proxy** — see [TLS](#tls-and-reverse-proxies). Non-negotiable; plain HTTP breaks sessions outright.
 - [ ] `JOB_TTL_SECONDS` and `CELERY_SWEEP_INTERVAL_SECONDS` sized for your retention policy.
 - [ ] `ETK_DATA_DIR` points at a populated, read-only reference-data mount.
@@ -124,20 +143,70 @@ Before exposing the app to anyone but yourself:
 ## Production Mode
 
 `APP_IN_PRODUCTION_MODE` defaults to **off**, so a downloaded checkout runs locally with no
-submission limits and no code edits. Set it to `true` and one browser session may hold at most
-`MAX_ACTIVE_JOBS_PER_SESSION` (3) concurrent jobs, so a bot or a runaway script cannot starve
-the Celery workers.
+submission limits, no captcha, and no code edits. Set it to `true` and it switches on **two**
+protections on job submission, both on the `web` service only:
 
-That cap is a **constant** in `enzyme_tk_app/app/utils/submission_limits.py`, deliberately not
-an environment variable — it is policy the app owns, not deployment config. Raising it is a
-code edit and a review.
+| Protection | What it does | Where the policy lives |
+|------------|--------------|------------------------|
+| Per-session job cap | One browser session may hold at most `MAX_ACTIVE_JOBS_PER_SESSION` (3) queued or running jobs | `enzyme_tk_app/app/utils/submission_limits.py` |
+| Submission captcha | Every Run click must carry a solved proof of work, bound to that session | `enzyme_tk_app/app/utils/captcha.py` |
 
-The cap is keyed on the anonymous session cookie, which a client can discard to mint a new
-one — it stops an impatient user, a runaway script, and a naive bot, not a determined
-attacker. A CAPTCHA is the intended answer for that and is not implemented yet.
+**Turning the switch on requires `ETK_SECRET_KEY`.** The captcha signs its challenges with a key
+derived from it, so `app.py` **refuses to start** — a `RuntimeError` naming the variable — when
+production mode is on without one. This is wider than the old rule, which only required the key
+alongside `ETK_ADMIN_TOKEN`: a deployment with no admin dashboard at all now still needs the
+key. `./scripts/generate-env.sh --production` sets both in one go, so a deployment made that way
+is already correct.
+
+`docker compose logs web` prints the resolved settings once per gunicorn worker at startup —
+`production mode`, the cap in force, and `submission captcha: on/off` — which is the quickest
+way to confirm the switch took (a typo'd value resolves to off rather than raising).
 
 `main.bicep` hardcodes the switch **on** for Azure, because nothing from `.env` reaches it —
 so this variable only affects Docker Compose deployments.
+
+### Per-session job cap
+
+The cap is a **constant** in `enzyme_tk_app/app/utils/submission_limits.py`, deliberately not an
+environment variable — it is policy the app owns, not deployment config. Raising it is a code
+edit and a review.
+
+It is keyed on the anonymous session cookie, which a client can discard to mint a new one. The
+captcha below is what prices that: a fresh session now costs a fresh proof of work, so 3N job
+slots costs N solves.
+
+### Submission captcha
+
+Every tool's Run button requires a solved [ALTCHA](https://altcha.org) proof of work —
+PBKDF2/SHA-256 at 10,000 iterations, minted per session, valid for 300 s. The widget solves it
+in the background from the moment the modal opens (~2 s on a 12-core machine), so the wait
+normally hides behind filling in the form; a user who opens a modal and clicks Run within a
+couple of seconds sees *"Please complete the verification check"* and succeeds on a second
+click. Nothing is shown to a user and no work is required when the switch is off.
+
+What an operator needs to know:
+
+- **No new environment variable, and no third-party service.** The challenge signing key is
+  derived from `ETK_SECRET_KEY` (`blake2b`, domain-separated so the captcha and the Flask
+  session cookie never share key material), and the widget is vendored into
+  `enzyme_tk_app/app/assets/` rather than loaded from a CDN — the app makes no outbound request
+  and sends no visitor data anywhere. The cost and TTL are constants in `utils/captcha.py`, not
+  operator settings, for the same reason the job cap is.
+- **Rotating `ETK_SECRET_KEY` invalidates challenges in flight**, alongside the admin sessions it
+  already invalidated. A user with a modal open at rotation time gets one verification failure
+  and succeeds on a retry. Rotate away — this is a hiccup, not an outage.
+- **It adds one Flask route, `/altcha-challenge`, registered only in production mode.** It is the
+  app's only non-Dash route. A reverse proxy or WAF that filters paths must let it through, and
+  it must not be cached — the app sends `Cache-Control: no-store` for exactly that reason.
+- **Verification costs one PBKDF2 derivation (~2 ms) per submit**, paid only after the signature
+  check, so an unsigned flood is rejected without doing the work.
+- **A browser that refuses the `etk_session_id` cookie can never pass**, because the proof is
+  bound to the session id. Such a browser cannot use the app anyway — job scoping already
+  collapses without that cookie — but it is why plain HTTP on a non-localhost origin breaks the
+  captcha along with everything else (see [TLS](#tls-and-reverse-proxies)).
+- **Known limitation:** a solved payload is replayable inside its 300 s window *by the session it
+  was issued to*, which the 3-job cap bounds to "submit, cancel, repeat". Closing it needs
+  one-shot nonces in Redis; the module docstring names the door.
 
 ## TLS and Reverse Proxies
 
@@ -196,6 +265,12 @@ and Structure-Based Similarity 3600 s, the Timer template 600 s, the two similar
 180 s. A tool that declares none falls back to `DEFAULT_MAX_DURATION` (3600 s).
 
 ## Building the Image
+
+`web`, `worker`, and `beat` are all built from the same `Dockerfile`, whose closing `COPY . .`
+takes everything the build context still holds — [`.dockerignore`](../.dockerignore) is the only
+filter, and gitignored is not excluded. Secrets (`.env`, `.env.*`) are listed there, so a local
+build cannot bake them into a published layer; see [Admin Secrets](#admin-secrets-env). Add or
+widen a `COPY` and re-read that file in the same change.
 
 ### Refetching `enzymetk` (branch-tracked)
 
@@ -257,7 +332,7 @@ Redis, pulling the same GHCR image `ci.yml` publishes on every push to `main`.
 |----------|---------|
 | `GH_USERNAME` | GitHub username owning the PAT below |
 | `GH_PAT` | GitHub PAT used by Container Apps to pull the private `ghcr.io/ssec-jhu/enzyme-tk-app` image |
-| `ETK_ADMIN_TOKEN` / `ETK_SECRET_KEY` | Same admin secrets as local dev — see [Admin Secrets](#admin-secrets-env) |
+| `ETK_ADMIN_TOKEN` / `ETK_SECRET_KEY` | Same admin secrets as local dev — see [Admin Secrets](#admin-secrets-env). `ETK_SECRET_KEY` is **required** here, not optional: `make deploy-azure` aborts without it |
 
 ### Generating `GH_PAT`
 
@@ -291,9 +366,19 @@ make deploy-azure
 
 This runs `az deployment group create -f main.bicep`, reading the four secrets above out of `.env`.
 
+It first checks that `ETK_SECRET_KEY` is non-empty and **aborts before calling `az` if it is
+not**. That check exists because the failure it prevents is not a degraded feature but an
+outage: `main.bicep` hardcodes `APP_IN_PRODUCTION_MODE=true`, the app refuses to start in
+production without that key, and the web container runs at a single replica
+(`minReplicas: 1`), so a revision that cannot boot is the site down. `secretKey` defaults to
+`''` in `main.bicep`, so nothing downstream would have caught an empty value.
+
 Nothing else from `.env` reaches Azure, so `main.bicep` hardcodes `APP_IN_PRODUCTION_MODE=true`
 on the web container: **the deployed app always runs with the per-session job cap on**
-(`MAX_ACTIVE_JOBS_PER_SESSION`, 3). Change whether it is on in `main.bicep`, not in `.env` —
+(`MAX_ACTIVE_JOBS_PER_SESSION`, 3) **and the submission captcha on** — which is also why
+`ETK_SECRET_KEY` is not optional on Azure: it is injected as a secret reference on the same
+container, and without it the app would raise at startup. Change whether it is on in
+`main.bicep`, not in `.env` —
 and keep the flag in step with `docker-compose.yml` so a setting is not live in one deployment
 and missing from the other. Changing the cap *value* is a code edit in
 `utils/submission_limits.py`; CI rebuilds the image on every push to `main`, so it ships on the

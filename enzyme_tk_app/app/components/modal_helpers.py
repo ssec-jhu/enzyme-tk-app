@@ -38,9 +38,15 @@ Usage::
 """
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
 from enzyme_tk_app.app.components.icons import ICON_MODAL_INFO, ICON_SECTION_CONFIG, ICON_SECTION_INPUT
+from enzyme_tk_app.app.utils import captcha
+
+# Contract with assets/12-altcha-bridge.js, which finds holders by this class and derives the
+# Store id from the holder id.  Renaming either means editing that file in the same change —
+# the same page-to-JS contract as results_helpers.QUERY_PREVIEW_CLASS.
+CAPTCHA_HOLDER_CLASS = "etk-captcha"
 
 
 def create_modal_header(icon, title):
@@ -148,11 +154,25 @@ def create_modal_footer(slug):
             the button component IDs.
 
     Returns:
-        A ``dbc.ModalFooter`` with a secondary outline Close button and
-        a primary Run button.
+        A ``dbc.ModalFooter`` with the captcha holder and payload Store, a
+        secondary outline Close button, and a primary Run button.
     """
     return dbc.ModalFooter(
         children=[
+            # Empty on purpose: assets/12-altcha-bridge.js creates <altcha-widget> in here.
+            # A custom element is not something Dash's html namespace can emit, and dbc.Modal
+            # unmounts its children on close, so mounting is a per-open job either way.
+            # Rendered only in production — a local checkout shows no widget and app.py
+            # registers no challenge route.
+            *(
+                [html.Div(id=f"id-div-{slug}-captcha", className=CAPTCHA_HOLDER_CLASS)]
+                if captcha.PRODUCTION_MODE
+                else []
+            ),
+            # Rendered ALWAYS, even locally: a State pointing at a component that is not in the
+            # layout stops the submit callback from firing at all, which would dead-button Run
+            # for everyone running the app locally.
+            dcc.Store(id=f"id-store-{slug}-captcha"),
             dbc.Button(
                 "Close",
                 id=f"id-btn-{slug}-cancel",

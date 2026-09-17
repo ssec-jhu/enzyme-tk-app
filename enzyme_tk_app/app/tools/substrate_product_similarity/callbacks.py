@@ -14,6 +14,7 @@ from flask import g
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
 from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
+from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
@@ -140,10 +141,11 @@ def validate_substrate_product_form(task_name, smiles, selected_databases, selec
     State(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
     State(f"id-radio-{TOOL_DEF['slug']}-role", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
 def submit_substrate_product_similarity_job(
-    submit_clicks, launch_clicks, task_name, databases, smiles, algorithms, top_n, role
+    submit_clicks, launch_clicks, task_name, databases, smiles, algorithms, top_n, role, captcha_payload
 ):
     """Submit a substrate/product similarity job or clear stale results on modal reopen.
 
@@ -162,6 +164,7 @@ def submit_substrate_product_similarity_job(
         algorithms: List of selected algorithm values.
         top_n: Number of top results to return.
         role: The molecule role — ``"substrate"`` or ``"product"``.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
         A status message with the submitted job ID, or an empty string
@@ -198,8 +201,14 @@ def submit_substrate_product_similarity_job(
         return error
     top_n = int(top_n)
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return error
+
     error = validate_active_job_limit(g.session_id)
     if error:
         return error

@@ -46,10 +46,13 @@ All Dash component IDs follow the pattern `id-<component-type>-<slug>-<name>` an
 | Textareas | `f"id-textarea-{TOOL_DEF['slug']}-<name>"` |
 | Dropdowns | `f"id-dropdown-{TOOL_DEF['slug']}-<name>"` |
 | Results div | `f"id-div-{TOOL_DEF['slug']}-results"` |
+| Captcha payload Store (from `create_modal_footer()`) | `f"id-store-{TOOL_DEF['slug']}-captcha"` |
 
 Only assign an `id` if the component is used in a callback (`Input`, `Output`, or `State`).
 
 **Tooltip targets are the exception to that rule** — `dbc.Tooltip` binds by `target=`, so the target needs an id with no callback of its own: `id-icon-<slug>-databases-info` from `create_modal_databases_label()`, and `id-data-warning-<slug>` from [`components/data_warning.py`](../enzyme_tk_app/app/components/data_warning.py).
+
+**A JavaScript mount target is the other exception** — an empty div an `assets/*.js` file finds and fills, with no callback of its own: `id-div-<slug>-captcha`, rendered by `create_modal_footer()` in production mode and located by [`assets/12-altcha-bridge.js`](../enzyme_tk_app/app/assets/12-altcha-bridge.js), which mounts the `<altcha-widget>` custom element into it (Dash cannot emit an arbitrary tag) and publishes the solved payload into the neighbouring Store. Renaming it, its `etk-captcha` class, or the Store id means editing that JS file in the same change — the same page-to-JS contract as `QUERY_PREVIEW_CLASS` in §4.2.
 
 **Framework-owned ids are the exception to the *slug-scoping* rule.** They are callback-bound like any other, just not by *your* callback, and they are not slug-scoped because only one tool's results render at a time: `build_ag_grid()` sets `id="id-grid-results"` on the grid and owns the ids of its CSV-export controls, which its own `download_results_csv` callback drives. Your `results.py` never sets or overrides them.
 
@@ -111,6 +114,7 @@ Most of what a tool needs already exists. Reach for these before writing your ow
 | [`utils/smiles_rendering.py`](../enzyme_tk_app/app/utils/smiles_rendering.py) | `smiles_to_svg_data_uri()`, `reaction_to_svg_data_uri()`, and `generate_cached_svg_uris(series, render_fn, **kwargs)` which renders each *unique* SMILES once — this is what fills an `SvgRenderer` column (§4.2) |
 | [`utils/smiles_validation.py`](../enzyme_tk_app/app/utils/smiles_validation.py) | `validate_reaction_smiles()` (reactions) and `validate_smiles()` (one molecule) — an error message or `None`, like `validate_db_names()`. Every SMILES field calls one of them in **three** places: the form callback (gates Run, marks the field), the submit callback (the client gate is bypassable) and `run()` (a replayed job skips the modal). The message carries RDKit's own reason (`unclosed ring`) via `rdBase.CaptureErrorLog`, never an echo of the input. Also `split_reaction()`. rdkit is imported inside the functions, so `callbacks.py` can import this at module scope |
 | [`utils/submission_limits.py`](../enzyme_tk_app/app/utils/submission_limits.py) | `validate_active_job_limit(session_id)` — the per-session cap on concurrent jobs, an error message or `None` like the validators above it. **Every** submit callback calls it as its last guard (§3.3); it is a no-op unless the deployment set `APP_IN_PRODUCTION_MODE` |
+| [`utils/captcha.py`](../enzyme_tk_app/app/utils/captcha.py) | `validate_captcha(payload, session_id)` — the proof-of-work check, an error message or `None` like the validators above it. **Every** submit callback calls it immediately *before* the job cap, reading the payload from a `State` on `f"id-store-{TOOL_DEF['slug']}-captcha"` (§3.3). Deliberately the twin of `submission_limits.py`: same `APP_IN_PRODUCTION_MODE` switch (its own binding of it), same message-or-`None` shape, policy in constants rather than environment variables. You never call `new_challenge()` or `init_captcha()` — `app.py` and the widget handle those |
 | [`paths.py`](../enzyme_tk_app/app/paths.py) | Every shared data-directory constant ([Bundled Data and Paths](#bundled-data-and-paths)) |
 | [`tests/conftest.py`](../enzyme_tk_app/app/tests/conftest.py) | Shared fixtures and tree-walking helpers for your tests ([Tests](#tests)) |
 
@@ -194,7 +198,7 @@ Six shared helper functions provide the standard modal chrome:
 | `create_modal_input_section_header()` | "Input Data" section divider with flask icon |
 | `create_modal_config_section_header()` | "Tool Configurations" section divider with gear icon |
 | `create_modal_databases_label(slug, contents)` | The "Databases" label column plus an info icon whose tooltip is `contents` — one sentence on what those databases hold (database-backed tools only) |
-| `create_modal_footer(slug)` | Cancel (outline) + Run (primary) buttons with correct IDs |
+| `create_modal_footer(slug)` | Cancel (outline) + Run (primary) buttons with correct IDs, **plus the captcha holder and its payload `dcc.Store`** — the holder only in production mode, the Store always (a `State` pointing at a component that is not in the layout stops the submit callback firing at all). You get both for free; never hand-roll them |
 | `create_modal_submission_results(slug)` | Placeholder div for job-ID confirmation or validation errors |
 
 ### 2.2 What you add
@@ -319,9 +323,11 @@ The submit callback is the only one with a fixed shape. It is triggered by **two
     State(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     State(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
+    # Last State, matching the last parameter: the solved captcha payload.
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
-def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n):
+def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n, captcha_payload):
     """Submit a job, or clear stale results when the modal is reopened."""
     # Reopened, not submitted — wipe the previous job ID.
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
@@ -339,8 +345,15 @@ def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n
     if error:
         return error
 
-    # Last guard, after every field validator: the per-session cap on concurrent
-    # jobs. A no-op unless the deployment set APP_IN_PRODUCTION_MODE.
+    # The two production guards, in this order, after every field validator.
+    # Both are no-ops unless the deployment set APP_IN_PRODUCTION_MODE.
+    # Captcha first: it costs no Redis round trip, so an unverified caller never
+    # gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return error
+
+    # Last guard: the per-session cap on concurrent jobs.
     error = validate_active_job_limit(g.session_id)
     if error:
         return error
@@ -359,12 +372,13 @@ def submit_my_tool_job(submit_clicks, launch_clicks, task_name, databases, top_n
     return f"Job submitted — ID: {job_id}"
 ```
 
-Four rules the skeleton encodes:
+Five rules the skeleton encodes:
 
 - **Validators return, they don't raise.** `validate_db_names()` and `validate_top_n()` hand back a message string, which you return straight into the submission-results div. An exception would surface as an HTTP 500 on `/_dash-update-component` instead of as text in the modal, because the app installs no Dash `on_error` handler.
 - **`raise PreventUpdate`** is for "nothing to say" — a guard that should leave the DOM untouched. A user-facing problem is a returned string.
 - **`params` key order is the display order** of the Input Parameters table on the results page (§4.1), so list the keys in the order the fields appear in your modal.
 - **The submission cap goes last.** `validate_active_job_limit(g.session_id)` (from `enzyme_tk_app.app.utils.submission_limits`) caps how many jobs one browser session may have queued or running, so a bot cannot starve the workers. It is last so a malformed submit still shows its own field error first, and it returns a message or `None` like the validators above it. Skipping it makes your tool an uncapped submission endpoint — `test_every_tool_enforces_the_active_job_limit` fails the build if you do.
+- **The captcha goes immediately before it**, reading the payload from the `dcc.Store` `create_modal_footer()` already renders for you — a **last** `State`, a **last** parameter, an Args entry in the docstring. `validate_captcha(captcha_payload, g.session_id)` (from `enzyme_tk_app.app.utils.captcha`) verifies an ALTCHA proof of work that is signed over the session id, which is what makes discarding the session cookie cost a solve rather than nothing. Same shape as every validator above it — a message or `None`, never an exception — and a no-op unless the deployment set `APP_IN_PRODUCTION_MODE`, so nothing changes for a local checkout. It sits *before* the cap because it costs no Redis round trip. Skipping it makes your tool an unverified submission endpoint: `test_every_tool_verifies_the_captcha` (the import walk) and `test_every_modal_carries_a_captcha_store` (the modal walk) in `test_tools.py` fail the build, and the behavioural tests in `test_tools_timer.py` catch a guard put in the wrong place, which an import walk cannot see.
 
 See [reaction_similarity/callbacks.py](../enzyme_tk_app/app/tools/reaction_similarity/callbacks.py) and [funce/callbacks.py](../enzyme_tk_app/app/tools/funce/callbacks.py) for the full implementations.
 
@@ -573,6 +587,7 @@ One file per tool, named for the tool: `enzyme_tk_app/app/tests/test_tools_<name
 | `csv_molecules`, `csv_molecules_known_scores` | Substrate/product SMILES parsed out of the 20-row reaction CSV — the second carries hardcoded expected scores for regression tests |
 | `fake_redis`, `task_scheduler_celery_service`, `write_job_into_fake_redis` | Backend tests against `fakeredis` — no real Redis, no Celery, no network |
 | `_submission_limit_off` (autouse) | Pins the per-session job cap **off** for every test, so a submit-callback test never reaches a real scheduler because `APP_IN_PRODUCTION_MODE` happens to be exported. To exercise the cap, `monkeypatch.setattr` the `submission_limits` constants — `setenv` cannot flip them, they bind at import |
+| `_captcha_off` (autouse) | Pins the submission captcha **off** for every test, for the same reason and with the same mechanism. It is a **separate** fixture because `captcha.PRODUCTION_MODE` is a separate module-level binding of the same variable — patching `submission_limits` does nothing to it. To exercise the captcha, `monkeypatch.setattr(captcha, "PRODUCTION_MODE", True)` and mint a real challenge with `new_challenge()`; see `test_captcha.py` and the three behavioural tests in `test_tools_timer.py` |
 
 ### Two rules that are easy to get wrong
 
@@ -623,7 +638,7 @@ on macOS, where PyPI's torch is already CPU-only; the image reaches the same res
 [Deployment Guide → GPU](deployment-guide.md#gpu-optional)). `tox -e test-docker-dependent` installs
 nothing locally — it runs pytest inside the `worker` container and is skipped when Docker is not running.
 
-**A new dependency is not just a badge.** The `libraries` field in `TOOL_DEF` renders monospace badges on the tool card and installs nothing; list what actually runs in the worker at query time, not what produced the bundled data offline (Func-E lists `torch`, `rxnfp`, `unimol` — its reaction encoder runs those three — but not the ESM3 that embedded the protein database). A new Python package goes in `requirements/prd.txt`; system packages and binaries go through the **`edit-dockerfile`** agent, which covers the `linux/amd64` + `linux/arm64` rules. The one exception is a package needing per-package pip flags, which a requirements file cannot express — `rxnfp` is installed in the `Dockerfile` with `--no-deps` because its metadata hard-pins 2020 releases. Pin it there just as tightly, and note it in the requirements file that would otherwise have held it. A package that leaves `torch` unpinned (as `enzymetk` and `unimol_tools` do) carries one more constraint: CPU torch is enforced twice — the `Dockerfile`'s install order and `tox.ini`'s `[testenv:test]` CPU index for CI — so adding or bumping one means checking both, or linux CI downloads the CUDA stack and runs out of disk.
+**A new dependency is not just a badge.** The `libraries` field in `TOOL_DEF` renders monospace badges on the tool card and installs nothing; list what actually runs in the worker at query time, not what produced the bundled data offline (Func-E lists `torch`, `rxnfp`, `unimol` — its reaction encoder runs those three — but not the ESM3 that embedded the protein database). A new Python package goes in `requirements/prd.txt`; system packages and binaries go through the **`edit-dockerfile`** agent, which covers the `linux/amd64` + `linux/arm64` rules. A **vendored front-end asset** is the third kind: `assets/11-altcha.js` is the ALTCHA widget copied into the repo rather than pulled from a CDN, so the app makes no third-party request. Never hand-edit one — its banner carries the source URL, version, byte count, sha256 and licence, and upgrading means re-downloading the same dist path, updating that banner, and checking the major still matches the `altcha` pin in `requirements/prd.txt` (the widget and the verifier speak a shared payload format). Take the **UMD** build, not ESM: Dash emits every `assets/*.js` as a plain non-module `<script src>`. The one exception is a package needing per-package pip flags, which a requirements file cannot express — `rxnfp` is installed in the `Dockerfile` with `--no-deps` because its metadata hard-pins 2020 releases. Pin it there just as tightly, and note it in the requirements file that would otherwise have held it. A package that leaves `torch` unpinned (as `enzymetk` and `unimol_tools` do) carries one more constraint: CPU torch is enforced twice — the `Dockerfile`'s install order and `tox.ini`'s `[testenv:test]` CPU index for CI — so adding or bumping one means checking both, or linux CI downloads the CUDA stack and runs out of disk.
 
 ## Request Flow
 

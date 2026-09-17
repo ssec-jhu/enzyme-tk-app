@@ -188,3 +188,35 @@
 .modal-body .field-info-icon:focus-visible {
     color: var(--primary-color);
 }
+
+/* ==========================================================================
+   Submission captcha — production only
+   The widget ships its own stylesheet inside assets/11-altcha.js and reads
+   these custom properties; mapping them onto our tokens is the whole job.
+   ========================================================================== */
+
+/* margin-right:auto parks it at the left end of the footer's flex row,
+   opposite Close / Run.  The holder is empty until
+   assets/12-altcha-bridge.js mounts <altcha-widget> into it. */
+.modal-footer .etk-captcha {
+    margin-right: auto;
+    /* The widget's own CSS uses light-dark(); this app is light-only, so pin the
+       scheme rather than inherit a future dark-mode switch by accident. */
+    color-scheme: light;
+
+    --altcha-color-base: var(--bg-surface);
+    --altcha-color-base-content: var(--text-primary);
+    --altcha-color-primary: var(--primary-color);
+    --altcha-color-error: var(--status-failure);
+    --altcha-color-success: var(--status-success);
+    --altcha-border-color: var(--border-color);
+    --altcha-border-radius: var(--radius-sm);
+    --altcha-max-width: 280px;
+    --altcha-padding: 0.5rem 0.75rem;
+}
+
+/* The load-failure message the bridge writes in when 11-altcha.js is missing. */
+.modal-footer .etk-captcha:not(:has(altcha-widget)) {
+    font-size: 0.85rem;
+    color: var(--status-failure);
+}

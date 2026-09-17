@@ -17,6 +17,7 @@ from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
+from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.data_loading import (
     get_cofactors,
     get_ec_numbers,
@@ -219,6 +220,7 @@ def validate_sequence_form(task_name, sequence, databases):
     State(f"id-dropdown-{TOOL_DEF['slug']}-cofactor-filter", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
     State(f"id-check-{TOOL_DEF['slug']}-predict-catalytic", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
 def submit_sequence_similarity_job(
@@ -231,6 +233,7 @@ def submit_sequence_similarity_job(
     cofactor_filter,
     top_n,
     predict_catalytic,
+    captcha_payload,
 ):
     """Submit a sequence similarity job or clear stale results on modal reopen.
 
@@ -250,6 +253,7 @@ def submit_sequence_similarity_job(
         cofactor_filter: List of selected cofactors (or None).
         top_n: Number of top results to return.
         predict_catalytic: Whether to predict catalytic residues.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
         A status message with the submitted job ID, or an empty string
@@ -275,8 +279,14 @@ def submit_sequence_similarity_job(
         return error
     top_n = int(top_n)
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return error
+
     error = validate_active_job_limit(g.session_id)
     if error:
         return error

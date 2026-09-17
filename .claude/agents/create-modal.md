@@ -185,6 +185,13 @@ from enzyme_tk_app.app.components.modal_helpers import (
 ## 8. Footer
 Use `create_modal_footer(TOOL_DEF["slug"])` to generate the standard `dbc.ModalFooter` with Close (secondary outline) and Run (primary) buttons.
 
+It also emits the **submission captcha** pair, and you must not hand-roll or reorder either:
+
+- `html.Div(id=f"id-div-{slug}-captcha", className=CAPTCHA_HOLDER_CLASS)` — an empty holder, rendered **only in production mode**. `assets/12-altcha-bridge.js` finds it by that class and mounts the `<altcha-widget>` custom element into it (Dash cannot emit an arbitrary tag, and `dbc.Modal` unmounts its children into a portal, which is why a MutationObserver does the mounting rather than a clientside callback). It is a **JS mount target**, the third exception to "only give a component an id if a callback uses it". `.etk-captcha` in `07-modals.css` parks it at the left end of the footer row and maps ALTCHA's CSS custom properties onto the app's design tokens — a new footer layout must keep `margin-right: auto` working.
+- `dcc.Store(id=f"id-store-{slug}-captcha")` — rendered **always, including locally**. A `State` pointing at a component that is not in the layout stops the submit callback from firing at all, which would dead-button Run for every local checkout.
+
+Renaming the class, either id, or the challenge path means editing `assets/12-altcha-bridge.js` in the same change — it mirrors all three as constants. The submit callback reads that Store as its last `State` (`create-tool` §4, `write-callback` §4).
+
 ## 9. Results Placeholder
 After the last section `html.Div` inside `dbc.ModalBody`, add:
 ```python

@@ -27,6 +27,7 @@ from flask import g
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
+from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example duration (the dropdown value) -> task name.
@@ -157,9 +158,10 @@ def validate_timer_form(task_name, duration):
     State(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-duration", "value"),
     State(f"id-check-{TOOL_DEF['slug']}-fail", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
-def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate_failure):
+def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate_failure, captcha_payload):
     """Submit a timer job or clear stale results when the modal reopens.
 
     **Pattern:** Every submit callback should also listen for the
@@ -173,6 +175,7 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
         task_name: The user-supplied name for this job.
         duration: The requested duration in seconds.
         simulate_failure: Whether to simulate a mid-run failure.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
         A status message with the submitted job ID, or an empty string
@@ -199,8 +202,14 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
     if seconds < 1 or seconds > 300:
         return "Duration must be between 1 and 300 seconds."
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return error
+
     error = validate_active_job_limit(g.session_id)
     if error:
         return error

@@ -13,6 +13,7 @@ from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
 from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
+from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
@@ -119,9 +120,10 @@ def validate_funce_form(task_name, smiles, databases):
     State(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     State(f"id-dropdown-{TOOL_DEF['slug']}-databases", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
-def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases, top_n):
+def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases, top_n, captcha_payload):
     """Submit a Func-E job or clear stale results on modal reopen.
 
     When triggered by the launch button, clears the results placeholder
@@ -137,6 +139,7 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
         smiles: The reaction SMILES to score.
         databases: List of selected pre-encoded database filenames.
         top_n: Number of top results to return.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
         A status message with the submitted job ID, or an empty string
@@ -169,8 +172,14 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
         return error
     top_n = int(top_n)
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return error
+
     error = validate_active_job_limit(g.session_id)
     if error:
         return error

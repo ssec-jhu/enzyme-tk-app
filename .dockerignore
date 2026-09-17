@@ -2,6 +2,15 @@
 .git/
 .gitignore
 
+# Secrets — never in the build context.  The Dockerfile's `COPY . .` would
+# otherwise bake these into a published layer at /app/.env.  Nothing in the
+# image reads them: the app takes configuration from the process environment,
+# and docker-compose.yml does its ${VAR} substitution on the host.
+# scripts/template.env is the committed placeholder and is already covered by
+# the `scripts/*` rule below.
+.env
+.env.*
+
 # CI / tooling
 .github/
 .tox/
