@@ -40,7 +40,10 @@ same image built from the project `Dockerfile`; `redis` pulls stock `redis:7-alp
 
 `web` mounts the same read-only `/app-data` as `worker` — it builds the tool cards and the
 database dropdowns from it, so a `web` without the mount shows every data-backed tool as
-"Missing data" (the Timer Tool Template reads no data and is always runnable).
+"Missing data" **and disables its Run button**, naming the missing path in the card and in the
+form (the Timer Tool Template reads no data and is always runnable). That gate lives on `web`
+only: the card and the modal both call `utils/data_availability.py`, so a mount that is present
+on `worker` but missing on `web` refuses jobs the worker could actually have run.
 Only `worker` is drawn above, to keep the diagram legible.
 
 `beat` must stay at a **single replica** — two schedulers means the sweep fires twice.
@@ -414,8 +417,10 @@ share (e.g. `data/sequences/enzymes_demo_set.tsv` → `sequences/enzymes_demo_se
 > download because Compose bind-mounts the checkout's
 > `enzyme_tk_app/app/data/`. The image carries none of it —
 > `.dockerignore` excludes that directory from the build context — so a fresh
-> deployment starts with an **empty** share and every data-backed tool showing
-> "Missing data". Upload the four `*_demo_set` artifacts from a clone to get the
+> deployment starts with an **empty** share, and every data-backed tool shows
+> "Missing data" with its Run button disabled — the forms still open and say
+> which path to upload, so nothing is submitted that could only fail in the
+> worker. Upload the four `*_demo_set` artifacts from a clone to get the
 > same out-of-the-box behaviour, or the full reference sets for real work.
 
 > **Unlike Compose, the Azure mount is not read-only.** `docker-compose.yml`
