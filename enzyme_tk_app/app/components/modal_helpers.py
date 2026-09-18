@@ -281,9 +281,10 @@ def build_submission_error(message):
     height and shape — only the colour and the icon differ.
 
     Every validator in a submit callback returns a message or ``None``
-    (``validate_db_names``, ``validate_top_n``, ``validate_reaction_smiles``,
-    ``validate_captcha``, ``validate_active_job_limit``); wrap that message here
-    rather than returning it bare, which would render unstyled.
+    (``validate_tool_data``, ``validate_db_names``, ``validate_top_n``,
+    ``validate_reaction_smiles``, ``validate_captcha``,
+    ``validate_active_job_limit``); wrap that message here rather than
+    returning it bare, which would render unstyled.
 
     Args:
         message: The validator's message.  Passed through verbatim — it already

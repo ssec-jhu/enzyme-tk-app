@@ -32,7 +32,8 @@ To run it on your own machine, start at [Quickstart](#quickstart).
 > already in a `sequence_embeddings/` table — the shipped `enzymes_demo_set.pkl` holds 100, and
 > you add your own with `build_enzyme_db.py` (see [Data Directories](#data-directories)). Func-E
 > also needs the weights under `data/unimol_weights/` and `data/funce_models/`; without them its
-> card shows a **"Missing data"** badge.
+> card shows a red **"Missing data"** badge and a line naming what to download, and its **Run**
+> button stays disabled with the same reason shown in the form.
 
 ![EnzymeTK App](enzyme_tk_app/app/assets/app.jpeg)
 
@@ -62,7 +63,9 @@ worked examples that return real hits.
 
 Two tools need model weights that are far too large for git: **Sequence and Structure-Based
 Similarity** (~2 GB of ProstT5) and **Func-E** (~2 GB of UniMol weights and ensemble checkpoints).
-Until you fetch them their cards show a **"Missing data"** badge naming what is absent. [`scripts/db_build/`](scripts/db_build/README.md)
+Until you fetch them, those two cards show a **"Missing data"** badge with a line naming what to
+download, and their **Run** button is disabled — their forms still open and say why, so nothing is
+submitted that could only fail in the worker. [`scripts/db_build/`](scripts/db_build/README.md)
 fetches them into `enzyme_tk_app/app/data/` in one Docker image — no Hugging Face account or token
 needed:
 
@@ -128,8 +131,12 @@ docker compose down -v           # stop and delete job results
 ## Data Directories
 
 `docker-compose.yml` bind-mounts `./enzyme_tk_app/app/data` read-only at `/app-data` for both
-`web` and `worker`. A tool whose directory is missing still loads: its card shows a
-**"Missing data"** badge instead, and the app does not crash.
+`web` and `worker`. A tool whose directory is missing still loads and its form still opens: the
+card shows a red **"Missing data"** badge plus a line naming the path to download, and the form's
+**Run** button is disabled with the same reason in it. A file that is *present but unusable* — a
+`data/sequences/` CSV without the required columns — is a different case: it is skipped, the card
+says **"N file(s) skipped"** in amber, and the tool runs on the databases that are left. Either
+way the app does not crash.
 
 **Demo sets ship in the repo** (~1 MB, the `*_demo_set` files below). Each is a strict
 **row-subset of the full reference file, copied verbatim** — same columns, same values, no
@@ -203,12 +210,18 @@ Job metadata is kept in Redis for **24 hours**, after which the job and its outp
 swept. `docker compose down -v` deletes them immediately. Both windows are configurable — see
 the [Deployment Guide](docs/deployment-guide.md#environment-variables).
 
-### A tool card says "Missing data"
+### A tool card says "Missing data" or "N file(s) skipped"
 
-Its model weights are not in `enzyme_tk_app/app/data/`. On a fresh clone that is **Sequence and
-Structure-Based Similarity** and **Func-E** — the demo sets cover every other tool's data. The badge's
-tooltip names exactly which files are missing; get them with step 2 of the
-[Quickstart](#quickstart).
+**"Missing data"** (red) means the tool cannot run: its model weights are not in
+`enzyme_tk_app/app/data/`. On a fresh clone that is **Sequence and Structure-Based Similarity** and
+**Func-E** — the demo sets cover every other tool's data. The card names the missing path under the
+badge, the badge's tooltip lists every item, and the tool's **Run** button is disabled with the same
+reason shown in the form. Get the weights with step 2 of the [Quickstart](#quickstart).
+
+**"N file(s) skipped"** (amber) means the opposite — the tool runs fine, but something in `data/` is
+unusable and was left out. That is a file in `data/sequences/` missing one of the required `Entry`,
+`Sequence`, `EC number` columns; the tooltip names the file and the columns. Downloading data does
+not fix it — fix the file's header, or remove it.
 
 
 ## Documentation
