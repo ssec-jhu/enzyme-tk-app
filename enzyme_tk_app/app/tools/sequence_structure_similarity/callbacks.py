@@ -21,6 +21,7 @@ from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
 from enzyme_tk_app.app.utils.captcha import validate_captcha
+from enzyme_tk_app.app.utils.data_availability import validate_tool_data
 from enzyme_tk_app.app.utils.data_loading import get_foldseek_database_options, validate_db_names
 from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
@@ -159,8 +160,9 @@ def validate_structure_similarity_form(task_name, sequence, databases):
     has_sequence = sequence and sequence.strip()
     has_databases = databases and len(databases) > 0
 
-    # Enable the submit button only if all required fields are valid; otherwise, disable it.
-    if has_name and has_sequence and has_databases:
+    # Enable the submit button only if all required fields are valid — and only if the tool's
+    # reference data is there, which no entry here can fix.
+    if has_name and has_sequence and has_databases and validate_tool_data(TOOL_DEF["slug"]) is None:
         return False
 
     # keep the button disabled if any required field is missing or invalid
@@ -208,12 +210,25 @@ def submit_structure_similarity_job(
         captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
-        A status message with the submitted job ID, or an empty string
-        when clearing stale state.
+        A status message with the submitted job ID; on reopen, an empty string —
+        or a missing-data error row when the tool has no data to run against.
     """
     # Clear stale results when the modal is freshly opened.
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""
+        # Freshly opened: clear the previous job id — or, when the tool has no data to run
+        # against, say so here.  The card's badge is the first warning; this is the second,
+        # beside the Run button the same check disables.
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
+
+    # Missing reference data is a property of the deployment, not of this submission — no
+    # correction to the form can fix it — so it is reported ahead of every field validator,
+    # unlike the job cap, which AGENTS.md pins last so a typo shows its own error first.  Not
+    # redundant with the disabled Run button: that gate is client-side, and a page left open
+    # while the data mount changes underneath it keeps a stale enabled button.
+    error = validate_tool_data(TOOL_DEF["slug"])
+    if error:
+        return build_submission_error(error)
 
     # Server-side validation.
     if not task_name or not task_name.strip() or not sequence or not sequence.strip() or not databases:

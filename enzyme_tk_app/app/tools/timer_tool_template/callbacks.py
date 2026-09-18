@@ -29,6 +29,7 @@ from enzyme_tk_app.app.components.modal_helpers import build_submission_error, b
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
 from enzyme_tk_app.app.utils.captcha import validate_captcha
+from enzyme_tk_app.app.utils.data_availability import validate_tool_data
 from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example duration (the dropdown value) -> task name.
@@ -121,6 +122,11 @@ def populate_example_duration(example_value):
 def validate_timer_form(task_name, duration):
     """Enable the Run button only once every required field has a value.
 
+    A tool whose reference data is absent never enables it at all — see
+    ``utils/data_availability.py``.  The template has no data dependencies, so that
+    check is always ``None`` here; it is wired in so a tool copied from this file
+    inherits the gate rather than forgetting it.
+
     Check **presence, not validity**.  ``dbc.Input(type="number", min=1,
     max=300)`` makes the browser mark an out-of-range entry invalid, and Dash
     then hands this callback ``None`` — so 0 or 500 disables the button here
@@ -139,7 +145,9 @@ def validate_timer_form(task_name, duration):
     has_name = task_name and task_name.strip()
     # Deliberately not `bool(duration)` — a bare 0 is present, just out of range.
     has_duration = duration is not None and str(duration).strip() != ""
-    return not (has_name and has_duration)
+    # The template has no data dependencies, so this check is always None here.  It is wired
+    # in anyway so a tool copied from this template inherits the gate instead of forgetting it.
+    return not (has_name and has_duration) or validate_tool_data(TOOL_DEF["slug"]) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -179,12 +187,25 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
         captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
-        A status message with the submitted job ID, or an empty string
-        when clearing stale state.
+        A status message with the submitted job ID; on reopen, an empty string —
+        or a missing-data error row when the tool has no data to run against.
     """
     # ── Clear stale results on modal reopen (intentional DOM write, not a guard) ──
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""
+        # Freshly opened: clear the previous job id — or, when the tool has no data to run
+        # against, say so here.  The card's badge is the first warning; this is the second,
+        # beside the Run button the same check disables.
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
+
+    # Missing reference data is a property of the deployment, not of this submission — no
+    # correction to the form can fix it — so it is reported ahead of every field validator,
+    # unlike the job cap, which AGENTS.md pins last so a typo shows its own error first.  Not
+    # redundant with the disabled Run button: that gate is client-side, and a page left open
+    # while the data mount changes underneath it keeps a stale enabled button.
+    error = validate_tool_data(TOOL_DEF["slug"])
+    if error:
+        return build_submission_error(error)
 
     # ── Re-validate server-side ─────────────────────────────────────
     # validate_timer_form already disables the button, but a crafted request

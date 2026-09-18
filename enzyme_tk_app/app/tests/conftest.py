@@ -55,6 +55,61 @@ def _captcha_off(monkeypatch):
     monkeypatch.setattr(captcha, "PRODUCTION_MODE", False)
 
 
+@pytest.fixture(autouse=True)
+def _tool_data_checks_clean(monkeypatch):
+    """Pin every tool's data checks to "nothing to report" for the whole suite.
+
+    Third switch in the same family as the two fixtures above, and pinned for the
+    same reason: ``data/`` is git-ignored apart from the demo sets, so what a given
+    machine happens to have downloaded would otherwise decide test outcomes.
+    ``validate_tool_data`` is OR'd into every tool's ``validate_*`` callback and is
+    the first guard in every ``submit_*``, so without this pin a developer missing
+    the Func-E checkpoints — and CI, which downloads nothing — sees Run disabled
+    and every submit refused, for a reason that has nothing to do with the code
+    under test.
+
+    The registries on ``enzyme_tk_app.app.tools`` are what get replaced, because
+    ``check_tool_data`` imports them *inside* the function on every call — so this
+    single patch reaches the card badge, the Run gate and the submit guard alike.
+    A test that wants a check to report something calls :func:`patch_tool_checks`,
+    whose ``monkeypatch`` calls run after this one and therefore win.
+    """
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA", {})
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA_WARNINGS", {})
+
+
+def patch_tool_checks(monkeypatch, slug, blocking=(), warnings=()):
+    """Register data checks for *slug* that report exactly the given labels.
+
+    Patches the two registries on ``enzyme_tk_app.app.tools`` rather than any
+    consumer's own binding: ``data_warning`` imports ``check_tool_data`` at module
+    import time and every tool's callbacks import ``validate_tool_data`` the same
+    way, so the registries are the one place that reaches all of them at once —
+    and patching there is what makes the card and the modal provably agree.
+
+    Every other tool is left unregistered while this is in force, which is exactly
+    what a tool with no ``check_data.py`` looks like — so passing a slug the code
+    under test does not use is how a test says "this tool has no data dependencies".
+
+    Args:
+        monkeypatch: The test's ``monkeypatch`` fixture.
+        slug: Tool slug the checks are registered under.
+        blocking: Labels for data the tool cannot run without — or a
+            zero-argument callable, to register a check that raises.
+        warnings: Labels for data that is present but unusable while the tool
+            still runs; same two forms.
+    """
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA", {slug: _check_reporting(blocking)})
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA_WARNINGS", {slug: _check_reporting(warnings)})
+
+
+def _check_reporting(labels):
+    """Return a ``check_data``-shaped callable reporting *labels* (a callable passes through)."""
+    if callable(labels):
+        return labels
+    return lambda: list(labels)
+
+
 # Directory containing test data files (CSV fixtures, etc.).
 TEST_DATA_DIR = Path(__file__).parent / "data"
 

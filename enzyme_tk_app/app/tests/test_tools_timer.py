@@ -13,11 +13,18 @@ from enzyme_tk_app.app.tests.conftest import (
     find_components,
     get_text,
     make_job,
+    patch_tool_checks,
     submission_error_text,
     submitted_job_id,
 )
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.utils.formatting import truncate_id
+
+# The timer template genuinely has no data dependencies, so the tests that exercise
+# its data gate register this label for it — the shape a real tool's check returns.
+MISSING_DATA_LABEL = "Timer schedules (data/timers/)"
+# What the user is shown is the path out of that label, not the label itself.
+MISSING_DATA_PATH = "data/timers/"
 
 # ---------------------------------------------------------------------------
 # Modal structure — timer-specific controls
@@ -153,9 +160,22 @@ def test_submit_requires_a_task_name():
             submit_timer_job(1, 0, "   ", 5, False, None)
 
 
-def test_submit_clears_results_on_launch():
-    """Re-opening the modal must clear the stale results placeholder without calling the scheduler."""
+@pytest.mark.parametrize(
+    "missing_data",
+    [[], [MISSING_DATA_LABEL]],
+    ids=["data-present-clears-stale-id", "data-missing-says-so"],
+)
+def test_launch_clears_the_results_slot_or_reports_missing_data(monkeypatch, missing_data):
+    """Re-opening the modal clears the stale job id — or explains why Run is dead.
+
+    Both branches must leave the scheduler alone: opening a form is not a
+    submission.  The missing-data branch is the only text on screen next to a Run
+    button this deployment will never enable, so returning a bare ``""`` there
+    leaves the user clicking a disabled button with no explanation.
+    """
     from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=missing_data)
 
     with (
         patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
@@ -165,7 +185,49 @@ def test_submit_clears_results_on_launch():
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
         result = submit_timer_job(0, 1, "smoke test", 5, False, None)
-    assert result == ""
+
+    if missing_data:
+        assert MISSING_DATA_PATH in submission_error_text(result)
+    else:
+        assert result == "", "A freshly opened modal with its data in place must show an empty slot"
+    mock_get_sched.assert_not_called()
+
+
+def test_validate_disables_run_when_the_tool_has_no_data(monkeypatch):
+    """A complete form must still leave Run disabled when the data is not installed.
+
+    Every field is filled here, so the only thing that can keep the button off is
+    the data check — the gate a user meets before the submit-side one below.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import validate_timer_form  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=[MISSING_DATA_LABEL])
+
+    assert validate_timer_form("smoke test", 5) is True
+
+
+def test_submit_reports_missing_data_before_any_field_error(monkeypatch):
+    """Missing data is reported ahead of every field validator, blank Task Name included.
+
+    A blank Task Name normally ends this callback in ``PreventUpdate`` with nothing
+    on screen, so getting the data message back is proof the guard runs first.
+    That order is the point: no correction to the form can install a database, and
+    "enter a task name" would send the user round a loop they cannot finish.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=[MISSING_DATA_LABEL])
+
+    with (
+        patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+        ) as mock_get_sched,
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_timer_job(1, 0, "", 5, False, None)
+
+    assert MISSING_DATA_PATH in submission_error_text(result)
     mock_get_sched.assert_not_called()
 
 

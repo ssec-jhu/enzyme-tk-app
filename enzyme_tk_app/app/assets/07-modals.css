@@ -200,6 +200,14 @@
     color: var(--status-failure);
 }
 
+/* The message is a single flex child, so on the wrapping row above a message
+   too wide for one line breaks *whole* and strands the icon on the line before
+   it.  Taking the remaining width makes the text wrap inside itself instead. */
+.modal-submission-error > span {
+    flex: 1;
+    min-width: 0;
+}
+
 .modal-submission-success-id {
     font-size: 0.9rem;
     font-weight: 500;

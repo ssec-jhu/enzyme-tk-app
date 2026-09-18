@@ -337,6 +337,31 @@ def _tools_with_callbacks():
             continue
 
 
+def test_every_tool_checks_its_data_before_running():
+    """Every tool's callbacks must import the data-availability guard.
+
+    A tool that skips it is a submission endpoint that accepts jobs it cannot run:
+    Run stays enabled, the job is queued, and the failure surfaces minutes later in
+    the worker as a stack trace about a missing file — instead of one line in the
+    modal, before anything is submitted.  Walking the live registry means tool #7
+    is held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot see
+    *where* the guard is called.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_tool_data", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_tool_data from "
+            "utils.data_availability — this tool accepts jobs it has no data to run"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
 def test_every_tool_enforces_the_active_job_limit():
     """Every tool's submit path must import the per-session job cap.
 
