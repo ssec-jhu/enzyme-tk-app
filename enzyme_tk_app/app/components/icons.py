@@ -13,7 +13,8 @@ ICON_TOOL_SEQUENCE = "fa-solid fa-dna"
 ICON_TOOL_STRUCTURE = "fa-solid fa-cube"
 ICON_TOOL_TIMER = "fa-solid fa-hourglass-half"
 ICON_TOOL_ACTIVITY = "fa-solid fa-bolt"
-ICON_DATA_WARNING = "fa-solid fa-triangle-exclamation"
+ICON_DATA_WARNING = "fa-solid fa-triangle-exclamation"  # blocking: the tool cannot run
+ICON_DATA_ADVISORY = "fa-solid fa-circle-info"  # advisory: a file was skipped, the tool still runs
 
 # --- Footer: Social Links ---
 ICON_SOCIAL_GITHUB = "fa-brands fa-github"

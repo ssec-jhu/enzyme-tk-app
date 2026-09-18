@@ -149,8 +149,11 @@ def modal():
                                     ),
                                     dbc.Col(
                                         dbc.Input(
+                                            # debounce: validate_* now probes the data mount, so an
+                                            # un-debounced field would do it on every keystroke.
                                             id=f"id-input-{TOOL_DEF['slug']}-task-name",
                                             type="text",
+                                            debounce=300,
                                             placeholder="e.g. 'Lysozyme FoldSeek search'",
                                             className="themed-control",
                                         ),
@@ -176,6 +179,7 @@ def modal():
                                                     "(e.g. KVFGRCELAAAMKRHGLDNYR...)"
                                                 ),
                                                 rows=4,
+                                                debounce=300,
                                                 className="themed-control",
                                                 style={"fontFamily": "monospace", "fontSize": "0.9rem"},
                                             ),
