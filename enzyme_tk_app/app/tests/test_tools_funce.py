@@ -60,7 +60,7 @@ import pytest
 from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import find_components, make_job
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, submission_error_text
 from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, EXAMPLE_REACTIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.funce.callbacks import (
     populate_example_reaction,
@@ -885,5 +885,5 @@ def test_submit_returns_error_when_smiles_invalid(smiles):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10, None)
 
-    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    assert submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()

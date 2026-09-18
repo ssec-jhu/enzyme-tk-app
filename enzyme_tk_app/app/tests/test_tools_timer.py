@@ -9,7 +9,13 @@ import pytest
 from dash import dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job, submitted_job_id
+from enzyme_tk_app.app.tests.conftest import (
+    find_components,
+    get_text,
+    make_job,
+    submission_error_text,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.utils.formatting import truncate_id
 
@@ -187,7 +193,7 @@ def test_submit_rejects_bad_duration(duration, expected_fragment):
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_timer_job(1, 0, "smoke test", duration, False, None)
-    assert expected_fragment in result
+    assert expected_fragment in submission_error_text(result)
 
 
 def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
@@ -229,8 +235,8 @@ def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_timer_job(1, 0, "at the cap", 10, False, None)
 
-    assert "3" in result
-    assert "Cancel" in result
+    assert "3" in submission_error_text(result)
+    assert "Cancel" in submission_error_text(result)
     tool_scheduler.submit_job.assert_not_called()
 
 
@@ -273,7 +279,7 @@ def test_submit_is_refused_without_a_captcha_solution(monkeypatch):
     """With the captcha live, a submit carrying no payload must never reach the scheduler."""
     result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None)
 
-    assert "verification" in result.lower()
+    assert "verification" in submission_error_text(result).lower()
     tool_scheduler.submit_job.assert_not_called()
 
 
@@ -304,8 +310,8 @@ def test_a_malformed_submit_shows_its_own_error_before_the_captcha(monkeypatch):
     """
     result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None, duration=500)
 
-    assert "Duration" in result
-    assert "verification" not in result.lower()
+    assert "Duration" in submission_error_text(result)
+    assert "verification" not in submission_error_text(result).lower()
     tool_scheduler.submit_job.assert_not_called()
 
 
@@ -372,8 +378,9 @@ def test_submit_success_links_to_my_tasks():
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_timer_job(1, 0, "smoke test", 10, False, None)
 
-    # A component, not a string: 07-modals.css styles a bare string here as an error.
+    # The shared success row, not a bare string: a string would render with no box at all.
     assert not isinstance(result, str), "Success must return the block, not a plain string"
+    assert "modal-submission-success" in result.className
     links = [a for a in find_components(result, html.A) if a.href == "/my-tasks"]
     assert len(links) == 1, f"Expected exactly one /my-tasks anchor, found {len(links)}"
     assert "Track progress" in get_text(links[0])
@@ -386,12 +393,13 @@ def test_submit_success_links_to_my_tasks():
     assert "job-link-1" not in get_text(result), "The full id must not be rendered inline"
 
 
-def test_submit_error_stays_a_plain_string():
-    """A validation error must stay a bare string — that is how the CSS tells them apart.
+def test_submit_error_returns_the_shared_error_row():
+    """A validation error must come back as the shared error row, not a bare string.
 
-    ``07-modals.css`` styles a non-empty ``.modal-submission-results`` red and
-    cancels that box only around ``.modal-submission-success``.  An error
-    returned as a component would render as a success, link and all.
+    Both outcomes are components sharing ``modal-submission-row`` and differing
+    only by their own class, so the results div styles nothing itself.  An error
+    returned as a plain string therefore renders with no box, no colour and no
+    icon — it would read as ordinary body text inside the modal.
     """
     from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
 
@@ -399,7 +407,7 @@ def test_submit_error_stays_a_plain_string():
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_timer_job(1, 0, "smoke test", 99999, False, None)
 
-    assert isinstance(result, str) and result.strip(), "Expected a non-empty error string"
+    assert submission_error_text(result)
 
 
 def test_submit_with_simulate_failure_flag():

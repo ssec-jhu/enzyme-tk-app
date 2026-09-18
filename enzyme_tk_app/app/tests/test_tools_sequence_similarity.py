@@ -26,7 +26,14 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
-from enzyme_tk_app.app.tests.conftest import TEST_SEQUENCES_CSV, find_components, get_text, make_job, submitted_job_id
+from enzyme_tk_app.app.tests.conftest import (
+    TEST_SEQUENCES_CSV,
+    find_components,
+    get_text,
+    make_job,
+    submission_error_text,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.callbacks import (
     populate_cofactor_options,
@@ -1419,7 +1426,7 @@ def test_submit_returns_error_when_top_n_invalid():
         )
 
     # validate_top_n returns an error string for None — no job should be submitted.
-    assert "Invalid" in result
+    assert "Invalid" in submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 
@@ -1540,7 +1547,7 @@ def test_submit_rejects_database_that_is_not_offered(tmp_path, database):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         result = submit_sequence_similarity_job(1, 0, "Task", [database], "MKTAY", None, None, 10, False, None)
 
-    assert "Unknown database" in result
+    assert "Unknown database" in submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 

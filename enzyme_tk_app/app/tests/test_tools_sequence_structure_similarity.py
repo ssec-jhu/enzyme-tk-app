@@ -24,7 +24,14 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
-from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job, offered_databases, submitted_job_id
+from enzyme_tk_app.app.tests.conftest import (
+    find_components,
+    get_text,
+    make_job,
+    offered_databases,
+    submission_error_text,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.sequence_structure_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks import (
     display_uploaded_filename,
@@ -278,8 +285,8 @@ def test_submit_job_rejects_database_the_dropdown_does_not_offer():
         )
 
     # Must return an error message naming the malicious database name.
-    assert "Unknown database" in result
-    assert "../etc/passwd" in result
+    assert "Unknown database" in submission_error_text(result)
+    assert "../etc/passwd" in submission_error_text(result)
 
 
 def test_submit_job_rejects_unsupported_structure_extension():
@@ -304,8 +311,8 @@ def test_submit_job_rejects_unsupported_structure_extension():
             captcha_payload=None,
         )
 
-    assert "Unsupported file type" in result
-    assert "protein.xyz" in result
+    assert "Unsupported file type" in submission_error_text(result)
+    assert "protein.xyz" in submission_error_text(result)
 
 
 def test_submit_job_sequence_mode_calls_scheduler():

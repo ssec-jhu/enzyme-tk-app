@@ -23,6 +23,7 @@ from enzyme_tk_app.app.tests.conftest import (
     make_job,
     make_reaction_df,
     offered_databases,
+    submission_error_text,
     submitted_job_id,
 )
 from enzyme_tk_app.app.tools.substrate_product_similarity import (
@@ -664,7 +665,7 @@ def test_subprod_submit_returns_error_when_smiles_invalid(smiles):
             1, 0, "My Query", ["db.csv"], smiles, ["tanimoto"], 10, "substrate", None
         )
 
-    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    assert submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 
@@ -827,7 +828,7 @@ def test_subprod_submit_returns_error_when_top_n_invalid():
             1, 0, "My Task", ["db.csv"], "CCO", ["tanimoto"], None, "substrate", None
         )
 
-    assert "Invalid" in result
+    assert "Invalid" in submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 

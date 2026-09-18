@@ -430,6 +430,31 @@ def test_every_tool_links_to_my_tasks_on_success():
     assert checked, "No tool with callbacks was found — discovery must have changed"
 
 
+def test_every_tool_wraps_its_submit_errors():
+    """Every tool's submit path must import the shared error row.
+
+    The results div carries no styling of its own, so a validator message
+    returned bare renders as ordinary body text — no box, no colour, no icon.
+    A tool that skips the helper silently degrades every one of its validation
+    messages, which is exactly the class of bug nothing else would report.
+
+    An import check has teeth because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot
+    see that *every* error branch is wrapped.  That half is covered
+    behaviourally in each tool's own test file, via
+    ``conftest.submission_error_text``, which asserts the row's class.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "build_submission_error", None) is not None, (
+            f"{slug}: callbacks.py does not import build_submission_error from "
+            "components.modal_helpers — this tool's validation messages render unstyled"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
 def test_every_smiles_field_is_validated():
     """A tool that takes a structure must import a validator into its callbacks.
 

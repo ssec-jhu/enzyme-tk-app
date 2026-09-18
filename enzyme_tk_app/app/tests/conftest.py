@@ -414,3 +414,27 @@ def submitted_job_id(result):
     spans = [s for s in find_components(result, html.Span) if getattr(s, "title", None)]
     assert len(spans) == 1, f"Expected exactly one tooltipped id span, found {len(spans)}"
     return spans[0].title
+
+
+def submission_error_text(result):
+    """Return the message from a submission error block, asserting its shape first.
+
+    Both submit outcomes are components sharing the ``modal-submission-row``
+    base class and differing by their own class, so a test that only reads the
+    text cannot tell an error from a success.  This pins that the caller really
+    got an error row — not a success row, and not a bare string, which would
+    render with no box and no icon — then hands back the text for substring
+    assertions.
+
+    Args:
+        result: The component returned by a tool's ``submit_*`` callback.
+
+    Returns:
+        The rendered text of the error row.
+    """
+    assert not isinstance(result, str), "A submit error must be the shared error block, not a bare string"
+    classes = (getattr(result, "className", "") or "").split()
+    assert "modal-submission-error" in classes, f"Expected a modal-submission-error row, got {classes!r}"
+    text = get_text(result)
+    assert text.strip(), "The error block carries no message"
+    return text
