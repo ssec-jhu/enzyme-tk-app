@@ -122,7 +122,14 @@ to look at until you create one. Submit through the UI:
 
 1. `http://localhost:8050/` → click a card's `Launch →`.
 2. Fill the modal (see the native-setter note above) and click
-   `id-btn-<slug>-submit`.
+   `id-btn-<slug>-submit`. The modal stays open and answers in place: an
+   accepted submit renders `div.modal-submission-success` (green, with a
+   `/my-tasks` link), while a refusal is a bare red string in
+   `div.modal-submission-results` — read it before concluding the click did
+   nothing, since it names *which* guard rejected the submit. The green block
+   is one line and shows only the `truncate_id()` prefix of the job id: the full
+   value is the `title` of `span.modal-submission-success-id`, so take it from
+   there rather than from the visible text.
 3. Poll `http://localhost:8050/my-tasks` until the badge reads `SUCCESS`, then
    follow the `/my-tasks/<job_id>` link.
 
@@ -134,9 +141,11 @@ when they are not. `scripts/db_build/download_data.py` downloads both in its
 default minimal tier (the checkpoints come from the project's own Hugging Face
 dataset as `data_funce.zip`); naming any single unit still prints an
 `OK`/`MISSING` line per data item at the end, which is the quickest way to tell a
-missing prerequisite from a real regression. **Sequence / Sequence+Structure Similarity** need database
-files that are usually absent locally — a failure there is almost certainly not
-your change. Confirm by reading `.jobs-error-box`.
+missing prerequisite from a real regression. **Sequence Similarity** now runs on
+the repository's shipped `sequences/enzymes_demo_set.tsv`, so it is a usable
+choice too. **Sequence+Structure Similarity** still needs the ProstT5 weights
+(`data/foldseek_models/weights/`) on top of its shipped demo database — a failure
+there is almost certainly not your change. Confirm by reading `.jobs-error-box`.
 
 The browser session is cookie-scoped, so a fresh pane starts with zero tasks
 even when jobs exist in Redis.

@@ -9,6 +9,7 @@ changes a single-file edit.
 Usage::
 
     from enzyme_tk_app.app.components.modal_helpers import (
+        build_submission_success,
         create_modal_config_section_header,
         create_modal_databases_label,
         create_modal_footer,
@@ -40,8 +41,15 @@ Usage::
 import dash_bootstrap_components as dbc
 from dash import dcc, html
 
-from enzyme_tk_app.app.components.icons import ICON_MODAL_INFO, ICON_SECTION_CONFIG, ICON_SECTION_INPUT
+from enzyme_tk_app.app.components.icons import (
+    ICON_MODAL_INFO,
+    ICON_SECTION_CONFIG,
+    ICON_SECTION_INPUT,
+    ICON_STATUS_SUCCESS,
+    ICON_SUBMISSION_TRACK,
+)
 from enzyme_tk_app.app.utils import captcha
+from enzyme_tk_app.app.utils.formatting import truncate_id
 
 # Contract with assets/12-altcha-bridge.js, which finds holders by this class and derives the
 # Store id from the holder id.  Renaming either means editing that file in the same change —
@@ -194,6 +202,13 @@ def create_modal_submission_results(slug):
 
     This is populated by the submit callback in callbacks.py of the tool
     with a job-ID confirmation message or a validation error.
+
+    The two are told apart by *type*, and ``07-modals.css`` styles them
+    differently off that distinction: a **bare string** here is a validation
+    error (red), while every success path returns
+    :func:`build_submission_success` (green, with the My Tasks link).  A
+    success message returned as a plain string would render as an error.
+
     Args:
         slug: The tool slug from ``TOOL_DEF["slug"]``.
 
@@ -201,3 +216,55 @@ def create_modal_submission_results(slug):
         An ``html.Div`` with ``id=f"id-div-{slug}-results"``.
     """
     return html.Div(id=f"id-div-{slug}-results", className="modal-submission-results")
+
+
+def build_submission_success(job_id, detail):
+    """Return the post-submit success row: job ID, terse detail, My Tasks link.
+
+    The link is the only thing on screen telling a first-time user their job is
+    now tracked somewhere.  The modal deliberately stays open after Run, so
+    submitting another job needs no affordance of its own — this only has to
+    signpost the page that follows the one already running.
+
+    **One line, deliberately.**  Every tool modal already overruns a laptop
+    viewport, so this row is kept to a single line: the job id goes through the
+    shared :func:`~enzyme_tk_app.app.utils.formatting.truncate_id` with the full
+    value in its tooltip (the full uuid measures 416 px and wraps, which used to
+    cost a whole extra line), and ``detail`` is a terse fragment rather than a
+    sentence.  Measured budget is ~720 px of block width on a 1366 px laptop.
+
+    Args:
+        job_id: The id returned by ``TaskScheduler.submit_job()``.  Shown
+            truncated; the full value goes in the tooltip.
+        detail: A terse fragment naming what was submitted, e.g.
+            ``"2 database(s) · top 10"`` — not a sentence, and short enough to
+            share one line with the id and the link.
+
+    Returns:
+        An ``html.Div`` with ``className="modal-submission-success"``.
+    """
+    return html.Div(
+        className="modal-submission-success",
+        children=[
+            html.I(className=ICON_STATUS_SUCCESS),
+            # truncate_id, not a local slice: the My Tasks Task ID column and /admin use the
+            # same helper, so the modal and the page its link leads to show the same string.
+            html.Span(
+                f"Job submitted — {truncate_id(job_id)}",
+                title=job_id,
+                className="modal-submission-success-id",
+            ),
+            html.Span(f"· {detail}", className="modal-submission-success-detail"),
+            # html.A, not dcc.Link: every other /my-tasks link in the app is a plain anchor
+            # (navbar.make_nav_link, my_tasks_view_results._build_back_link), and a full load
+            # leaves no open modal mounted on the page being navigated away from.
+            html.A(
+                className="modal-submission-success-link",
+                href="/my-tasks",
+                children=[
+                    "Track progress",
+                    html.I(className=f"{ICON_SUBMISSION_TRACK} modal-submission-success-arrow"),
+                ],
+            ),
+        ],
+    )

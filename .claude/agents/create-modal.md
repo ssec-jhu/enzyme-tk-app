@@ -199,6 +199,36 @@ create_modal_submission_results(TOOL_DEF["slug"])
 ```
 This empty div is populated by the submit callback with a job-ID confirmation or validation error.
 
+**It is one div for both, and they are told apart by *type*, not by wording.** A **bare
+string** here is a validation error and `07-modals.css` paints it red; a **success** returns
+`build_submission_success(job_id, detail)` from `modal_helpers`, which brings its own green
+box, and a `:has()` rule cancels the error box around it. So:
+
+- Never return a success message as a plain f-string — it renders as an error, and the user
+  loses the `/my-tasks` link that is the only thing telling them the job is now tracked.
+- Never wrap an error in a component — it renders as a success, link and all.
+- The link is an `html.A`, not a `dcc.Link`: every other `/my-tasks` link in the app is a
+  plain anchor, and a full load leaves no open modal mounted behind it.
+
+**The block is one 41px line, and that is a height budget, not a style preference.** Every
+tool modal already overruns a laptop viewport — measured at 1366x660, a modal is ~715px with
+this div *empty*, so the Run button is already below the fold. The row therefore holds the id
+through the shared `truncate_id()` from `utils/formatting.py` — the same helper the My Tasks
+table and `/admin` use, so all three show the same string — with the full value in its `title`
+(the full uuid measures 416px and wraps), a terse `detail` fragment rather than a sentence, and the link right-aligned by
+`margin-left: auto`. It has roughly **720px** to work with on a laptop, so:
+
+- Pass `detail` as a fragment (`"2 database(s) · top 10"`), never a sentence. A joined list of
+  database names will wrap the row — Sequence+Structure shows a count for exactly that reason.
+- `flex-wrap` plus the link's `margin-left: auto` is what degrades gracefully on a narrow
+  viewport: the link drops to its own right-aligned line rather than stretching the row.
+
+`test_every_tool_links_to_my_tasks_on_success` in `tests/test_tools.py` walks the live
+registry for the import; `test_submit_success_links_to_my_tasks` and
+`test_submit_error_stays_a_plain_string` in `test_tools_timer.py` pin the two return types an
+import walk cannot see. The modal deliberately stays open after Run, which is why "submit
+another" needs no affordance of its own (`toggle_*_modal`'s docstring).
+
 ## 10. Canonical Reference
 The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.py`, and it is a real one — it follows every rule above with nothing tool-specific in the way: the §1 docstring in full, Task Name as the first row of Section 1, the example picker (`dcc.Dropdown` with id `f"id-dropdown-{TOOL_DEF['slug']}-example"`, `searchable=False`, under the `ICON_MODAL_EXAMPLE` + "Try an example:" `html.Small`) nested beneath the input it fills, both section headers, the results placeholder and the shared footer. When in doubt, mirror its structure, docstring, and commenting style exactly.
 

@@ -164,15 +164,76 @@
    Modal Submission Results — status placeholder
    ========================================================================== */
 
+/* A bare string in this div is a validation error — every success path returns
+   .modal-submission-success instead (see components/modal_helpers.py). */
 .modal-submission-results:not(:empty) {
     margin-top: 1rem;
     padding: 0.75rem 1rem;
-    border-radius: 0.375rem;
+    border-radius: var(--radius-sm);
     font-size: 0.9rem;
     font-weight: 500;
-    background-color: var(--bg-body);
+    background: color-mix(in srgb, var(--status-failure) 12%, white);
+    color: var(--status-failure);
+    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, transparent);
+}
+
+/* The success block brings its own box, so cancel the error box around it.
+   Ceiling: without :has() support the green block nests inside a red one —
+   cosmetic only.  The upgrade path is wrapping the ~25 `return error` lines in
+   a build_submission_error() helper, which is the churn this selector avoids. */
+.modal-submission-results:has(.modal-submission-success) {
+    margin-top: 0;
+    padding: 0;
+    background: none;
+    border: none;
+}
+
+/* --- Submission success block -------------------------------------------- */
+
+/* One flex row, not stacked children: every tool modal already overruns a
+   laptop viewport, so this block is held to a single 41px line.  flex-wrap
+   plus the link's margin-left:auto is what degrades gracefully — the link
+   right-aligns on a laptop and drops to its own right-aligned line when the
+   row cannot fit. */
+.modal-submission-success {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--status-success) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-success) 35%, transparent);
+    color: var(--status-success);
+}
+
+.modal-submission-success-id {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.modal-submission-success-detail {
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
+}
+
+.modal-submission-success-link {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--secondary-color);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.modal-submission-success-link:hover {
+    text-decoration: underline;
+}
+
+.modal-submission-success-arrow {
+    margin-left: 0.35rem;
+    font-size: 0.75rem;
 }
 
 /* --- Field info icon ----------------------------------------------------- */

@@ -39,7 +39,8 @@ same image built from the project `Dockerfile`; `redis` pulls stock `redis:7-alp
 ```
 
 `web` mounts the same read-only `/app-data` as `worker` — it builds the tool cards and the
-database dropdowns from it, so a `web` without the mount shows every tool as "Missing data".
+database dropdowns from it, so a `web` without the mount shows every data-backed tool as
+"Missing data" (the Timer Tool Template reads no data and is always runnable).
 Only `worker` is drawn above, to keep the diagram legible.
 
 `beat` must stay at a **single replica** — two schedulers means the sweep fires twice.
@@ -405,15 +406,24 @@ Bundled reference data (`data/sequences/`, `data/reactions/`, etc. — see
 [`paths.py`](../enzyme_tk_app/app/paths.py)) is served from the **`app-data`**
 Azure Files share, mounted at `/app-data` on web and worker. Files
 must be uploaded directly to the share; they are not part of the container
-image.
+image. The local `data/<subdir>/` path maps to the same `<subdir>/` path on the
+share (e.g. `data/sequences/enzymes_demo_set.tsv` → `sequences/enzymes_demo_set.tsv`).
+
+> **The repository's demo sets do not reach Azure on their own.** Locally, a
+> `git clone` plus `docker compose up` runs four of the six tools with no
+> download because Compose bind-mounts the checkout's
+> `enzyme_tk_app/app/data/`. The image carries none of it —
+> `.dockerignore` excludes that directory from the build context — so a fresh
+> deployment starts with an **empty** share and every data-backed tool showing
+> "Missing data". Upload the four `*_demo_set` artifacts from a clone to get the
+> same out-of-the-box behaviour, or the full reference sets for real work.
 
 > **Unlike Compose, the Azure mount is not read-only.** `docker-compose.yml`
 > pins `:ro`; `main.bicep`'s `sharedVolumeMounts` sets no `readOnly`, so on
 > Azure the share is writable by both containers. Nothing in the app writes
 > there — the code treats `ETK_DATA_DIR` as read-only throughout — so this is
 > a missing guardrail rather than a live bug. Add `readOnly: true` to both
-> mounts to close it. The local `data/<subdir>/` path maps to the same `<subdir>/` path on
-the share (e.g. `data/sequences/protein.csv` → `sequences/protein.csv`).
+> mounts to close it.
 
 To add or update a file via the Azure Portal:
 
