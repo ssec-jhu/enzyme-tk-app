@@ -23,10 +23,11 @@ lives in ``utils/smiles_validation.py`` and is tested in
 only pins that Func-E *applies* it — in the form callback, on submit, and in
 ``run()``.
 
-Nothing here touches ``data/sequence_embeddings/``.  That directory is git-ignored (the
-shipped pickle and the ~3 GB checkpoint ensemble are not in the repository), so
-every compute test writes the database pickles it needs into ``tmp_path`` and
-repoints ``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
+Nothing here touches ``data/sequence_embeddings/``.  Everything in that directory is
+git-ignored bar the ~640 KB ``enzymes_demo_set.pkl`` demo set (the full reference
+pickles and the ~1.5 GB checkpoint ensemble are not in the repository), so every
+compute test writes the database pickles it needs into ``tmp_path`` and repoints
+``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
 machine that happens to have the real data.
 
 ``compute.py`` imports ``torch``/``enzymetk`` inside the functions that use them

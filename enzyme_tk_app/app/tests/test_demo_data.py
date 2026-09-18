@@ -1,8 +1,9 @@
 """Tests for the demo reference data the repository ships.
 
 Four small artifacts are tracked in ``enzyme_tk_app/app/data/`` so that a plain
-``git clone`` plus ``docker compose up`` is enough to run every tool.  Each one is a
-verbatim row-subset of a full reference file:
+``git clone`` plus ``docker compose up`` is enough to run four of the six tools --
+Sequence and Structure-Based Similarity and Func-E still need model weights no clone
+can ship.  Each artifact is a verbatim row-subset of a full reference file:
 
 - ``sequences/enzymes_demo_set.tsv``
 - ``reactions/enzymemap_demo_set.csv``
@@ -16,6 +17,11 @@ depend on what a developer happens to have lying around — here the shipped fil
 works in CI because all four artifacts are git-tracked.  Please do not "fix" this
 by pointing the constants somewhere else.
 
+Most of what follows reads a shipped file, but the chemistry examples are checked
+by *running* their tool against the shipped reactions demo set: that demo set was
+cut by measuring each example's top hits, so no string in the CSV would show that
+an example still has something to find.
+
 The four paths are derived from the app's own ``paths.py`` constants rather than
 spelled out relative to this file, so a deployment that redirects ``ETK_DATA_DIR``
 is held to the same contract: wherever the app looks for data, the demo sets are
@@ -25,8 +31,20 @@ what a first-time user gets.
 import pandas as pd
 import pytest
 
-from enzyme_tk_app.app.paths import FOLDSEEK_DB_DIR, REACTIONS_DIR, SEQUENCE_EMBEDDINGS_DIR, SEQUENCES_DIR
+from enzyme_tk_app.app.paths import (
+    FOLDSEEK_DB_DIR,
+    REACTIONS_DIR,
+    SEQUENCE_EMBEDDINGS_DIR,
+    SEQUENCES_DIR,
+    STRUCTURES_DIR,
+)
+from enzyme_tk_app.app.tools.reaction_similarity.compute import run as run_reaction_similarity
+from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_reactions
 from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
+from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
+from enzyme_tk_app.app.tools.substrate_product_similarity import get_similarity_algorithms
+from enzyme_tk_app.app.tools.substrate_product_similarity.compute import run as run_substrate_product_similarity
+from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
 from enzyme_tk_app.app.utils.columns import COL_EC_NUMBER, COL_ENTRY, COL_ID, COL_SEQUENCE, COL_UNMAPPED_SMILES
 from enzyme_tk_app.app.utils.data_loading import (
     REQUIRED_SEQUENCE_COLUMNS,
@@ -242,3 +260,118 @@ def test_the_reaction_demo_set_carries_the_columns_both_reaction_tools_read():
 
     assert COL_UNMAPPED_SMILES in columns
     assert COL_ID in columns
+
+
+# The Top N field ships ``value=10`` in both chemistry modals, and the reaction
+# demo set was cut to exactly that number: its 110 rows are the union of the
+# exact top-10 hits for all 11 chemistry examples, measured with the same
+# fingerprints the tools use.  Raise the modal default and the demo set can no
+# longer reproduce the full 62,896-row file's answer — only the full file can.
+DEFAULT_TOP_N = 10
+
+
+def _chemistry_example_cases():
+    """Build the ``run()`` params one click on each shipped chemistry example produces.
+
+    Both chemistry modals open with every database selected, every similarity
+    algorithm ticked and Top N at 10, so an example itself only supplies the
+    structure — plus, for Substrate/Product Similarity, which side of the
+    reaction that structure sits on.  Its dropdown packs the two into a single
+    ``"role||smiles"`` value that ``populate_example_smiles`` splits again; both
+    halves are read straight off the example dict both sides are built from.
+    """
+    all_algorithms = [algorithm["value"] for algorithm in get_similarity_algorithms()]
+
+    cases = []
+    for example in _get_example_reactions():
+        cases.append(
+            (
+                run_reaction_similarity,
+                {
+                    "task_name": example["task_name"],
+                    "databases": [REACTION_DEMO_SET.name],
+                    "smiles": example["value"],
+                    "algorithms": all_algorithms,
+                    "top_n": DEFAULT_TOP_N,
+                },
+            )
+        )
+
+    for example in _get_example_smiles():
+        cases.append(
+            (
+                run_substrate_product_similarity,
+                {
+                    "task_name": example["task_name"],
+                    "databases": [REACTION_DEMO_SET.name],
+                    "smiles": example["value"],
+                    "algorithms": all_algorithms,
+                    "top_n": DEFAULT_TOP_N,
+                    "role": example["role"],
+                },
+            )
+        )
+
+    return cases
+
+
+# Shared across the cases below, which is safe because a params dict is an inert
+# job payload: ``run()`` only reads it (the worker deserialises its own copy out
+# of Redis), so no case can leave a changed dict behind for the next one.
+CHEMISTRY_EXAMPLE_CASES = _chemistry_example_cases()
+CHEMISTRY_EXAMPLE_IDS = [params["task_name"] for _run_tool, params in CHEMISTRY_EXAMPLE_CASES]
+
+
+@pytest.mark.parametrize(("run_tool", "params"), CHEMISTRY_EXAMPLE_CASES, ids=CHEMISTRY_EXAMPLE_IDS)
+def test_every_chemistry_example_returns_a_full_page_of_hits(run_tool, params):
+    """Clicking any shipped chemistry example must fill the results grid.
+
+    **Ten rows is the guarantee here, not ten good scores.**  Four of these
+    examples — bisphenol-A, triclocarban, indigo and PFOA — have no close
+    analogue even in the full 62,896-row database: their best hits score
+    0.42-0.64 Tanimoto.  Asserting a similarity floor would therefore be
+    asserting something false about the chemistry rather than something true
+    about the demo set, so what is checked is that a ranked list came back at
+    all and that it is as long as the user asked for.
+
+    Unlike the sequence examples above this runs the tool, because the demo set
+    was sized by *measuring* each example's top hits: none of these queries is a
+    string in the CSV, so there is nothing to look up.  Both tools are pure RDKit
+    over 110 rows and the whole set finishes in a couple of seconds.
+    """
+    result = run_tool(params)
+    rows = result["dataframe"]["data"]
+
+    # Two assertions on purpose: nothing at all means the demo set lost the
+    # chemistry this example was chosen for, while a short list means it kept
+    # only some of it.  Those are different mornings' work.
+    assert rows, "returned no hits against the reactions demo set"
+    assert len(rows) == DEFAULT_TOP_N, f"returned {len(rows)} hits, not the {DEFAULT_TOP_N} requested"
+
+
+# ── The example query structures ─────────────────────────────────────────────
+
+
+def test_every_example_query_structure_ships_with_the_repository():
+    """An example offering a structure must offer one that is actually on disk.
+
+    ``populate_example_sequence`` reads the file with a bare ``read_bytes()``, so
+    a renamed or dropped ``.cif`` does not degrade to a sequence-only search — it
+    is an uncaught ``FileNotFoundError`` raised inside the callback the moment the
+    example is picked.  ``data/structures/`` is git-tracked for exactly that
+    reason, the only directory besides the demo sets that ``.gitignore``
+    un-ignores under ``data/``.
+    """
+    entries_with_a_structure = [entry for entry in _get_example_entries() if entry.get("structure_file")]
+
+    # Without this the test would pass by doing nothing the day the last example
+    # carrying a structure is dropped.
+    assert entries_with_a_structure, "no shipped example offers a query structure any more"
+
+    missing = [
+        entry["structure_file"]
+        for entry in entries_with_a_structure
+        if not (STRUCTURES_DIR / entry["structure_file"]).is_file()
+    ]
+
+    assert missing == []

@@ -26,7 +26,7 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
-from enzyme_tk_app.app.tests.conftest import TEST_SEQUENCES_CSV, find_components, make_job
+from enzyme_tk_app.app.tests.conftest import TEST_SEQUENCES_CSV, find_components, get_text, make_job, submitted_job_id
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.callbacks import (
     populate_cofactor_options,
@@ -1399,7 +1399,7 @@ def test_submit_returns_job_id():
                 1, 0, "My Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, None, 10, False, None
             )
 
-    assert "job-abc-123" in result
+    assert submitted_job_id(result) == "job-abc-123"
 
 
 def test_submit_returns_error_when_top_n_invalid():
@@ -1447,9 +1447,8 @@ def test_submit_message_includes_ec_filter_count():
             )
 
     # Must mention both the job ID and the filter summary.
-    assert "job-ec-456" in result
-    assert "3 EC number(s)" in result
-    assert "filtered by 3 EC number(s)" in result
+    assert submitted_job_id(result) == "job-ec-456"
+    assert "3 EC filter(s)" in get_text(result)
 
 
 def test_submit_message_includes_cofactor_filter_count():
@@ -1473,14 +1472,14 @@ def test_submit_message_includes_cofactor_filter_count():
                 1, 0, "Cofactor Task", ["test_sequences_20.csv"], "MKTAYIAKQR", None, ["FAD", "heme b"], 10, False, None
             )
 
-    assert "job-cof-789" in result
-    assert "filtered by 2 cofactor(s)" in result
+    assert submitted_job_id(result) == "job-cof-789"
+    assert "2 cofactor(s)" in get_text(result)
     # The params reach the worker as a list, the shape ``run()`` expects.
     assert mock_scheduler.submit_job.call_args.kwargs["params"]["cofactor_filter"] == ["FAD", "heme b"]
 
 
-def test_submit_message_without_filters_has_no_filtered_by():
-    """Without EC filters, the message must not contain 'filtered by'."""
+def test_submit_message_without_filters_names_no_filters():
+    """Without EC or cofactor filters, the detail fragment must name neither."""
     mock_scheduler = MagicMock()
     mock_scheduler.submit_job.return_value = "job-no-filter"
 
@@ -1500,8 +1499,9 @@ def test_submit_message_without_filters_has_no_filtered_by():
                 1, 0, "Task", ["test_sequences_20.csv"], "MKTAY", None, None, 10, False, None
             )
 
-    assert "job-no-filter" in result
-    assert "filtered by" not in result
+    assert submitted_job_id(result) == "job-no-filter"
+    assert "EC filter" not in get_text(result)
+    assert "cofactor" not in get_text(result)
 
 
 def test_submit_raises_prevent_update_when_fields_empty():

@@ -405,6 +405,31 @@ def test_every_modal_carries_a_captcha_store():
     assert checked, "No tool modal was found — discovery must have changed"
 
 
+def test_every_tool_links_to_my_tasks_on_success():
+    """Every tool's submit path must import the shared success block.
+
+    The job ID alone is a dead end: the modal stays open after Run, so without
+    the block's My Tasks link nothing on screen tells a first-time user their
+    job is now tracked anywhere.  Walking the live registry means tool #7 is
+    held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot
+    see that the block is returned on the *success* path, nor that its link
+    points at ``/my-tasks``.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "build_submission_success", None) is not None, (
+            f"{slug}: callbacks.py does not import build_submission_success from "
+            "components.modal_helpers — this tool's submit message is a dead end"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
 def test_every_smiles_field_is_validated():
     """A tool that takes a structure must import a validator into its callbacks.
 

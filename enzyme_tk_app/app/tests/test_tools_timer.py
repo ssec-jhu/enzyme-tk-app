@@ -9,8 +9,9 @@ import pytest
 from dash import dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job
+from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job, submitted_job_id
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
+from enzyme_tk_app.app.utils.formatting import truncate_id
 
 # ---------------------------------------------------------------------------
 # Modal structure — timer-specific controls
@@ -290,7 +291,7 @@ def test_a_solved_captcha_lets_the_submit_through(monkeypatch):
 
     result, tool_scheduler = _submit_with_captcha_on(monkeypatch, payload)
 
-    assert "job-captcha-1" in result
+    assert submitted_job_id(result) == "job-captcha-1"
     tool_scheduler.submit_job.assert_called_once()
 
 
@@ -338,8 +339,67 @@ def test_submit_calls_scheduler():
         params={"task_name": "smoke test", "seconds": 10, "simulate_failure": False},
         session_id="sess-test",
     )
-    assert "job-123" in result
-    assert "10s" in result
+    assert submitted_job_id(result) == "job-123"
+    assert "10s" in get_text(result)
+
+
+def test_submit_success_links_to_my_tasks():
+    """The success message must carry a working /my-tasks link, not just a job ID.
+
+    The import walk in ``test_tools.py`` can see that every tool imports the
+    shared block; only this can see that it is returned on the *success* path
+    and that its anchor actually points somewhere.  The href is the whole
+    feature — the modal stays open after Run, so this link is the only thing
+    telling the user their job is being tracked on another page.
+    """
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    mock_scheduler = MagicMock()
+    mock_scheduler.submit_job.return_value = "job-link-1"
+
+    with server.test_request_context():
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-test"
+        with (
+            patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+                return_value=mock_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_timer_job(1, 0, "smoke test", 10, False, None)
+
+    # A component, not a string: 07-modals.css styles a bare string here as an error.
+    assert not isinstance(result, str), "Success must return the block, not a plain string"
+    links = [a for a in find_components(result, html.A) if a.href == "/my-tasks"]
+    assert len(links) == 1, f"Expected exactly one /my-tasks anchor, found {len(links)}"
+    assert "Track progress" in get_text(links[0])
+
+    # The id is truncated on screen so the row stays one line, with the full value in the
+    # tooltip.  Both halves are the contract: a full id rendered inline would wrap the row
+    # and undo the compaction, and a truncated tooltip would lose the only copyable handle.
+    assert submitted_job_id(result) == "job-link-1"
+    assert truncate_id("job-link-1") in get_text(result)
+    assert "job-link-1" not in get_text(result), "The full id must not be rendered inline"
+
+
+def test_submit_error_stays_a_plain_string():
+    """A validation error must stay a bare string — that is how the CSS tells them apart.
+
+    ``07-modals.css`` styles a non-empty ``.modal-submission-results`` red and
+    cancels that box only around ``.modal-submission-success``.  An error
+    returned as a component would render as a success, link and all.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_timer_job(1, 0, "smoke test", 99999, False, None)
+
+    assert isinstance(result, str) and result.strip(), "Expected a non-empty error string"
 
 
 def test_submit_with_simulate_failure_flag():
@@ -364,7 +424,7 @@ def test_submit_with_simulate_failure_flag():
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_timer_job(1, 0, "smoke test", 5, True, None)
 
-    assert "simulate failure" in result
+    assert "simulate failure" in get_text(result)
     # Verify simulate_failure=True was passed through to the scheduler.
     call_kwargs = mock_scheduler.submit_job.call_args[1]
     assert call_kwargs["params"]["simulate_failure"] is True
@@ -613,5 +673,5 @@ def test_submit_accepts_boundary_duration(duration, job_id):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
             result = submit_timer_job(1, 0, "smoke test", duration, False, None)
 
-    assert job_id in result
+    assert submitted_job_id(result) == job_id
     mock_scheduler.submit_job.assert_called_once()

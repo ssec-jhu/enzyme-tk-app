@@ -17,7 +17,14 @@ from dash import html
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, make_reaction_df, offered_databases
+from enzyme_tk_app.app.tests.conftest import (
+    find_components,
+    get_text,
+    make_job,
+    make_reaction_df,
+    offered_databases,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.substrate_product_similarity import (
     TOOL_DEF,
     MoleculeRole,
@@ -849,5 +856,5 @@ def test_subprod_submit_returns_job_id():
                 1, 0, "Glucose search", ["db.csv"], "CCO", ["tanimoto"], 10, "substrate", None
             )
 
-    assert "job-sub-789" in result
-    assert "Substrate" in result
+    assert submitted_job_id(result) == "job-sub-789"
+    assert "Substrate" in get_text(result)

@@ -24,7 +24,7 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases
+from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job, offered_databases, submitted_job_id
 from enzyme_tk_app.app.tools.sequence_structure_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.callbacks import (
     display_uploaded_filename,
@@ -355,8 +355,8 @@ def test_submit_job_sequence_mode_calls_scheduler():
             )
     # Verify that the scheduler's submit_job method was called once with the expected parameters.
     mock_scheduler.submit_job.assert_called_once()
-    assert "job-seq-99" in result
-    assert "sequence" in result
+    assert submitted_job_id(result) == "job-seq-99"
+    assert "sequence" in get_text(result)
 
 
 # ── run() — mocked FoldSeek (no binary required) ─────────────────────────────

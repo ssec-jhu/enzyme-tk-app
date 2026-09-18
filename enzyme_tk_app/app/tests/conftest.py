@@ -11,6 +11,7 @@ from pathlib import Path
 import fakeredis
 import pandas as pd
 import pytest
+from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.footer import footer as create_footer
@@ -394,3 +395,22 @@ def get_text(component):
     elif children is not None:
         parts.append(get_text(children))
     return " ".join(parts).strip()
+
+
+def submitted_job_id(result):
+    """Return the full job id from a submission success block's tooltip.
+
+    ``build_submission_success`` shows only the ``truncate_id`` prefix on screen and
+    keeps the full id in the id span's ``title`` — so a substring assertion against
+    the rendered text cannot see the whole id.  This reads the value the tooltip
+    actually carries, which is the contract worth asserting.
+
+    Args:
+        result: The component returned by a tool's ``submit_*`` callback.
+
+    Returns:
+        The full job id string.
+    """
+    spans = [s for s in find_components(result, html.Span) if getattr(s, "title", None)]
+    assert len(spans) == 1, f"Expected exactly one tooltipped id span, found {len(spans)}"
+    return spans[0].title

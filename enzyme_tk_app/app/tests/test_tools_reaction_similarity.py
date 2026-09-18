@@ -14,7 +14,7 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server  # noqa: F401 — register pages
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases, submitted_job_id
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF, SimilarityAlgorithm, get_similarity_algorithms
 from enzyme_tk_app.app.tools.reaction_similarity.callbacks import (
     populate_example_reaction,
@@ -609,7 +609,7 @@ def test_submit_returns_job_id():
                 1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10, None
             )
 
-    assert "job-rxn-123" in result
+    assert submitted_job_id(result) == "job-rxn-123"
     # Verify the scheduler was called with stripped values
     call_kwargs = mock_scheduler.submit_job.call_args.kwargs
     assert call_kwargs["params"]["task_name"] == "Glucose search"
