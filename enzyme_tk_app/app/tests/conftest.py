@@ -11,6 +11,7 @@ from pathlib import Path
 import fakeredis
 import pandas as pd
 import pytest
+from dash import html
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.footer import footer as create_footer
@@ -19,7 +20,7 @@ from enzyme_tk_app.app.components.navbar import navbar as create_navbar
 from enzyme_tk_app.app.components.tool_cards import tool_card as create_tool_card
 from enzyme_tk_app.app.components.tool_cards import tool_grid as create_tool_grid
 from enzyme_tk_app.app.paths import REACTIONS_DIR, SEQUENCES_DIR
-from enzyme_tk_app.app.utils import submission_limits
+from enzyme_tk_app.app.utils import captcha, submission_limits
 
 
 @pytest.fixture(autouse=True)
@@ -37,6 +38,76 @@ def _submission_limit_off(monkeypatch):
     monkeypatch.setattr(submission_limits, "PRODUCTION_MODE", False)
     # Pinned too, so the suite's expected messages do not move if the policy constant does.
     monkeypatch.setattr(submission_limits, "MAX_ACTIVE_JOBS_PER_SESSION", 3)
+
+
+@pytest.fixture(autouse=True)
+def _captcha_off(monkeypatch):
+    """Pin the submission captcha OFF for every test unless a test opts in.
+
+    A separate fixture from ``_submission_limit_off`` because it pins a separate binding:
+    ``captcha.PRODUCTION_MODE`` and ``submission_limits.PRODUCTION_MODE`` are two module-level
+    reads of the same ``APP_IN_PRODUCTION_MODE``, and patching one does nothing to the other.
+    Without this, a developer with the switch exported (``tox.ini`` sets ``passenv = *``) would
+    see every submit-callback test fail on a missing captcha payload.
+
+    ``monkeypatch.setattr``, not ``setenv``: the constant binds at import.
+    """
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", False)
+
+
+@pytest.fixture(autouse=True)
+def _tool_data_checks_clean(monkeypatch):
+    """Pin every tool's data checks to "nothing to report" for the whole suite.
+
+    Third switch in the same family as the two fixtures above, and pinned for the
+    same reason: ``data/`` is git-ignored apart from the demo sets, so what a given
+    machine happens to have downloaded would otherwise decide test outcomes.
+    ``validate_tool_data`` is OR'd into every tool's ``validate_*`` callback and is
+    the first guard in every ``submit_*``, so without this pin a developer missing
+    the Func-E checkpoints — and CI, which downloads nothing — sees Run disabled
+    and every submit refused, for a reason that has nothing to do with the code
+    under test.
+
+    The registries on ``enzyme_tk_app.app.tools`` are what get replaced, because
+    ``check_tool_data`` imports them *inside* the function on every call — so this
+    single patch reaches the card badge, the Run gate and the submit guard alike.
+    A test that wants a check to report something calls :func:`patch_tool_checks`,
+    whose ``monkeypatch`` calls run after this one and therefore win.
+    """
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA", {})
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA_WARNINGS", {})
+
+
+def patch_tool_checks(monkeypatch, slug, blocking=(), warnings=()):
+    """Register data checks for *slug* that report exactly the given labels.
+
+    Patches the two registries on ``enzyme_tk_app.app.tools`` rather than any
+    consumer's own binding: ``data_warning`` imports ``check_tool_data`` at module
+    import time and every tool's callbacks import ``validate_tool_data`` the same
+    way, so the registries are the one place that reaches all of them at once —
+    and patching there is what makes the card and the modal provably agree.
+
+    Every other tool is left unregistered while this is in force, which is exactly
+    what a tool with no ``check_data.py`` looks like — so passing a slug the code
+    under test does not use is how a test says "this tool has no data dependencies".
+
+    Args:
+        monkeypatch: The test's ``monkeypatch`` fixture.
+        slug: Tool slug the checks are registered under.
+        blocking: Labels for data the tool cannot run without — or a
+            zero-argument callable, to register a check that raises.
+        warnings: Labels for data that is present but unusable while the tool
+            still runs; same two forms.
+    """
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA", {slug: _check_reporting(blocking)})
+    monkeypatch.setattr("enzyme_tk_app.app.tools.CHECK_DATA_WARNINGS", {slug: _check_reporting(warnings)})
+
+
+def _check_reporting(labels):
+    """Return a ``check_data``-shaped callable reporting *labels* (a callable passes through)."""
+    if callable(labels):
+        return labels
+    return lambda: list(labels)
 
 
 # Directory containing test data files (CSV fixtures, etc.).
@@ -379,3 +450,46 @@ def get_text(component):
     elif children is not None:
         parts.append(get_text(children))
     return " ".join(parts).strip()
+
+
+def submitted_job_id(result):
+    """Return the full job id from a submission success block's tooltip.
+
+    ``build_submission_success`` shows only the ``truncate_id`` prefix on screen and
+    keeps the full id in the id span's ``title`` — so a substring assertion against
+    the rendered text cannot see the whole id.  This reads the value the tooltip
+    actually carries, which is the contract worth asserting.
+
+    Args:
+        result: The component returned by a tool's ``submit_*`` callback.
+
+    Returns:
+        The full job id string.
+    """
+    spans = [s for s in find_components(result, html.Span) if getattr(s, "title", None)]
+    assert len(spans) == 1, f"Expected exactly one tooltipped id span, found {len(spans)}"
+    return spans[0].title
+
+
+def submission_error_text(result):
+    """Return the message from a submission error block, asserting its shape first.
+
+    Both submit outcomes are components sharing the ``modal-submission-row``
+    base class and differing by their own class, so a test that only reads the
+    text cannot tell an error from a success.  This pins that the caller really
+    got an error row — not a success row, and not a bare string, which would
+    render with no box and no icon — then hands back the text for substring
+    assertions.
+
+    Args:
+        result: The component returned by a tool's ``submit_*`` callback.
+
+    Returns:
+        The rendered text of the error row.
+    """
+    assert not isinstance(result, str), "A submit error must be the shared error block, not a bare string"
+    classes = (getattr(result, "className", "") or "").split()
+    assert "modal-submission-error" in classes, f"Expected a modal-submission-error row, got {classes!r}"
+    text = get_text(result)
+    assert text.strip(), "The error block carries no message"
+    return text

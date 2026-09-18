@@ -4,8 +4,8 @@
 # Run:    docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 #         ...that runs download_data.py; append `build_enzyme_db.py` to run the builder instead.
 #
-# Two mounts. /app carries the scripts (so editing a CONFIG block or commenting out a unit
-# in main() needs no rebuild) and the input sequence file. /data is the app's data directory,
+# Two mounts. /app carries the scripts (so editing a CONFIG block, or naming different
+# download_data.py units on the command line, needs no rebuild) and the input sequence file. /data is the app's data directory,
 # read-write here — everything downloaded or built lands in it directly, which is why there
 # is nothing to copy afterwards.
 #

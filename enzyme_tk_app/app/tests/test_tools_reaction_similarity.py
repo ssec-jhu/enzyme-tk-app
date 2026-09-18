@@ -14,7 +14,13 @@ from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.app import server  # noqa: F401 — register pages
-from enzyme_tk_app.app.tests.conftest import find_components, make_job, offered_databases
+from enzyme_tk_app.app.tests.conftest import (
+    find_components,
+    make_job,
+    offered_databases,
+    submission_error_text,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF, SimilarityAlgorithm, get_similarity_algorithms
 from enzyme_tk_app.app.tools.reaction_similarity.callbacks import (
     populate_example_reaction,
@@ -532,7 +538,7 @@ def test_submit_clears_results_on_launch():
         patch("enzyme_tk_app.app.tools.reaction_similarity.callbacks.get_task_scheduler") as mock_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{SLUG}"
-        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], 10)
+        result = submit_reaction_similarity_job(0, 1, "t", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], 10, None)
 
     assert result == ""
     mock_sched.assert_not_called()
@@ -560,9 +566,9 @@ def test_submit_returns_error_when_smiles_invalid(smiles):
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
-        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], smiles, ["tanimoto"], 10)
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], smiles, ["tanimoto"], 10, None)
 
-    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    assert submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 
@@ -578,9 +584,9 @@ def test_submit_returns_error_when_top_n_invalid():
         ),
     ):
         mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
-        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], None)
+        result = submit_reaction_similarity_job(1, 0, "My Task", ["db.csv"], _RXN_SMILES_3, ["tanimoto"], None, None)
 
-    assert isinstance(result, str) and len(result) > 0, "Expected a non-empty error message string"
+    assert submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()
 
 
@@ -606,10 +612,10 @@ def test_submit_returns_job_id():
         ):
             mock_ctx.triggered_id = f"id-btn-{SLUG}-submit"
             result = submit_reaction_similarity_job(
-                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10
+                1, 0, "  Glucose search  ", ["db1.csv", "db2.csv"], f"  {_RXN_SMILES_3}  ", ["tanimoto"], 10, None
             )
 
-    assert "job-rxn-123" in result
+    assert submitted_job_id(result) == "job-rxn-123"
     # Verify the scheduler was called with stripped values
     call_kwargs = mock_scheduler.submit_job.call_args.kwargs
     assert call_kwargs["params"]["task_name"] == "Glucose search"

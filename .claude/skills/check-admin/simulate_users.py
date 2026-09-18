@@ -165,7 +165,7 @@ def run(base_url: str, n_users: int, *, isolation_check: bool) -> dict:
                 "task_name": task_name,
                 "profile": profile["label"],
                 # The callback echoes the job id into the modal's results div.
-                "submitted": "Submitted" in response or "job" in response.lower(),
+                "submitted": "Job submitted" in response or "job" in response.lower(),
                 "client": client,
             }
         )

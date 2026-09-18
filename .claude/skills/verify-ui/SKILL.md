@@ -122,21 +122,34 @@ to look at until you create one. Submit through the UI:
 
 1. `http://localhost:8050/` → click a card's `Launch →`.
 2. Fill the modal (see the native-setter note above) and click
-   `id-btn-<slug>-submit`.
+   `id-btn-<slug>-submit`. The modal stays open and answers in place: an
+   accepted submit renders `div.modal-submission-success` (green, with a
+   `/my-tasks` link), while a refusal is a bare red string in
+   `div.modal-submission-results` — read it before concluding the click did
+   nothing, since it names *which* guard rejected the submit. The green block
+   is one line and shows only the `truncate_id()` prefix of the job id: the full
+   value is the `title` of `span.modal-submission-success-id`, so take it from
+   there rather than from the visible text.
 3. Poll `http://localhost:8050/my-tasks` until the badge reads `SUCCESS`, then
    follow the `/my-tasks/<job_id>` link.
 
 Reaction Similarity and Substrate/Product Similarity run in seconds on the
 bundled data and are the reliable choices. **Func-E** now encodes the query
 reaction itself and succeeds in ~15 s, but only with `data/unimol_weights/`
-and `data/funce_models/` present — the tool card shows a **Missing data** badge
-when they are not. `scripts/db_build/download_data.py` downloads the first and
-reports on the second (the Func-E checkpoints have no public source yet, so they
-are placed by hand); running it with every unit commented out prints an
-`OK`/`MISSING` line per data item, which is the quickest way to tell a missing
-prerequisite from a real regression. **Sequence / Sequence+Structure Similarity** need database
-files that are usually absent locally — a failure there is almost certainly not
-your change. Confirm by reading `.jobs-error-box`.
+and `data/funce_models/` present — without them the card shows a red **Missing data**
+badge naming the path and **the modal's Run button is disabled**, so there is nothing
+to click and no job to inspect. `scripts/db_build/download_data.py` downloads both in its
+default minimal tier (the checkpoints come from the project's own Hugging Face
+dataset as `data_funce.zip`); naming any single unit still prints an
+`OK`/`MISSING` line per data item at the end, which is the quickest way to tell a
+missing prerequisite from a real regression. **Sequence Similarity** now runs on
+the repository's shipped `sequences/enzymes_demo_set.tsv`, so it is a usable
+choice too. **Sequence+Structure Similarity** still needs the ProstT5 weights
+(`data/foldseek_models/weights/`) on top of its shipped demo database — without them
+its Run button is disabled too, and the reason is in the form rather than in a failed
+job. Either way that is almost certainly not your change: a **disabled Run** means
+missing data (read the card's note), a job that **fails** means read
+`.jobs-error-box`.
 
 The browser session is cookie-scoped, so a fresh pane starts with zero tasks
 even when jobs exist in Redis.
@@ -158,6 +171,34 @@ The cap is the constant `MAX_ACTIVE_JOBS_PER_SESSION` (3) in
 `utils/submission_limits.py`, not an env var, so you need **three** concurrent
 jobs to reach it — Timer Tool at `seconds=280` three times. `docker compose up
 -d web` with no override puts it back.
+
+### Production mode also turns the captcha on
+
+The same switch adds a **proof-of-work captcha to every tool modal**, so a
+production-mode run is not just the default run with a cap. What changes:
+
+- `ETK_SECRET_KEY` must be set or the container **exits at startup** with a
+  `RuntimeError` — the captcha derives its signing key from it. `.env` already
+  carries one; `docker compose logs web` shows the message if it does not.
+- Every modal footer grows an ALTCHA widget on its left, and the startup line
+  reads `submission captcha: on`.
+- **Run will be refused until the widget has solved**, with *"Please complete the
+  verification check in this dialog, then press Run."* in the submission-results
+  div. The solve starts when the modal opens and takes ~2 s, so open the modal,
+  fill the form, then check the widget says verified before clicking — a first
+  click inside that window is a hiccup, not a regression. Poll for it rather
+  than sleeping blind:
+
+  ```js
+  document.querySelector("div.etk-captcha altcha-widget")?.getAttribute("state");
+  ```
+
+- The widget is mounted by `assets/12-altcha-bridge.js` into an empty holder div,
+  **not** by Dash. An empty `div.etk-captcha` with no `altcha-widget` inside it
+  after the modal opens means the bridge or the vendored `assets/11-altcha.js`
+  failed — check the browser console, which is where that failure is reported.
+- Verifying anything *else* in production mode? Leave the switch off unless the
+  captcha is what you are checking. Its only visible surface is the modal footer.
 
 ---
 

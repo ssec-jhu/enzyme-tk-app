@@ -178,6 +178,29 @@ cython_debug/
 /enzyme_tk_app/app/data/*
 !/enzyme_tk_app/app/data/structures/
 
+# Demo sets: ~1 MB of verbatim row-subsets of the full reference sets, so `git clone` plus
+# `docker compose up` is enough to run a tool. Git never descends into an excluded directory,
+# so each parent is re-included, its contents re-excluded, and only the demo set named back in
+# — anything else dropped in these directories (including the 16 GB MasterDataArchive/ and the
+# multi-GB PDB/ and AFDB_SWISSPROT/) stays ignored.
+!/enzyme_tk_app/app/data/sequences/
+/enzyme_tk_app/app/data/sequences/*
+!/enzyme_tk_app/app/data/sequences/enzymes_demo_set.tsv
+
+!/enzyme_tk_app/app/data/reactions/
+/enzyme_tk_app/app/data/reactions/*
+!/enzyme_tk_app/app/data/reactions/enzymemap_demo_set.csv
+
+!/enzyme_tk_app/app/data/sequence_embeddings/
+/enzyme_tk_app/app/data/sequence_embeddings/*
+!/enzyme_tk_app/app/data/sequence_embeddings/enzymes_demo_set.pkl
+
+!/enzyme_tk_app/app/data/foldseek_db/
+/enzyme_tk_app/app/data/foldseek_db/*
+!/enzyme_tk_app/app/data/foldseek_db/enzymes_demo_set/
+# foldseek's scratch dir, which enzymetk can create inside a database folder on a writable mount
+/enzyme_tk_app/app/data/foldseek_db/enzymes_demo_set/tmp/
+
 # .claude/ is local tooling (GSD, settings, worktrees); track only the project
 # agent sources and skills — AGENTS.md documents both as project conventions, so
 # a clone without them would follow instructions pointing at files it doesn't have.

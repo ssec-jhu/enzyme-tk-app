@@ -9,6 +9,7 @@ changes a single-file edit.
 Usage::
 
     from enzyme_tk_app.app.components.modal_helpers import (
+        build_submission_success,
         create_modal_config_section_header,
         create_modal_databases_label,
         create_modal_footer,
@@ -38,9 +39,23 @@ Usage::
 """
 
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 
-from enzyme_tk_app.app.components.icons import ICON_MODAL_INFO, ICON_SECTION_CONFIG, ICON_SECTION_INPUT
+from enzyme_tk_app.app.components.icons import (
+    ICON_MODAL_INFO,
+    ICON_SECTION_CONFIG,
+    ICON_SECTION_INPUT,
+    ICON_STATUS_FAILURE,
+    ICON_STATUS_SUCCESS,
+    ICON_SUBMISSION_TRACK,
+)
+from enzyme_tk_app.app.utils import captcha
+from enzyme_tk_app.app.utils.formatting import truncate_id
+
+# Contract with assets/12-altcha-bridge.js, which finds holders by this class and derives the
+# Store id from the holder id.  Renaming either means editing that file in the same change —
+# the same page-to-JS contract as results_helpers.QUERY_PREVIEW_CLASS.
+CAPTCHA_HOLDER_CLASS = "etk-captcha"
 
 
 def create_modal_header(icon, title):
@@ -148,11 +163,25 @@ def create_modal_footer(slug):
             the button component IDs.
 
     Returns:
-        A ``dbc.ModalFooter`` with a secondary outline Close button and
-        a primary Run button.
+        A ``dbc.ModalFooter`` with the captcha holder and payload Store, a
+        secondary outline Close button, and a primary Run button.
     """
     return dbc.ModalFooter(
         children=[
+            # Empty on purpose: assets/12-altcha-bridge.js creates <altcha-widget> in here.
+            # A custom element is not something Dash's html namespace can emit, and dbc.Modal
+            # unmounts its children on close, so mounting is a per-open job either way.
+            # Rendered only in production — a local checkout shows no widget and app.py
+            # registers no challenge route.
+            *(
+                [html.Div(id=f"id-div-{slug}-captcha", className=CAPTCHA_HOLDER_CLASS)]
+                if captcha.PRODUCTION_MODE
+                else []
+            ),
+            # Rendered ALWAYS, even locally: a State pointing at a component that is not in the
+            # layout stops the submit callback from firing at all, which would dead-button Run
+            # for everyone running the app locally.
+            dcc.Store(id=f"id-store-{slug}-captcha"),
             dbc.Button(
                 "Close",
                 id=f"id-btn-{slug}-cancel",
@@ -172,8 +201,17 @@ def create_modal_footer(slug):
 def create_modal_submission_results(slug):
     """Return the job-ID / status placeholder div.
 
-    This is populated by the submit callback in callbacks.py of the tool
-    with a job-ID confirmation message or a validation error.
+    This is a plain slot with no styling of its own.  The submit callback fills
+    it with one of exactly two shared blocks, each of which carries its own box:
+    :func:`build_submission_success` (green, with the My Tasks link) or
+    :func:`build_submission_error` (red).  Both share the
+    ``modal-submission-row`` base class, so the two states are the same height
+    by construction.
+
+    Never return a bare string here — it would render unstyled, with no icon and
+    no box.  The clear-on-reopen branch returns ``""``, which leaves the slot
+    empty and therefore invisible.
+
     Args:
         slug: The tool slug from ``TOOL_DEF["slug"]``.
 
@@ -181,3 +219,84 @@ def create_modal_submission_results(slug):
         An ``html.Div`` with ``id=f"id-div-{slug}-results"``.
     """
     return html.Div(id=f"id-div-{slug}-results", className="modal-submission-results")
+
+
+def build_submission_success(job_id, detail):
+    """Return the post-submit success row: job ID, terse detail, My Tasks link.
+
+    The link is the only thing on screen telling a first-time user their job is
+    now tracked somewhere.  The modal deliberately stays open after Run, so
+    submitting another job needs no affordance of its own — this only has to
+    signpost the page that follows the one already running.
+
+    **One line, deliberately.**  Every tool modal already overruns a laptop
+    viewport, so this row is kept to a single line: the job id goes through the
+    shared :func:`~enzyme_tk_app.app.utils.formatting.truncate_id` with the full
+    value in its tooltip (the full uuid measures 416 px and wraps, which used to
+    cost a whole extra line), and ``detail`` is a terse fragment rather than a
+    sentence.  Measured budget is ~720 px of block width on a 1366 px laptop.
+
+    Args:
+        job_id: The id returned by ``TaskScheduler.submit_job()``.  Shown
+            truncated; the full value goes in the tooltip.
+        detail: A terse fragment naming what was submitted, e.g.
+            ``"2 database(s) · top 10"`` — not a sentence, and short enough to
+            share one line with the id and the link.
+
+    Returns:
+        An ``html.Div`` classed ``modal-submission-row modal-submission-success``.
+    """
+    return html.Div(
+        className="modal-submission-row modal-submission-success",
+        children=[
+            html.I(className=ICON_STATUS_SUCCESS),
+            # truncate_id, not a local slice: the My Tasks Task ID column and /admin use the
+            # same helper, so the modal and the page its link leads to show the same string.
+            html.Span(
+                f"Job submitted — {truncate_id(job_id)}",
+                title=job_id,
+                className="modal-submission-success-id",
+            ),
+            html.Span(f"· {detail}", className="modal-submission-success-detail"),
+            # html.A, not dcc.Link: every other /my-tasks link in the app is a plain anchor
+            # (navbar.make_nav_link, my_tasks_view_results._build_back_link), and a full load
+            # leaves no open modal mounted on the page being navigated away from.
+            html.A(
+                className="modal-submission-success-link",
+                href="/my-tasks",
+                children=[
+                    "Track progress",
+                    html.I(className=f"{ICON_SUBMISSION_TRACK} modal-submission-success-arrow"),
+                ],
+            ),
+        ],
+    )
+
+
+def build_submission_error(message):
+    """Return the post-submit error row: a cross icon and the validator's message.
+
+    The twin of :func:`build_submission_success`, sharing its
+    ``modal-submission-row`` base class so success and failure are the same
+    height and shape — only the colour and the icon differ.
+
+    Every validator in a submit callback returns a message or ``None``
+    (``validate_tool_data``, ``validate_db_names``, ``validate_top_n``,
+    ``validate_reaction_smiles``, ``validate_captcha``,
+    ``validate_active_job_limit``); wrap that message here rather than
+    returning it bare, which would render unstyled.
+
+    Args:
+        message: The validator's message.  Passed through verbatim — it already
+            carries RDKit's own diagnosis or the offending value.
+
+    Returns:
+        An ``html.Div`` classed ``modal-submission-row modal-submission-error``.
+    """
+    return html.Div(
+        className="modal-submission-row modal-submission-error",
+        children=[
+            html.I(className=ICON_STATUS_FAILURE),
+            html.Span(message),
+        ],
+    )

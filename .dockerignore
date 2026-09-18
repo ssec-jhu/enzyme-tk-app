@@ -2,6 +2,15 @@
 .git/
 .gitignore
 
+# Secrets — never in the build context.  The Dockerfile's `COPY . .` would
+# otherwise bake these into a published layer at /app/.env.  Nothing in the
+# image reads them: the app takes configuration from the process environment,
+# and docker-compose.yml does its ${VAR} substitution on the host.
+# scripts/template.env is the committed placeholder and is already covered by
+# the `scripts/*` rule below.
+.env
+.env.*
+
 # CI / tooling
 .github/
 .tox/
@@ -40,7 +49,10 @@ AGENTS.md
 Dockerfile
 docker-compose*.yml
 
-# Large data directories not needed in image
+# Tool data is never in the image — it arrives on the /app-data mount at run time.
+# Not redundant with .gitignore: the four *_demo_set artifacts under here ARE tracked
+# (so a clone can run without a download), and the closing `COPY . .` would bake them
+# into a layer that nothing ever reads.
 enzyme_tk_app/app/data/
 
 # Local dev environments — never belong in the image, and each one adds

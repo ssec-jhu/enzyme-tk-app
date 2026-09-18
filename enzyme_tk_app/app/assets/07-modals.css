@@ -164,15 +164,76 @@
    Modal Submission Results — status placeholder
    ========================================================================== */
 
-.modal-submission-results:not(:empty) {
+/* The results div is a plain slot — no box of its own.  Both states are
+   components that carry their own styling (modal_helpers.build_submission_*),
+   so there is nothing here to cancel and no empty-vs-non-empty selector. */
+
+/* --- Submission result rows ---------------------------------------------- */
+
+/* Shared by the success and error rows, so the two states are the same height
+   and shape by construction — only colour and icon differ.  One flex row, not
+   stacked children: every tool modal already overruns a laptop viewport, so
+   this is held to a single 41px line.  flex-wrap plus the success link's
+   margin-left:auto is what degrades gracefully — the link right-aligns on a
+   laptop and drops to its own right-aligned line when the row cannot fit. */
+.modal-submission-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
     font-size: 0.9rem;
     font-weight: 500;
-    background-color: var(--bg-body);
+}
+
+.modal-submission-success {
+    background: color-mix(in srgb, var(--status-success) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-success) 35%, transparent);
+    color: var(--status-success);
+}
+
+.modal-submission-error {
+    background: color-mix(in srgb, var(--status-failure) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, transparent);
+    color: var(--status-failure);
+}
+
+/* The message is a single flex child, so on the wrapping row above a message
+   too wide for one line breaks *whole* and strands the icon on the line before
+   it.  Taking the remaining width makes the text wrap inside itself instead. */
+.modal-submission-error > span {
+    flex: 1;
+    min-width: 0;
+}
+
+.modal-submission-success-id {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.modal-submission-success-detail {
+    font-size: 0.8rem;
     color: var(--text-secondary);
-    border: 1px solid var(--border-color);
+}
+
+.modal-submission-success-link {
+    margin-left: auto;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--secondary-color);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.modal-submission-success-link:hover {
+    text-decoration: underline;
+}
+
+.modal-submission-success-arrow {
+    margin-left: 0.35rem;
+    font-size: 0.75rem;
 }
 
 /* --- Field info icon ----------------------------------------------------- */
@@ -187,4 +248,36 @@
 .modal-body .field-info-icon:hover,
 .modal-body .field-info-icon:focus-visible {
     color: var(--primary-color);
+}
+
+/* ==========================================================================
+   Submission captcha — production only
+   The widget ships its own stylesheet inside assets/11-altcha.js and reads
+   these custom properties; mapping them onto our tokens is the whole job.
+   ========================================================================== */
+
+/* margin-right:auto parks it at the left end of the footer's flex row,
+   opposite Close / Run.  The holder is empty until
+   assets/12-altcha-bridge.js mounts <altcha-widget> into it. */
+.modal-footer .etk-captcha {
+    margin-right: auto;
+    /* The widget's own CSS uses light-dark(); this app is light-only, so pin the
+       scheme rather than inherit a future dark-mode switch by accident. */
+    color-scheme: light;
+
+    --altcha-color-base: var(--bg-surface);
+    --altcha-color-base-content: var(--text-primary);
+    --altcha-color-primary: var(--primary-color);
+    --altcha-color-error: var(--status-failure);
+    --altcha-color-success: var(--status-success);
+    --altcha-border-color: var(--border-color);
+    --altcha-border-radius: var(--radius-sm);
+    --altcha-max-width: 280px;
+    --altcha-padding: 0.5rem 0.75rem;
+}
+
+/* The load-failure message the bridge writes in when 11-altcha.js is missing. */
+.modal-footer .etk-captcha:not(:has(altcha-widget)) {
+    font-size: 0.85rem;
+    color: var(--status-failure);
 }
