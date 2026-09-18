@@ -22,6 +22,7 @@ ICON_SOCIAL_GITHUB = "fa-brands fa-github"
 ICON_MODAL_EXAMPLE = "fa-solid fa-lightbulb"
 ICON_MODAL_UPLOAD = "fa-solid fa-upload"
 ICON_MODAL_INFO = "fa-solid fa-circle-info"
+ICON_SUBMISSION_TRACK = "fa-solid fa-arrow-right"
 
 # --- Modal Section Headers ---
 ICON_SECTION_INPUT = "fa-solid fa-flask"

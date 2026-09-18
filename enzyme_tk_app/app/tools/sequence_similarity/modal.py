@@ -45,7 +45,10 @@ from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options
 def _get_example_sequences():
     """Return a list of example protein sequences from the protein database.
 
-    These are real entries from ``protein.csv`` covering diverse EC classes.
+    These are real entries from the shipped ``sequences/enzymes_demo_set.tsv``,
+    covering diverse EC classes, so every example returns hits on a fresh clone.
+    ``test_demo_data.py`` pins that: changing one means checking its sequence --
+    and any EC or cofactor filter value it prefills -- is still in the demo set.
     The ``task_name`` is the name the example picker prefills into the Task
     Name field (see ``callbacks.populate_example_sequence``).
     """
