@@ -157,9 +157,9 @@ this directory**, so there is nothing to copy afterwards. Two scripts in one Doc
 no Hugging Face account, token or login), and `build_enzyme_db.py` turns **your own** sequence
 file into a FoldSeek database plus an embeddings pickle. The **Supplied by** column says
 which. `report()` runs at the end of every `download_data.py` invocation, so naming any single unit
-gives you an inventory: one `OK`/`MISSING` line per row below, plus one for the ESM3 build cache.
-A `--full` run also leaves that cache here as a hidden `.hf_cache/` (~5.4 GB, build time only,
-never read by the app).
+gives you an inventory: one `OK`/`MISSING` line per row below. A `--full` run also leaves the ESM3
+build cache here as a hidden `.hf_cache/` (~5.4 GB, build time only, never read by the app) — and it
+is reported only on a run that asked for it, since no tool needs it.
 
 | Directory | Used by | Supplied by | Contents |
 |-----------|---------|-------------|----------|

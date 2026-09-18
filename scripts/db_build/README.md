@@ -61,7 +61,8 @@ still lands correctly.
 
 The **ESM3** snapshot is the odd one out: a build-time cache only `build_enzyme_db.py` reads. It goes in
 a hidden `.hf_cache/` so one mount carries it and it survives `docker run --rm`, and an `HF_HOME` you
-already have wins, so a shared model cache is reused instead of downloading 5.4 GB again.
+already have wins, so a shared model cache is reused instead of downloading 5.4 GB again. It is also
+the one item `report()` leaves out unless the run asked for it — see below.
 
 ### Checked and reported, not downloaded by any unit
 
@@ -72,9 +73,9 @@ already have wins, so a shared model cache is reused instead of downloading 5.4 
 | Embedding pickles | `sequence_embeddings/*.pkl` | Repo demo set, or `build_enzyme_db.py` |
 | Custom FoldSeek DBs | `foldseek_db/<name>/` | Repo demo set, or `build_enzyme_db.py` |
 
-`report()` prints one line per item — all eight — as `OK` or `MISSING`, with the function name that
-supplies it. It runs at the end of **every** `download_data.py` run, so "what do I still need?" is
-answered by naming a unit that is already satisfied, or any unit at all:
+`report()` prints one line per item — all seven the app reads — as `OK` or `MISSING`, with the function
+name that supplies it. It runs at the end of **every** `download_data.py` run, so "what do I still
+need?" is answered by naming a unit that is already satisfied, or any unit at all:
 
 ```
 ============================================================
@@ -85,6 +86,12 @@ Data directory: /app-data
   ...
 ============================================================
 ```
+
+**Build-only items are listed only when the run asked for them.** The ESM3 cache is the only one: no
+tool reads it and nothing is disabled without it, so a minimal run that never fetched it ends on seven
+`OK` lines rather than on those same seven plus a red `MISSING` for data the app will never open. Add
+`esm3` (or `--full`) and it appears as an eighth line, where it doubles as that unit's post-download
+check.
 
 ## Run
 
@@ -133,7 +140,8 @@ docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/d
 Two steps, in this order — **the builder downloads nothing**, so the weights have to be there first.
 
 1. Get the models it needs: `download_data.py prostt5` for a FoldSeek database, `download_data.py esm3`
-   for embeddings. (Skip this if `report()` already shows them as `OK`.)
+   for embeddings. (Skip `prostt5` if `report()` already shows `foldseek_models/weights/` as `OK`; ESM3
+   has no row unless the run asked for it, so just run the unit — it reuses a cache already on disk.)
 2. Drop your CSV/TSV in `scripts/db_build/` — or in the app's `data/sequences/`, where `resolve_input()`
    also looks — point `INPUT_FILE` at its **name**, and run the builder:
 

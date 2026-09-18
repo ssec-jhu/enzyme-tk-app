@@ -25,9 +25,9 @@ Hugging Face dataset (HUGGING_FACE_DATASET_REPO); the rest come from their upstr
 Nothing here is gated -- no Hugging Face account, token or login is needed.
 
 `sequences/` is the one directory with no download: it holds your own protein tables, beside
-the demo set the repository ships. `report()` names it along with everything else -- and runs
-after every invocation, so any run doubles as an inventory. Run in Docker (see Dockerfile) or
-locally:
+the demo set the repository ships. `report()` names it along with everything else the app
+reads -- and runs after every invocation, so any run doubles as an inventory. Run in Docker
+(see Dockerfile) or locally:
 
   python download_data.py            # minimal
   python download_data.py --full     # everything
@@ -45,6 +45,7 @@ import tarfile
 import tempfile
 import time
 import zipfile
+from collections.abc import Collection
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -418,7 +419,7 @@ def has_any(path: Path, pattern: str) -> bool:
     return path.exists() and any(path.glob(pattern))
 
 
-def report() -> None:
+def report(selected: Collection[str] = ()) -> None:
     """Print one line per data item the app looks for, and what supplies it.
 
     These checks mirror the app's own -- tools/funce/check_data.py,
@@ -426,6 +427,9 @@ def report() -> None:
     REQUIRED_SEQUENCE_COLUMNS in utils/data_loading.py. They are duplicated because this
     script runs in an image without the app package, so a change there is a change here:
     the two disagreeing is worse than neither existing.
+
+    What is listed is what the app needs to run, plus any *build-only* item `selected` asked
+    for -- so a new unit goes in the fixed list only if a tool reads what it fetches.
     """
     items = [
         ("sequences/", has_sequence_database(), "ships a demo set; add CSV/TSV with Entry, Sequence, EC number"),
@@ -439,8 +443,13 @@ def report() -> None:
         ("sequence_embeddings/", has_any(SEQUENCE_EMBEDDINGS_DIR, "*.pkl"), "ships a demo set; build_enzyme_db.py"),
         ("funce_models/", all(path.exists() for path in funce_model_files()), "download_funce_models()"),
         ("unimol_weights/", (UNIMOL_WEIGHTS_DIR / UNIMOL_CHECKPOINT).exists(), "download_unimol_weights()"),
-        ("ESM3 weights (build only)", esm3_is_cached(), "download_esm3_weights()"),
     ]
+    # ESM3 is not app data -- only build_enzyme_db.py reads it, and no tool is disabled without
+    # it. Reporting MISSING against something the run never asked for and the app never opens is
+    # how an operator learns to skim past the line that does matter, so it is listed only when
+    # the esm3 unit ran -- where it doubles as that unit's post-download check.
+    if "esm3" in selected:
+        items.append(("ESM3 weights (build only)", esm3_is_cached(), "download_esm3_weights()"))
 
     print("============================================================")
     print(f"Data directory: {DATA_DIR}")
@@ -506,7 +515,7 @@ def main(argv: list[str] | None = None) -> None:
         print(f"[{position}/{len(selected)}] {name}: done in {time.monotonic() - started:.1f}s")
     print()
     # sequences/ and reactions/ hold your own data too; report() names them with everything else.
-    report()
+    report(selected)
 
 
 if __name__ == "__main__":

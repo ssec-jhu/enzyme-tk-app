@@ -215,8 +215,8 @@ def record_every_unit(script, monkeypatch):
         units_run.append(name)
 
     monkeypatch.setattr(script, "UNITS", {name: partial(record, name) for name in script.UNITS})
-    # report() runs after every invocation and would otherwise ask the Hugging Face cache
-    # about a directory this test never set up.
+    # report() runs after every invocation, and a run that selected esm3 would otherwise ask
+    # the Hugging Face cache about a directory this test never set up.
     monkeypatch.setattr(script, "esm3_is_cached", lambda: False)
     return units_run
 
@@ -865,20 +865,29 @@ def report_statuses(output):
 
 
 @pytest.mark.parametrize("populated", [False, True], ids=["empty-data-directory", "everything-present"])
-def test_report_marks_every_item_against_the_data_directory(script, data_dir, monkeypatch, capsys, populated):
+def test_report_marks_every_item_against_the_data_directory(script, data_dir, capsys, populated):
     """The report is where someone reads off what this host has, so no item may go unlisted.
 
-    Eight of them: the seven directories, plus the ESM3 cache that only the build script uses.
+    Seven of them: the directories the app reads. The ESM3 cache is not one -- see below.
     """
-    monkeypatch.setattr(script, "esm3_is_cached", lambda: populated)
     if populated:
         write_every_data_item(script)
 
     script.report()
 
     output = capsys.readouterr().out
-    assert report_statuses(output) == ["OK" if populated else "MISSING"] * 8
+    assert report_statuses(output) == ["OK" if populated else "MISSING"] * 7
     assert str(data_dir) in output  # the directory it answered for, so a mount typo is visible
+
+
+@pytest.mark.parametrize("selected", [[], ["prostt5"], ["esm3"], ["prostt5", "esm3"]])
+def test_the_report_names_esm3_only_when_the_run_asked_for_it(script, monkeypatch, capsys, selected):
+    """No tool reads the ESM3 cache, so an unasked-for run must not report it as missing data."""
+    monkeypatch.setattr(script, "esm3_is_cached", lambda: False)
+
+    script.report(selected)
+
+    assert ("ESM3" in capsys.readouterr().out) == ("esm3" in selected)
 
 
 # ── Where the data directory is ──────────────────────────────────────────────
