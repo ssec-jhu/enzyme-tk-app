@@ -80,14 +80,17 @@ Not every `return ""` is a guard clause. Some returns **intentionally** write a 
 ```python
 def submit_job(submit_clicks, launch_clicks, ...):
     # Intentional clear — actively empties the results div so the user
-    # does not see a stale job ID from a previous submission.
+    # does not see a stale job ID from a previous submission.  When the tool
+    # has no data to run against, that is what the freshly opened form says
+    # instead (§4) — still an intentional write, not a guard.
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""                   # ← intentional DOM write, NOT a guard
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
 
     # ... rest of submission logic
 ```
 
-**Rule of thumb:** if removing the return would leave stale/incorrect content visible to the user, it is an intentional write — keep `return ""`. If nothing meaningful happened (no click, missing input), `raise PreventUpdate`.
+**Rule of thumb:** if removing the return would leave stale/incorrect content visible to the user, it is an intentional write — keep the explicit return. If nothing meaningful happened (no click, missing input), `raise PreventUpdate`.
 
 ### 4. Submit Callbacks Re-Validate Everything Server-Side
 
@@ -129,9 +132,47 @@ earlier keystroke's, so a corrected structure stays marked invalid until somethi
 callback. `debounce=True` is not the fix — it defers to blur and can leave Run disabled under a
 click that arrives first. `test_every_smiles_field_debounces` in `tests/test_tools.py` pins it.
 
+**Every Task Name `dbc.Input` carries `debounce=300` now too, for the same reason** — as does
+every sequence `dbc.Textarea`. `validate_*` calls `validate_tool_data()` below, which probes the
+data mount; un-debounced, that is one filesystem round trip per keystroke, and on a deployment
+whose `data/` is an Azure Files share that is a network round trip per keystroke. A field whose
+`validate_*` only reads values in memory still needs no debounce.
+
+**The data gate is the first thing `submit_*` does, before every field validator.**
+`validate_tool_data(TOOL_DEF["slug"])` from `utils/data_availability.py` returns a message or
+`None` like every validator here, and is wired into **three** places per tool — all reading that
+one module, so the card's badge and the modal can never disagree:
+
+```python
+# 1. validate_* — Run never enables for a tool with no data.
+disabled = not (has_name and has_duration) or validate_tool_data(TOOL_DEF["slug"]) is not None
+
+# 2. submit_* clear-on-reopen branch — the freshly opened form says why (§3).
+if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
+    error = validate_tool_data(TOOL_DEF["slug"])
+    return build_submission_error(error) if error else ""
+
+# 3. submit_* first guard — ahead of every field validator.
+error = validate_tool_data(TOOL_DEF["slug"])
+if error:
+    return build_submission_error(error)
+```
+
+Place it **first**, which is the exact opposite of where the captcha and job cap go below. Missing
+reference data is a property of the *deployment*, not of the submission: no correction the user
+can make to the form will fix it, so leading with a field error would send them round a loop they
+cannot exit. (1) is not redundant with (3) — `disabled` is a client gate a crafted request ignores,
+and a page left open while the data mount changes underneath it keeps a stale enabled Run. The gate
+is the **Run** button, never the card's **Launch** button: Launch only opens the form, and a tool
+that cannot run needs a screen that explains itself, not a dead control.
+`test_every_tool_checks_its_data_before_running` in `tests/test_tools.py` fails any tool whose
+`callbacks.py` omits the import, and `test_tools_timer.py` pins the placement the import walk
+cannot see. A tool with no data dependencies wires it in anyway — it is always `None` there, and a
+tool copied from the template inherits the gate instead of forgetting it.
+
 The client-side `validate_*` callback only disables the submit button — a crafted request
 still reaches the submit callback with whatever payload it likes. **Every** `submit_*`
-callback therefore repeats the check itself, immediately after the "clear on reopen" branch
+callback therefore repeats the field checks too, after the data gate above
 and before any `.strip()` / indexing / path building:
 
 ```python
@@ -151,11 +192,11 @@ validator and immediately before `get_task_scheduler()`:
 ```python
 error = validate_captcha(captcha_payload, g.session_id)
 if error:
-    return error
+    return build_submission_error(error)
 
 error = validate_active_job_limit(g.session_id)
 if error:
-    return error
+    return build_submission_error(error)
 ```
 
 Both come last because a malformed submit should show *its own* field error rather than a
@@ -206,9 +247,10 @@ colour and no icon. Wrap every validator's message, and build the success row fr
 ```
 
 Every validator here returns a message or `None` and is wrapped the same way — the pattern is
-`if error: return build_submission_error(error)`, not `return error`. The clear-on-reopen
-branch is the one exception and stays `return ""` (§3 — an intentional DOM write): an empty
-slot renders nothing at all. `test_submit_success_links_to_my_tasks` and
+`if error: return build_submission_error(error)`, not `return error`. The clear-on-reopen branch
+is the only one that returns a bare string, and only in its clear case: `""` leaves the slot empty
+and invisible (§3 — an intentional DOM write). When the data gate has something to say, that branch
+returns a `build_submission_error(...)` row like everything else. `test_submit_success_links_to_my_tasks` and
 `test_submit_error_returns_the_shared_error_row` in `test_tools_timer.py` pin both shapes,
 which the `test_every_tool_links_to_my_tasks_on_success` import walk cannot see.
 
@@ -225,7 +267,7 @@ from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options, 
 # for the others.
 error = validate_db_names(databases, get_sequence_database_options())
 if error:
-    return error
+    return build_submission_error(error)
 ```
 
 Membership in that list is the whole check (only each option's `value` is read), which is

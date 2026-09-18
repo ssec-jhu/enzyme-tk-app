@@ -136,16 +136,20 @@ to look at until you create one. Submit through the UI:
 Reaction Similarity and Substrate/Product Similarity run in seconds on the
 bundled data and are the reliable choices. **Func-E** now encodes the query
 reaction itself and succeeds in ~15 s, but only with `data/unimol_weights/`
-and `data/funce_models/` present — the tool card shows a **Missing data** badge
-when they are not. `scripts/db_build/download_data.py` downloads both in its
+and `data/funce_models/` present — without them the card shows a red **Missing data**
+badge naming the path and **the modal's Run button is disabled**, so there is nothing
+to click and no job to inspect. `scripts/db_build/download_data.py` downloads both in its
 default minimal tier (the checkpoints come from the project's own Hugging Face
 dataset as `data_funce.zip`); naming any single unit still prints an
 `OK`/`MISSING` line per data item at the end, which is the quickest way to tell a
 missing prerequisite from a real regression. **Sequence Similarity** now runs on
 the repository's shipped `sequences/enzymes_demo_set.tsv`, so it is a usable
 choice too. **Sequence+Structure Similarity** still needs the ProstT5 weights
-(`data/foldseek_models/weights/`) on top of its shipped demo database — a failure
-there is almost certainly not your change. Confirm by reading `.jobs-error-box`.
+(`data/foldseek_models/weights/`) on top of its shipped demo database — without them
+its Run button is disabled too, and the reason is in the form rather than in a failed
+job. Either way that is almost certainly not your change: a **disabled Run** means
+missing data (read the card's note), a job that **fails** means read
+`.jobs-error-box`.
 
 The browser session is cookie-scoped, so a fresh pane starts with zero tasks
 even when jobs exist in Redis.

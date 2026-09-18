@@ -163,6 +163,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **Row layout:** Use `dbc.Row([dbc.Col(label, width=3), dbc.Col(control, width=9)], className="mb-2", align="center")` for label ↔ control alignment.
 - **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the `write-css` subagent for banner/section-comment style and 4-space indentation.
 - **A SMILES `dbc.Textarea` gets `debounce=300`** — a *number* of milliseconds, never `True`. Validating on every keystroke puts several callback round-trips in flight at once and the field ends up showing whichever verdict landed last, so a corrected structure stays marked invalid; `True` would defer to blur and strand Run disabled under a click. See `write-callback` §4.
+- **So does the Task Name `dbc.Input`, and any sequence `dbc.Textarea`** — same `debounce=300`, same reason, different trigger: every `validate_*` callback now calls `validate_tool_data()`, which probes the data mount, so an un-debounced field is a filesystem round trip per keystroke (a *network* round trip where `data/` is an Azure Files share). Every field whose `validate_*` does nothing but read values in memory still needs no debounce.
 - **A SMILES field carries a `dbc.FormFeedback` directly after its `dbc.Textarea`**, inside the same `dbc.Col`:
 
   ```python
@@ -209,7 +210,10 @@ and differ only in colour and icon. So:
 - Never return a bare string — with no styling on the slot it renders as ordinary body text,
   losing the box, the colour and the icon. Wrap every validator message in
   `build_submission_error()`.
-- Only the clear-on-reopen branch returns `""`, which leaves the slot empty and invisible.
+- The clear-on-reopen branch is the only one that returns a bare string, and only in its clear
+  case: `""` leaves the slot empty and invisible. When the tool has no data to run against it
+  returns a `build_submission_error()` row instead, so a freshly opened form explains itself
+  rather than looking ready (`write-callback` §3, §4).
 - The link is an `html.A`, not a `dcc.Link`: every other `/my-tasks` link in the app is a
   plain anchor, and a full load leaves no open modal mounted behind it.
 
@@ -225,6 +229,12 @@ table and `/admin` use, so all three show the same string — with the full valu
   database names will wrap the row — Sequence+Structure shows a count for exactly that reason.
 - `flex-wrap` plus the link's `margin-left: auto` is what degrades gracefully on a narrow
   viewport: the link drops to its own right-aligned line rather than stretching the row.
+- **The error row's message is the one child allowed to exceed the line**, and only because
+  `.modal-submission-error > span { flex: 1; min-width: 0 }` lets it wrap *inside itself*. Without
+  that, `flex-wrap` breaks the message off whole and strands the ✖ on the line above it. The
+  data-gate message (`Requires data/funce_models/. Download using scripts/db_build/download_data.py.`)
+  is what forced it. Add another flex child to that row and re-check both — a second `flex: 1`
+  child splits the width instead.
 
 `test_every_tool_links_to_my_tasks_on_success` in `tests/test_tools.py` walks the live
 registry for the import; `test_submit_success_links_to_my_tasks` and

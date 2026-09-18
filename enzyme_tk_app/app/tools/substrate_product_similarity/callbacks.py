@@ -180,17 +180,13 @@ def submit_substrate_product_similarity_job(
     # an empty string to clear the results div
 
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        # Freshly opened: clear the previous job id — or, when the tool has no data to run
-        # against, say so here.  The card's badge is the first warning; this is the second,
-        # beside the Run button the same check disables.
+        # ...or, when the tool cannot run at all, say why: the card's badge is the first
+        # warning, this is the second, beside the Run button the same check disables.
         error = validate_tool_data(TOOL_DEF["slug"])
         return build_submission_error(error) if error else ""
 
-    # Missing reference data is a property of the deployment, not of this submission — no
-    # correction to the form can fix it — so it is reported ahead of every field validator,
-    # unlike the job cap, which AGENTS.md pins last so a typo shows its own error first.  Not
-    # redundant with the disabled Run button: that gate is client-side, and a page left open
-    # while the data mount changes underneath it keeps a stale enabled button.
+    # First, ahead of every field validator: missing data is a property of the deployment and
+    # no correction to the form can fix it.  (The job cap is last, for the opposite reason.)
     error = validate_tool_data(TOOL_DEF["slug"])
     if error:
         return build_submission_error(error)

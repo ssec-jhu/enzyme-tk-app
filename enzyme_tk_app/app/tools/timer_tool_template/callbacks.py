@@ -145,8 +145,6 @@ def validate_timer_form(task_name, duration):
     has_name = task_name and task_name.strip()
     # Deliberately not `bool(duration)` — a bare 0 is present, just out of range.
     has_duration = duration is not None and str(duration).strip() != ""
-    # The template has no data dependencies, so this check is always None here.  It is wired
-    # in anyway so a tool copied from this template inherits the gate instead of forgetting it.
     return not (has_name and has_duration) or validate_tool_data(TOOL_DEF["slug"]) is not None
 
 
@@ -192,17 +190,13 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
     """
     # ── Clear stale results on modal reopen (intentional DOM write, not a guard) ──
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        # Freshly opened: clear the previous job id — or, when the tool has no data to run
-        # against, say so here.  The card's badge is the first warning; this is the second,
-        # beside the Run button the same check disables.
+        # ...or, when the tool cannot run at all, say why: the card's badge is the first
+        # warning, this is the second, beside the Run button the same check disables.
         error = validate_tool_data(TOOL_DEF["slug"])
         return build_submission_error(error) if error else ""
 
-    # Missing reference data is a property of the deployment, not of this submission — no
-    # correction to the form can fix it — so it is reported ahead of every field validator,
-    # unlike the job cap, which AGENTS.md pins last so a typo shows its own error first.  Not
-    # redundant with the disabled Run button: that gate is client-side, and a page left open
-    # while the data mount changes underneath it keeps a stale enabled button.
+    # First, ahead of every field validator: missing data is a property of the deployment and
+    # no correction to the form can fix it.  (The job cap is last, for the opposite reason.)
     error = validate_tool_data(TOOL_DEF["slug"])
     if error:
         return build_submission_error(error)
