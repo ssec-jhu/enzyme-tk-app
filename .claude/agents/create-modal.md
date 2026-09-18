@@ -199,18 +199,21 @@ create_modal_submission_results(TOOL_DEF["slug"])
 ```
 This empty div is populated by the submit callback with a job-ID confirmation or validation error.
 
-**It is one div for both, and they are told apart by *type*, not by wording.** A **bare
-string** here is a validation error and `07-modals.css` paints it red; a **success** returns
-`build_submission_success(job_id, detail)` from `modal_helpers`, which brings its own green
-box, and a `:has()` rule cancels the error box around it. So:
+**It is a plain slot with no styling of its own**, and the submit callback fills it with one of
+exactly two shared blocks from `modal_helpers`, each carrying its own box:
+`build_submission_success(job_id, detail)` (green, with the `/my-tasks` link) or
+`build_submission_error(message)` (red, with a cross). Both share the `modal-submission-row`
+base class in `07-modals.css`, so the two states are the same height and shape by construction
+and differ only in colour and icon. So:
 
-- Never return a success message as a plain f-string — it renders as an error, and the user
-  loses the `/my-tasks` link that is the only thing telling them the job is now tracked.
-- Never wrap an error in a component — it renders as a success, link and all.
+- Never return a bare string — with no styling on the slot it renders as ordinary body text,
+  losing the box, the colour and the icon. Wrap every validator message in
+  `build_submission_error()`.
+- Only the clear-on-reopen branch returns `""`, which leaves the slot empty and invisible.
 - The link is an `html.A`, not a `dcc.Link`: every other `/my-tasks` link in the app is a
   plain anchor, and a full load leaves no open modal mounted behind it.
 
-**The block is one 41px line, and that is a height budget, not a style preference.** Every
+**Each row is one 41px line, and that is a height budget, not a style preference.** Every
 tool modal already overruns a laptop viewport — measured at 1366x660, a modal is ~715px with
 this div *empty*, so the Run button is already below the fold. The row therefore holds the id
 through the shared `truncate_id()` from `utils/formatting.py` — the same helper the My Tasks
@@ -225,8 +228,8 @@ table and `/admin` use, so all three show the same string — with the full valu
 
 `test_every_tool_links_to_my_tasks_on_success` in `tests/test_tools.py` walks the live
 registry for the import; `test_submit_success_links_to_my_tasks` and
-`test_submit_error_stays_a_plain_string` in `test_tools_timer.py` pin the two return types an
-import walk cannot see. The modal deliberately stays open after Run, which is why "submit
+`test_submit_error_returns_the_shared_error_row` in `test_tools_timer.py` pin both return
+shapes, which an import walk cannot see. The modal deliberately stays open after Run, which is why "submit
 another" needs no affordance of its own (`toggle_*_modal`'s docstring).
 
 ## 10. Canonical Reference

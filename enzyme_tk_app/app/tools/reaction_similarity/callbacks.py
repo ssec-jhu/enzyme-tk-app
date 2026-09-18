@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.components.modal_helpers import build_submission_success
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_reactions
 from enzyme_tk_app.app.utils.captcha import validate_captcha
@@ -171,17 +171,17 @@ def submit_reaction_similarity_job(
     # that message.
     error = validate_reaction_smiles(smiles)
     if error:
-        return error
+        return build_submission_error(error)
 
     # Database names become file paths on the backend.
     error = validate_db_names(databases, get_reaction_database_options())
     if error:
-        return error
+        return build_submission_error(error)
 
     # Validate top_n
     error = validate_top_n(top_n)
     if error:
-        return error
+        return build_submission_error(error)
     top_n = int(top_n)
 
     # Both no-ops unless the deployment switched production mode on, and both sit after the
@@ -190,11 +190,11 @@ def submit_reaction_similarity_job(
     # never gets the cap's O(N) read for free.
     error = validate_captcha(captcha_payload, g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(

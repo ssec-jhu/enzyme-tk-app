@@ -25,7 +25,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.components.modal_helpers import build_submission_success
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
 from enzyme_tk_app.app.utils.captcha import validate_captcha
@@ -198,10 +198,10 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
     try:
         seconds = int(duration)
     except (TypeError, ValueError):
-        return "Invalid duration — please enter a number between 1 and 300."
+        return build_submission_error("Invalid duration — please enter a number between 1 and 300.")
 
     if seconds < 1 or seconds > 300:
-        return "Duration must be between 1 and 300 seconds."
+        return build_submission_error("Duration must be between 1 and 300 seconds.")
 
     # Both no-ops unless the deployment switched production mode on, and both sit after the
     # field validators so a malformed submit still shows its own error rather than "tick the
@@ -209,11 +209,11 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
     # never gets the cap's O(N) read for free.
     error = validate_captcha(captcha_payload, g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     # ── Submit to the backend ───────────────────────────────────────
     # get_task_scheduler() returns the singleton TaskScheduler

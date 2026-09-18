@@ -12,7 +12,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.components.modal_helpers import build_submission_success
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
 from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
@@ -160,17 +160,17 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
     # so the guard above must not test the SMILES and swallow that message.
     error = validate_reaction_smiles(smiles)
     if error:
-        return error
+        return build_submission_error(error)
 
     # Reject any name the dropdown is not currently offering — it becomes a file
     # path under SEQUENCE_EMBEDDINGS_DIR on the backend.
     error = validate_db_names(databases, get_sequence_embedding_database_options())
     if error:
-        return error
+        return build_submission_error(error)
 
     error = validate_top_n(top_n)
     if error:
-        return error
+        return build_submission_error(error)
     top_n = int(top_n)
 
     # Both no-ops unless the deployment switched production mode on, and both sit after the
@@ -179,11 +179,11 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
     # never gets the cap's O(N) read for free.
     error = validate_captcha(captcha_payload, g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     # At this point every input has been validated.
     # Proceed to submit the job to the scheduler

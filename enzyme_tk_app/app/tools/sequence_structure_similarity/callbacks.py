@@ -16,7 +16,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
-from enzyme_tk_app.app.components.modal_helpers import build_submission_success
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
@@ -227,7 +227,7 @@ def submit_structure_similarity_job(
     # directory whose real name has surrounding whitespace.
     error = validate_db_names(databases, get_foldseek_database_options())
     if error:
-        return error
+        return build_submission_error(error)
 
     # Validate structure file extension if provided.
     if structure_filename:
@@ -237,7 +237,7 @@ def submit_structure_similarity_job(
         # but we validate again here to be safe since the file will be processed on the backend.
         if ext not in ALLOWED_EXTENSIONS:
             allowed = ", ".join(sorted(ALLOWED_EXTENSIONS))
-            return f"Unsupported file type: {structure_filename}. Allowed: {allowed}"
+            return build_submission_error(f"Unsupported file type: {structure_filename}. Allowed: {allowed}")
 
     # Determine mode for the status message.
     mode = "structure" if structure_contents else "sequence"
@@ -258,11 +258,11 @@ def submit_structure_similarity_job(
     # never gets the cap's O(N) read for free.
     error = validate_captcha(captcha_payload, g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     # ready to submit the job to the backend scheduler
     scheduler = get_task_scheduler()

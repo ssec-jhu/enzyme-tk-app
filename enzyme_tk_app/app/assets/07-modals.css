@@ -164,38 +164,19 @@
    Modal Submission Results — status placeholder
    ========================================================================== */
 
-/* A bare string in this div is a validation error — every success path returns
-   .modal-submission-success instead (see components/modal_helpers.py). */
-.modal-submission-results:not(:empty) {
-    margin-top: 1rem;
-    padding: 0.75rem 1rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.9rem;
-    font-weight: 500;
-    background: color-mix(in srgb, var(--status-failure) 12%, white);
-    color: var(--status-failure);
-    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, transparent);
-}
+/* The results div is a plain slot — no box of its own.  Both states are
+   components that carry their own styling (modal_helpers.build_submission_*),
+   so there is nothing here to cancel and no empty-vs-non-empty selector. */
 
-/* The success block brings its own box, so cancel the error box around it.
-   Ceiling: without :has() support the green block nests inside a red one —
-   cosmetic only.  The upgrade path is wrapping the ~25 `return error` lines in
-   a build_submission_error() helper, which is the churn this selector avoids. */
-.modal-submission-results:has(.modal-submission-success) {
-    margin-top: 0;
-    padding: 0;
-    background: none;
-    border: none;
-}
+/* --- Submission result rows ---------------------------------------------- */
 
-/* --- Submission success block -------------------------------------------- */
-
-/* One flex row, not stacked children: every tool modal already overruns a
-   laptop viewport, so this block is held to a single 41px line.  flex-wrap
-   plus the link's margin-left:auto is what degrades gracefully — the link
-   right-aligns on a laptop and drops to its own right-aligned line when the
-   row cannot fit. */
-.modal-submission-success {
+/* Shared by the success and error rows, so the two states are the same height
+   and shape by construction — only colour and icon differ.  One flex row, not
+   stacked children: every tool modal already overruns a laptop viewport, so
+   this is held to a single 41px line.  flex-wrap plus the success link's
+   margin-left:auto is what degrades gracefully — the link right-aligns on a
+   laptop and drops to its own right-aligned line when the row cannot fit. */
+.modal-submission-row {
     display: flex;
     align-items: center;
     flex-wrap: wrap;
@@ -203,9 +184,20 @@
     margin-top: 1rem;
     padding: 0.5rem 0.75rem;
     border-radius: var(--radius-sm);
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.modal-submission-success {
     background: color-mix(in srgb, var(--status-success) 12%, white);
     border: 1px solid color-mix(in srgb, var(--status-success) 35%, transparent);
     color: var(--status-success);
+}
+
+.modal-submission-error {
+    background: color-mix(in srgb, var(--status-failure) 12%, white);
+    border: 1px solid color-mix(in srgb, var(--status-failure) 35%, transparent);
+    color: var(--status-failure);
 }
 
 .modal-submission-success-id {

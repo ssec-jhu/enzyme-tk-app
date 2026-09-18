@@ -45,6 +45,7 @@ from enzyme_tk_app.app.components.icons import (
     ICON_MODAL_INFO,
     ICON_SECTION_CONFIG,
     ICON_SECTION_INPUT,
+    ICON_STATUS_FAILURE,
     ICON_STATUS_SUCCESS,
     ICON_SUBMISSION_TRACK,
 )
@@ -200,14 +201,16 @@ def create_modal_footer(slug):
 def create_modal_submission_results(slug):
     """Return the job-ID / status placeholder div.
 
-    This is populated by the submit callback in callbacks.py of the tool
-    with a job-ID confirmation message or a validation error.
+    This is a plain slot with no styling of its own.  The submit callback fills
+    it with one of exactly two shared blocks, each of which carries its own box:
+    :func:`build_submission_success` (green, with the My Tasks link) or
+    :func:`build_submission_error` (red).  Both share the
+    ``modal-submission-row`` base class, so the two states are the same height
+    by construction.
 
-    The two are told apart by *type*, and ``07-modals.css`` styles them
-    differently off that distinction: a **bare string** here is a validation
-    error (red), while every success path returns
-    :func:`build_submission_success` (green, with the My Tasks link).  A
-    success message returned as a plain string would render as an error.
+    Never return a bare string here — it would render unstyled, with no icon and
+    no box.  The clear-on-reopen branch returns ``""``, which leaves the slot
+    empty and therefore invisible.
 
     Args:
         slug: The tool slug from ``TOOL_DEF["slug"]``.
@@ -241,10 +244,10 @@ def build_submission_success(job_id, detail):
             share one line with the id and the link.
 
     Returns:
-        An ``html.Div`` with ``className="modal-submission-success"``.
+        An ``html.Div`` classed ``modal-submission-row modal-submission-success``.
     """
     return html.Div(
-        className="modal-submission-success",
+        className="modal-submission-row modal-submission-success",
         children=[
             html.I(className=ICON_STATUS_SUCCESS),
             # truncate_id, not a local slice: the My Tasks Task ID column and /admin use the
@@ -266,5 +269,33 @@ def build_submission_success(job_id, detail):
                     html.I(className=f"{ICON_SUBMISSION_TRACK} modal-submission-success-arrow"),
                 ],
             ),
+        ],
+    )
+
+
+def build_submission_error(message):
+    """Return the post-submit error row: a cross icon and the validator's message.
+
+    The twin of :func:`build_submission_success`, sharing its
+    ``modal-submission-row`` base class so success and failure are the same
+    height and shape — only the colour and the icon differ.
+
+    Every validator in a submit callback returns a message or ``None``
+    (``validate_db_names``, ``validate_top_n``, ``validate_reaction_smiles``,
+    ``validate_captcha``, ``validate_active_job_limit``); wrap that message here
+    rather than returning it bare, which would render unstyled.
+
+    Args:
+        message: The validator's message.  Passed through verbatim — it already
+            carries RDKit's own diagnosis or the offending value.
+
+    Returns:
+        An ``html.Div`` classed ``modal-submission-row modal-submission-error``.
+    """
+    return html.Div(
+        className="modal-submission-row modal-submission-error",
+        children=[
+            html.I(className=ICON_STATUS_FAILURE),
+            html.Span(message),
         ],
     )

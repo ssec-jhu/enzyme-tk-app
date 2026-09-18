@@ -189,21 +189,28 @@ and `test_every_modal_carries_a_captcha_store` fails a modal missing the Store; 
 tests in `test_tools_timer.py` are what catch a guard placed *after* `submit_job` or in the
 wrong order, which an import walk cannot see.
 
-**The success return is a component; every error return is a string.** They share one
-`Output`, and `07-modals.css` tells them apart by type — a bare string in
-`id-div-<slug>-results` is painted red, `build_submission_success(job_id, detail)` brings its
-own green box and the `/my-tasks` link. That makes the type load-bearing in both directions:
+**Both outcomes are shared blocks — never return a bare message.** `id-div-<slug>-results` is
+a plain slot with no styling of its own, so a string returned into it renders with no box, no
+colour and no icon. Wrap every validator's message, and build the success row from the helper:
 
 ```python
+    error = validate_top_n(top_n)
+    if error:
+        return build_submission_error(error)
+
+    ...
+
     n_dbs = len(databases) if databases else 0
     detail = f"{n_dbs} database(s) · top {top_n}"
     return build_submission_success(job_id, detail)
 ```
 
-The clear-on-reopen branch stays `return ""` (§3 — an intentional DOM write), and every
-`if error: return error` stays exactly as it is. `test_submit_success_links_to_my_tasks` and
-`test_submit_error_stays_a_plain_string` in `test_tools_timer.py` pin both types, which the
-`test_every_tool_links_to_my_tasks_on_success` import walk cannot see.
+Every validator here returns a message or `None` and is wrapped the same way — the pattern is
+`if error: return build_submission_error(error)`, not `return error`. The clear-on-reopen
+branch is the one exception and stays `return ""` (§3 — an intentional DOM write): an empty
+slot renders nothing at all. `test_submit_success_links_to_my_tasks` and
+`test_submit_error_returns_the_shared_error_row` in `test_tools_timer.py` pin both shapes,
+which the `test_every_tool_links_to_my_tasks_on_success` import walk cannot see.
 
 **Database names are the canonical case.** They come from the browser and become filesystem
 paths, so they go through the one shared validator — never a per-tool regex. The second
