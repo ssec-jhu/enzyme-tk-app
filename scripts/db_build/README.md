@@ -99,15 +99,16 @@ input file; `/data` is the app's data directory, read-write here. Because the sc
 rather than baked in, **naming different units or editing a CONFIG value takes effect on the next run,
 with no rebuild** — you never rebuild the image to change what runs.
 
-### I want the weights and databases the app needs
+### I want the model weights the app needs
 
 ```bash
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 ```
 
-That is the image's default, `download_data.py`. It works through the six units in order and ends with
-`report()`. Around 20 GB the first time and minutes the second: everything already on disk is reused,
-so it is safe to re-run and safe to interrupt.
+That is the image's default, `download_data.py`, with no arguments: the **minimal** tier — `prostt5`,
+`unimol`, `funce` in order, ~4.2 GB — ending with `report()`. It is the weights and nothing else; add
+`--full` for the large reference databases as well (~20 GB in total). Seconds the second time:
+everything already on disk is reused, so it is safe to re-run and safe to interrupt.
 
 ### I only want to know what I already have
 

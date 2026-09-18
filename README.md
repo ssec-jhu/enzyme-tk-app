@@ -54,45 +54,49 @@ git clone https://github.com/ssec-jhu/enzyme-tk-app
 cd enzyme-tk-app
 ```
 
-**2. Get the model weights — optional**
+**2. Download model weights — optional, now or later**
 
-**Skip this and the app still works.** Small **demo sets** ship in the repo — verbatim slices of
-the full reference data — so **Reaction Similarity**, **Substrate/Product Similarity**,
-**Sequence Similarity** and the **Timer Tool Template** are runnable straight from a clone, with
-worked examples that return real hits.
+Demo sets ship in the repo, so four of the six tools run straight from a clone with worked examples
+that return real hits: **Reaction Similarity**, **Substrate/Product Similarity**,
+**Sequence Similarity** and the **Timer Tool Template**.
 
-Two tools need model weights that are far too large for git: **Sequence and Structure-Based
-Similarity** (~2 GB of ProstT5) and **Func-E** (~2 GB of UniMol weights and ensemble checkpoints).
-Until you fetch them, those two cards show a **"Missing data"** badge with a line naming what to
-download, and their **Run** button is disabled — their forms still open and say why, so nothing is
-submitted that could only fail in the worker. [`scripts/db_build/`](scripts/db_build/README.md)
-fetches them into `enzyme_tk_app/app/data/` in one Docker image — no Hugging Face account or token
-needed:
+**Just trying it out?** Skip to step 3.
+
+**Want all six tools? (~4.2 GB)** — **Sequence and Structure-Based Similarity** (ProstT5, ~2 GB) and
+**Func-E** (UniMol weights and ensemble checkpoints, ~2.2 GB) need weights too large for git.
+Without them those two cards show a red **"Missing data"** badge naming what to download and their
+**Run** button is disabled — the forms still open and say why.
 
 ```bash
+# One time: build the data-prep image. Separate from the app — docker compose never uses it.
 docker build -t etk-db-build scripts/db_build
+```
+
+```bash
+# Download the weights. /app is the script, /data is the app's own data directory, so files land
+# where the app reads them. Run from the repo root, or $(pwd) points both mounts somewhere else.
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 ```
 
-That is the **minimal** tier, ~4.2 GB settled (~5.6 GB at its peak, while the Func-E archive unpacks)
-— the weights and nothing else. It deliberately leaves out the full FoldSeek `PDB` and
-`AFDB_SWISSPROT` databases (~10 GB) and the full EnzymeMap reactions CSV (~130 MB), because the
-shipped demo sets already give those tools something to search. Add `--full` for everything, or name
-a single unit:
+**Want the full reference databases? (~20 GB total, and much longer)** — adds the FoldSeek `PDB`
+(~6.4 GB) and `AFDB_SWISSPROT` (~3.9 GB) databases, the full 62,896-reaction EnzymeMap CSV
+(~130 MB), and the ESM3 weights `build_enzyme_db.py` needs (~5.4 GB). **No tool needs any of it** —
+the demo sets already give each of them something to search.
 
 ```bash
+# Everything. Same two mounts; naming `download_data.py --full` replaces the image's default.
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py --full
 ```
 
-> Everything in the minimal tier is public and needs no account or token. The Func-E checkpoints
-> and the full EnzymeMap reference come from the project's own Hugging Face dataset,
-> [`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk); the rest come
-> from their upstreams. Each unit announces itself as `[n/m]` with an elapsed time, so a long run
-> tells you where it is.
+Run either whenever you like — reload the page afterwards and the cards update, no restart. No
+Hugging Face account or token needed; finished units are reused, so re-running is cheap and safe to
+interrupt. See [`scripts/db_build/`](scripts/db_build/README.md) for single units and where the data
+comes from.
 
 **3. Start the app**
 
 ```bash
+# --build rebuilds the app image; drop it on later runs for a faster start.
 docker compose up --build
 ```
 
@@ -153,8 +157,9 @@ this directory**, so there is nothing to copy afterwards. Two scripts in one Doc
 no Hugging Face account, token or login), and `build_enzyme_db.py` turns **your own** sequence
 file into a FoldSeek database plus an embeddings pickle. The **Supplied by** column says
 which. `report()` runs at the end of every `download_data.py` invocation, so naming any single unit
-gives you an inventory: one `OK`/`MISSING` line per item below. A `--full` run also leaves a
-hidden `.hf_cache/` here (~5.4 GB, build time only, never read by the app).
+gives you an inventory: one `OK`/`MISSING` line per row below, plus one for the ESM3 build cache.
+A `--full` run also leaves that cache here as a hidden `.hf_cache/` (~5.4 GB, build time only,
+never read by the app).
 
 | Directory | Used by | Supplied by | Contents |
 |-----------|---------|-------------|----------|
@@ -163,7 +168,7 @@ hidden `.hf_cache/` here (~5.4 GB, build time only, never read by the app).
 | `foldseek_db/` | Sequence and Structure-Based Similarity | **Repo** (`enzymes_demo_set/`, built from the 100 demo sequences); `download_data.py --full` for `PDB` (~6.4 GB) and `AFDB_SWISSPROT` (~3.9 GB); `build_enzyme_db.py` for one built from your own sequences | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | `download_data.py` | ProstT5 weights for sequence-to-structure prediction — `prostt5-f16.gguf` (~2 GB) |
 | `sequence_embeddings/` | Func-E Activity Prediction | **Repo** (`enzymes_demo_set.pkl`, the same 100 sequences); `build_enzyme_db.py` for your own | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
-| `funce_models/` | Func-E Activity Prediction | `download_data.py` (minimal tier) — the `data_funce.zip` archive (~1.35 GB) from the project's Hugging Face dataset, unpacked here | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~925 MB — the only eight files the app reads). The archive also unpacks the `_history.pkl` / `_optimizer.pkl` from the same training run, so the directory settles at ~1.5 GB across 16 files |
+| `funce_models/` | Func-E Activity Prediction | `download_data.py` (minimal tier) — the `data_funce.zip` archive (~1.35 GB) from the project's Hugging Face dataset, unpacked here | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~925 MB — the only eight files the app reads). The archive also unpacks the `_history.pkl` / `_optimizer.pkl` from the same training run, so the directory settles at ~1.57 GB across 16 files |
 | `unimol_weights/` | Func-E Activity Prediction | `download_data.py` | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
 
 Every database-backed tool selects **multiple** databases at once (all of them by default)
@@ -183,10 +188,10 @@ Run `download_data.py` from [`scripts/db_build/`](scripts/db_build/README.md) �
 Hugging Face account or token, everything written straight into `enzyme_tk_app/app/data/` so there is
 nothing to copy afterwards. With no arguments it fetches the **minimal** set: the ProstT5, UniMol and
 Func-E weights (~4.2 GB), which is everything the shipped demo sets cannot supply. `--full` adds the
-FoldSeek `PDB` and `AFDB_SWISSPROT` databases and the ESM3 snapshot the builder below needs (~20 GB),
-plus the full EnzymeMap reactions CSV, and naming a unit (`prostt5`, `unimol`, `funce`,
-`reactions`, `pdb`, `afdb`, `esm3`) runs just that one. The Func-E checkpoints and the EnzymeMap
-reference come from the project's own dataset at
+FoldSeek `PDB` and `AFDB_SWISSPROT` databases, the ESM3 snapshot the builder below needs, and the
+full EnzymeMap reactions CSV, bringing the total to ~20 GB; naming a unit (`prostt5`, `unimol`,
+`funce`, `reactions`, `pdb`, `afdb`, `esm3`) runs just that one. The Func-E checkpoints and the
+EnzymeMap reference come from the project's own dataset at
 [`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk); the rest come from
 their upstreams. Its closing `report()` prints `OK`/`MISSING` for every data item the app looks
 for, on every run.
