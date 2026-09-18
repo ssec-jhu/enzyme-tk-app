@@ -41,7 +41,7 @@ To run it on your own machine, start at [Quickstart](#quickstart).
 
 - **Docker** with Compose v2 (`docker compose`, not `docker-compose`). Nothing else — no local Python, no conda env.
 - **~8 GB RAM** free for the containers. A Func-E job alone budgets ~3 GB.
-- **Disk:** ~5 GB for the image. The demo reference data ships in the repo, so nothing more is needed to run four of the six tools; the other two want ~4.2 GB of model weights, and the full reference set is ~20 GB. See [Data Directories](#data-directories).
+- **Disk:** ~5 GB for the image. The demo reference data ships in the repo, so nothing more is needed to run four of the six tools; the other two want ~4.2 GB of model weights (~5.6 GB briefly, while the Func-E archive and its contents coexist during unpacking), and the full reference set is ~20 GB. See [Data Directories](#data-directories).
 
 
 ## Quickstart
@@ -71,9 +71,11 @@ docker build -t etk-db-build scripts/db_build
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build
 ```
 
-That is the **minimal** tier, ~4.2 GB — the weights and nothing else. It deliberately leaves out the
-full FoldSeek `PDB` and `AFDB_SWISSPROT` databases (~10 GB), because the shipped demo FoldSeek
-database already satisfies that tool. Add `--full` for everything, or name a single unit:
+That is the **minimal** tier, ~4.2 GB settled (~5.6 GB at its peak, while the Func-E archive unpacks)
+— the weights and nothing else. It deliberately leaves out the full FoldSeek `PDB` and
+`AFDB_SWISSPROT` databases (~10 GB) and the full EnzymeMap reactions CSV (~130 MB), because the
+shipped demo sets already give those tools something to search. Add `--full` for everything, or name
+a single unit:
 
 ```bash
 docker run --rm -v "$(pwd)/scripts/db_build:/app" -v "$(pwd)/enzyme_tk_app/app/data:/data" etk-db-build download_data.py --full
@@ -112,7 +114,8 @@ docker compose down -v           # stop and delete job results
    database is selected by default and they are merged into one ranked result. Most forms have
    an **example** picker that fills every field including the name, so you can run one
    immediately.
-3. **Submit.** The job runs in the background; you can close the tab.
+3. **Submit.** A green confirmation shows a short job ID — hover it for the full value —
+   and links straight to My Tasks; the job runs in the background, so you can close the tab.
 4. **Watch it in [My Tasks](http://localhost:8050/my-tasks).** The table lists every job this
    browser has submitted, with its tool, status, and timestamps. Jobs are kept for 24 hours.
 5. **View results.** Click into a finished job for summary stat cards, the parameters you
@@ -153,7 +156,7 @@ hidden `.hf_cache/` here (~5.4 GB, build time only, never read by the app).
 | `foldseek_db/` | Sequence and Structure-Based Similarity | **Repo** (`enzymes_demo_set/`, built from the 100 demo sequences); `download_data.py --full` for `PDB` (~6.4 GB) and `AFDB_SWISSPROT` (~3.9 GB); `build_enzyme_db.py` for one built from your own sequences | One subdirectory per FoldSeek database (`PDB`, `AFDB_SWISSPROT`, …), each shown by its folder name |
 | `foldseek_models/weights/` | Sequence and Structure-Based Similarity | `download_data.py` | ProstT5 weights for sequence-to-structure prediction — `prostt5-f16.gguf` (~2 GB) |
 | `sequence_embeddings/` | Func-E Activity Prediction | **Repo** (`enzymes_demo_set.pkl`, the same 100 sequences); `build_enzyme_db.py` for your own | Pre-encoded protein embedding tables — at least one `.pkl`, each with `Entry`, `Sequence` and `esm3_mean`. Named for the data rather than a tool: any tool needing protein embeddings reads these. Columns are **not** checked at discovery (a pickle has no header-only read) — a malformed one is skipped and named in the job's **Databases Skipped** card |
-| `funce_models/` | Func-E Activity Prediction | `download_data.py` (minimal tier) — the `data_funce.zip` archive from the project's Hugging Face dataset, unpacked here | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~1.5 GB total) |
+| `funce_models/` | Func-E Activity Prediction | `download_data.py` (minimal tier) — the `data_funce.zip` archive (~1.35 GB) from the project's Hugging Face dataset, unpacked here | The four EC-level checkpoints, `run_easy_0-50_ESRP_{1..4}_model_1_500000_{conf.pkl,checkpoint.pth}` (~925 MB — the only eight files the app reads). The archive also unpacks the `_history.pkl` / `_optimizer.pkl` from the same training run, so the directory settles at ~1.5 GB across 16 files |
 | `unimol_weights/` | Func-E Activity Prediction | `download_data.py` | The UniMol v2 164M checkpoint at `modelzoo/164M/checkpoint.pt` (~660 MB), used to embed the query reaction's substrate and product. Named for the model, not for its reader. The exact checkpoint path is checked, not just the directory: the mount is read-only, so a wrong layout cannot heal itself with a download |
 
 Every database-backed tool selects **multiple** databases at once (all of them by default)

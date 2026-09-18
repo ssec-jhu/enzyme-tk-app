@@ -37,7 +37,7 @@ Nothing here is gated: **no Hugging Face account, token or login is needed.**
 
 The last two come from **this project's own** Hugging Face dataset,
 [`arianemora/enzyme-tk`](https://huggingface.co/datasets/arianemora/enzyme-tk), named once as
-`ETK_HUGGING_FACE_DATASET_REPO` and fetched through the shared
+`HUGGING_FACE_DATASET_REPO` and fetched through the shared
 `fetch_dataset_file_from_hugging_face()` helper — so publishing another file there is a one-line unit.
 That route is taken for **resume and integrity**, not speed: an interrupted 1.35 GB download picks up
 where it stopped and the result is hash-checked, while measured throughput (~33 MB/s) is about the same
@@ -53,22 +53,24 @@ run_easy_0-50_ESRP_{1,2,3,4}_model_1_500000_checkpoint.pth
 plus the `_history.pkl` and `_optimizer.pkl` from the same training run (another ~600 MB the app never
 opens, kept because they are part of the released artifact). Budget for the unpacking, not just the
 settled size: the archive and its contents coexist briefly, so this unit needs ~2.9 GB free even though
-it leaves ~1.57 GB behind — which makes the minimal tier ~5.6 GB at its peak against ~4.2 GB settled. The archive nests its payload three
-directories deep (`data/Funce/models/`), which `_extract_archive()` flattens — it descends the whole
-single-directory chain, so a repacked archive at a different depth still lands correctly.
+it leaves ~1.57 GB behind — which makes the minimal tier ~5.6 GB of disk at its peak against ~4.2 GB
+settled.
+The archive nests its payload three directories deep (`data/Funce/models/`), which `_extract_archive()`
+flattens — it descends the whole single-directory chain, so a repacked archive at a different depth
+still lands correctly.
 
 The **ESM3** snapshot is the odd one out: a build-time cache only `build_enzyme_db.py` reads. It goes in
 a hidden `.hf_cache/` so one mount carries it and it survives `docker run --rm`, and an `HF_HOME` you
 already have wins, so a shared model cache is reused instead of downloading 5.4 GB again.
 
-### Checked and reported, never downloaded
+### Checked and reported, not downloaded by any unit
 
 | Item | Path | Comes from |
 |---|---|---|
-| Sequence tables | `sequences/*.{csv,tsv,csv.gz,tsv.gz}` with `Entry`, `Sequence`, `EC number` | You |
-| Reaction tables | `reactions/*.csv` | Repo demo set, `download_reactions()`, or you |
-| Embedding pickles | `sequence_embeddings/*.pkl` | `build_enzyme_db.py` |
-| Custom FoldSeek DBs | `foldseek_db/<name>/` | `build_enzyme_db.py` |
+| Sequence tables | `sequences/*.{csv,tsv,csv.gz,tsv.gz}` with `Entry`, `Sequence`, `EC number` | Repo demo set, or you |
+| Reaction tables | `reactions/*.csv` | Repo demo set, or you — the full EnzymeMap set is the `reactions` unit above |
+| Embedding pickles | `sequence_embeddings/*.pkl` | Repo demo set, or `build_enzyme_db.py` |
+| Custom FoldSeek DBs | `foldseek_db/<name>/` | Repo demo set, or `build_enzyme_db.py` |
 
 `report()` prints one line per item — all eight — as `OK` or `MISSING`, with the function name that
 supplies it. It runs at the end of **every** `download_data.py` run, so "what do I still need?" is
@@ -78,7 +80,7 @@ answered by naming a unit that is already satisfied, or any unit at all:
 ============================================================
 Data directory: /app-data
   OK       sequences/                 ships a demo set; add CSV/TSV with Entry, Sequence, EC number
-  OK       reactions/                 ships a demo set; add your own reaction CSVs
+  OK       reactions/                 ships a demo set; download_reactions() for the full set
   OK       foldseek_db/               ships a demo set; pdb / afdb units add more
   ...
 ============================================================

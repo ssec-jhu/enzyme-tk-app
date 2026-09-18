@@ -49,7 +49,10 @@ AGENTS.md
 Dockerfile
 docker-compose*.yml
 
-# Large data directories not needed in image
+# Tool data is never in the image — it arrives on the /app-data mount at run time.
+# Not redundant with .gitignore: the four *_demo_set artifacts under here ARE tracked
+# (so a clone can run without a download), and the closing `COPY . .` would bake them
+# into a layer that nothing ever reads.
 enzyme_tk_app/app/data/
 
 # Local dev environments — never belong in the image, and each one adds
