@@ -318,6 +318,47 @@ def test_a_host_without_the_foldseek_binary_is_told_so(script, data_dir, monkeyp
 # ── Hugging Face downloads ───────────────────────────────────────────────────
 
 
+def test_the_shipped_script_names_the_files_it_downloads(script):
+    """The shipped state is "configured": every clone downloads from these three constants.
+
+    An empty or misspelled one turns a download into a failure a long way from here: an empty
+    repository id never resolves to a repository at all, and a filename with no archive suffix
+    drops through ``_extract_archive`` into its tar branch.  Clones run on these values, so
+    these are the ones that have to be right — every test below sets its own.
+    """
+    owner, _, name = script.HUGGING_FACE_DATASET_REPO.partition("/")
+
+    assert owner and name, "the dataset repository must be named owner/name"
+    # The suffix is what picks the branch in _extract_archive; nothing else unpacks anything.
+    assert script.FUNCE_MODELS_FILE.endswith((".zip", ".tar.gz"))
+    # report() and both reaction tools look for reactions/*.csv, so the reference has to be one.
+    assert script.REACTIONS_FILE.endswith(".csv")
+
+
+def test_a_dataset_file_is_requested_from_the_projects_own_dataset_repository(script, fake_download, tmp_path):
+    """A dataset repository has to be asked for as one — ``repo_type="dataset"``.
+
+    Left at the default the Hub looks the file up in the *model* index, and answers with a bare
+    404 that reads as "the file is gone" rather than "you asked the wrong index".  This is the
+    one assertion that catches the next dataset file wired up with the wrong type.  The path
+    that comes back is what ``download_funce_models`` goes on to unpack.
+    """
+    destination = tmp_path / "landing"
+    fake_download.archive = write_archive(tmp_path / "published.zip", ["run_1_conf.pkl"])
+
+    landed = script.fetch_dataset_file_from_hugging_face(script.FUNCE_MODELS_FILE, destination)
+
+    assert fake_download.calls == [
+        {
+            "repo_id": script.HUGGING_FACE_DATASET_REPO,
+            "filename": script.FUNCE_MODELS_FILE,
+            "repo_type": "dataset",
+            "local_dir": str(destination),
+        }
+    ]
+    assert landed == destination / script.FUNCE_MODELS_FILE
+
+
 @pytest.mark.parametrize(
     ("cache_answer", "expected"),
     [("/hf-cache/models--esm3/esm3_sm_open_v1.pth", True), (None, False), (object(), False)],
@@ -429,75 +470,83 @@ def place_funce_models(script, levels_present):
             (script.FUNCE_MODELS_DIR / f"{script.FUNCE_CHECKPOINT_STEM.format(ec=ec)}_{suffix}").write_bytes(b"")
 
 
+def publish_funce_archive(script, fake_download, tmp_path, members=None):
+    """Hand the download stand-in an archive of *members*, as the dataset repository serves it.
+
+    It is named FUNCE_MODELS_FILE because that suffix is what picks the branch in
+    ``_extract_archive``.  *members* defaults to the whole ensemble — every case but the
+    deliberately incomplete one wants all eight files.
+    """
+    if members is None:
+        members = [path.name for path in script.funce_model_files()]
+    release = tmp_path / "release"
+    release.mkdir()
+    fake_download.archive = write_archive(release / script.FUNCE_MODELS_FILE, members)
+
+
 @pytest.mark.parametrize(
-    ("levels_present", "expected_line"),
+    ("levels_present", "expected_line", "expects_download"),
     [
-        (EC_LEVELS, "Func-E ensemble: FOUND"),
-        (EC_LEVELS[:-1], "Func-E ensemble: NOT FOUND"),
-        ((), "Func-E ensemble: NOT FOUND"),
+        (EC_LEVELS, "Func-E ensemble: FOUND", False),
+        (EC_LEVELS[:-1], "Func-E ensemble: NOT FOUND", True),
+        ((), "Func-E ensemble: NOT FOUND", True),
     ],
     ids=["complete", "three-of-four", "nothing-at-all"],
 )
-def test_anything_short_of_the_whole_funce_ensemble_is_reported_as_missing(
-    script, data_dir, fake_download, capsys, levels_present, expected_line
+def test_anything_short_of_the_whole_funce_ensemble_is_downloaded_again(
+    script, data_dir, fake_download, tmp_path, capsys, levels_present, expected_line, expects_download
 ):
     """Three of four EC levels is missing, not mostly there — the same line check_data.py draws.
 
-    Func-E loads one model per EC level, so an incomplete set still runs and silently
-    predicts from a different ensemble than the results claim.  Every absent file is named,
-    because FUNCE_MODELS_URL is empty in the shipped script and they have to be copied in
-    by hand.  ``fake_download`` is in place so a complete ensemble is proved to cost no
-    request at all, and an incomplete one is proved not to fetch the empty URL.
+    Func-E loads one model per EC level, so an incomplete set still runs and silently predicts
+    from a different ensemble than the results claim; the only safe answer is to fetch the
+    archive again.  The complete case is the other half, and the one that has to cost nothing:
+    1.35 GB is not re-downloaded every time the script is re-run to see what a host has, so it
+    leaves ``archive`` unset and any request at all fails on the spot.
     """
     place_funce_models(script, levels_present)
+    if expects_download:
+        publish_funce_archive(script, fake_download, tmp_path)
 
     script.download_funce_models()
 
-    output = capsys.readouterr().out
-    assert expected_line in output
-    assert fake_download.urls == []
-    for path in script.funce_model_files():
-        if not path.exists():
-            assert str(path) in output
-
-
-def test_the_shipped_script_has_no_download_url(script):
-    """FUNCE_MODELS_URL ships empty, because the checkpoints are not published yet.
-
-    That is the state every clone is in, so it is the branch that has to be right, and the
-    test above is what proves it: with no URL the unit degrades to naming what is missing
-    and fetches nothing.  Fetching "" instead would turn an informative message into a
-    traceback on a fresh checkout.  The download tests below set the constant themselves,
-    so they say nothing about what ships — this is the only line that does.
-    """
-    assert script.FUNCE_MODELS_URL == ""
+    assert expected_line in capsys.readouterr().out
+    assert fake_download.filenames == ([script.FUNCE_MODELS_FILE] if expects_download else [])
 
 
 @pytest.mark.parametrize("suffix", [".tar.gz", ".zip"], ids=["tar-gz", "zip"])
-@pytest.mark.parametrize("wrapper", ["", "funce_models_v1/"], ids=["files-at-the-top", "wrapped-in-one-folder"])
 def test_a_published_archive_is_fetched_and_unpacked_into_funce_models(
-    script, data_dir, fake_download, tmp_path, wrapper, suffix
+    script, data_dir, fake_download, monkeypatch, tmp_path, suffix
 ):
-    """With a URL set, the unit behaves like every other: fetch, unpack, confirm.
+    """The unit end to end: fetch the archive from the dataset repository, unpack it, confirm.
 
     Both archive formats are covered because ``_extract_archive`` has a separate branch for
-    each and only the URL's suffix decides which one runs — so a change to one branch that
-    left the other broken would otherwise ship unnoticed.  Both layouts are covered because
-    a release archive usually wraps everything in one folder, and the checkpoints are wanted
-    at the top of funce_models/: that is the one path Func-E's check_data looks in, so an
-    unflattened archive would unpack perfectly and still leave the tool switched off.
+    each and only the filename's suffix decides which one runs — so a change to one branch that
+    left the other broken would otherwise ship unnoticed.  The published file is the zip today;
+    the tarball case is FUNCE_MODELS_FILE named the way a future release might be.
     """
-    script.FUNCE_MODELS_URL = f"https://example.invalid/funce_models{suffix}"
+    monkeypatch.setattr(script, "FUNCE_MODELS_FILE", f"data_funce{suffix}")
     required = script.funce_model_files()
-    release = tmp_path / "release"
-    release.mkdir()
-    members = [f"{wrapper}{path.name}" for path in required]
-    fake_download.archive = write_archive(release / f"funce_models{suffix}", members)
+    publish_funce_archive(script, fake_download, tmp_path)
 
     script.download_funce_models()
 
-    assert fake_download.urls == [script.FUNCE_MODELS_URL]
+    assert fake_download.filenames == [script.FUNCE_MODELS_FILE]
     assert [path for path in required if not path.exists()] == []
+
+
+def test_a_finished_download_does_not_leave_the_archive_behind(script, data_dir, fake_download, tmp_path):
+    """Once the ensemble is complete the staging directory goes, and 1.35 GB of disk with it.
+
+    It is a persistent ``.download/`` rather than a TemporaryDirectory so an interrupted
+    download can resume; that is exactly why clearing it once the ensemble is complete is this
+    unit's own job — nothing else will ever come back for it.
+    """
+    publish_funce_archive(script, fake_download, tmp_path)
+
+    script.download_funce_models()
+
+    assert not (script.FUNCE_MODELS_DIR / FUNCE_STAGING_DIR).exists()
 
 
 def test_unpacking_an_archive_leaves_a_checkpoint_that_is_already_there_alone(
@@ -509,14 +558,11 @@ def test_unpacking_an_archive_leaves_a_checkpoint_that_is_already_there_alone(
     together by hand, and each checkpoint is hundreds of megabytes — overwriting what is
     already correct would make finishing a copy cost as much as starting one.
     """
-    script.FUNCE_MODELS_URL = "https://example.invalid/funce_models.tar.gz"
     required = script.funce_model_files()
     already_there = required[0]
     already_there.parent.mkdir(parents=True)
     already_there.write_bytes(b"copied in by hand")
-    release = tmp_path / "release"
-    release.mkdir()
-    fake_download.archive = write_archive(release / "funce_models.tar.gz", [path.name for path in required])
+    publish_funce_archive(script, fake_download, tmp_path)
 
     script.download_funce_models()
 
@@ -530,19 +576,42 @@ def test_an_archive_that_unpacks_without_the_whole_ensemble_stops_the_run(script
     job predicting from three models instead of four.  Every file still absent is named,
     because the data mount is read-only in the app and cannot be repaired at run time.
     """
-    script.FUNCE_MODELS_URL = "https://example.invalid/funce_models.tar.gz"
     required = script.funce_model_files()
-    release = tmp_path / "release"
-    release.mkdir()
     # Everything but the last EC level's two files, which is the partial ensemble Func-E
     # would otherwise load without complaint.
-    fake_download.archive = write_archive(release / "funce_models.tar.gz", [path.name for path in required[:-2]])
+    publish_funce_archive(script, fake_download, tmp_path, [path.name for path in required[:-2]])
 
     with pytest.raises(SystemExit) as excinfo:
         script.download_funce_models()
 
     for path in required[-2:]:
         assert str(path) in str(excinfo.value)
+    # The download itself was fine, so the archive is kept: re-fetching 1.35 GB would punish
+    # the wrong step, and the next run unpacks what is already in the staging directory.
+    assert (script.FUNCE_MODELS_DIR / FUNCE_STAGING_DIR / script.FUNCE_MODELS_FILE).exists()
+
+
+@pytest.mark.parametrize(
+    "wrapper",
+    ["", "data_funce/", "data_funce/models/", "data/Funce/models/"],
+    ids=["files-at-the-top", "one-folder", "two-folders", "the-published-three"],
+)
+def test_an_archive_is_flattened_however_deep_its_wrapping_folders_go(script, tmp_path, wrapper):
+    """The published Func-E archive wraps its payload three folders deep: ``data/Funce/models/``.
+
+    The checkpoints are wanted flat at the top of funce_models/, the one path Func-E's
+    check_data looks in.  Stripping a single wrapping folder — which is what this used to do —
+    left them two directories further down where ``funce_model_files()`` cannot see them, and
+    the only sign was the "still missing" exit at the end of a 1.35 GB download.
+    """
+    destination = tmp_path / "funce_models"
+    members = ["run_1_conf.pkl", "run_1_checkpoint.pth"]
+    archive = write_archive(tmp_path / "data_funce.zip", [f"{wrapper}{name}" for name in members])
+
+    script._extract_archive(archive, destination)
+
+    # Everything in the destination, so a wrapping folder left behind would show up here too.
+    assert sorted(path.name for path in destination.iterdir()) == sorted(members)
 
 
 @pytest.mark.parametrize(
@@ -568,6 +637,51 @@ def test_a_zip_member_that_escapes_the_destination_is_refused(script, tmp_path, 
     assert list(destination.iterdir()) == []
 
 
+# ── The full EnzymeMap reference ─────────────────────────────────────────────
+
+
+def test_the_reactions_reference_is_not_fetched_again_when_it_is_already_there(script, data_dir, fake_download):
+    """130 MB, and the CSV itself is the check, so a re-run reuses it instead of downloading."""
+    script.REACTIONS_DIR.mkdir(parents=True)
+    (script.REACTIONS_DIR / script.REACTIONS_FILE).write_text("rxn_idx,mapped\n")
+
+    script.download_reactions()
+
+    assert fake_download.filenames == []
+
+
+def test_the_reactions_reference_lands_in_the_reactions_directory(script, data_dir, fake_download, tmp_path):
+    """Both reaction tools read reactions/*.csv, so the file has to arrive there under its own name.
+
+    Landing it anywhere else leaves the shipped demo set as the only thing their dropdowns
+    offer, after a finished download and with nothing to say why.
+    """
+    # A plain CSV, not an archive: this unit downloads the reference file itself.
+    published = tmp_path / "published.csv"
+    published.write_text("rxn_idx,mapped\n")
+    fake_download.archive = published
+
+    script.download_reactions()
+
+    assert fake_download.filenames == [script.REACTIONS_FILE]
+    assert (script.REACTIONS_DIR / script.REACTIONS_FILE).read_bytes() == published.read_bytes()
+
+
+def test_a_reactions_download_that_leaves_no_csv_is_a_failure(script, data_dir, hugging_face):
+    """A finished download with nothing under it stops here rather than at the first search.
+
+    ``hf_hub_download`` keeps the repository's own folders under ``local_dir``, so a reference
+    published one directory deep lands where nothing scans for ``reactions/*.csv`` — and both
+    reaction tools would go on offering the demo set alone, with a successful run behind them.
+    """
+    hugging_face.hf_hub_download = lambda **kwargs: "/hf-cache/nothing.csv"  # leaves nothing behind
+
+    with pytest.raises(SystemExit) as excinfo:
+        script.download_reactions()
+
+    assert script.REACTIONS_FILE in str(excinfo.value)
+
+
 # ── The command line ─────────────────────────────────────────────────────────
 
 
@@ -575,7 +689,7 @@ def test_a_zip_member_that_escapes_the_destination_is_refused(script, tmp_path, 
     ("argv", "expected_units"),
     [
         ([], ["prostt5", "unimol", "funce"]),
-        (["--full"], ["prostt5", "unimol", "funce", "pdb", "afdb", "esm3"]),
+        (["--full"], ["prostt5", "unimol", "funce", "reactions", "pdb", "afdb", "esm3"]),
         (["prostt5"], ["prostt5"]),
         (["prostt5", "esm3"], ["prostt5", "esm3"]),
     ],
@@ -593,6 +707,31 @@ def test_the_command_line_runs_exactly_the_units_it_was_asked_for(script, data_d
     script.main(argv)
 
     assert units_run == expected_units
+
+
+# What every progress line opens with: [position/total] unit-name.
+PROGRESS_LINE = re.compile(r"^\[(\d+)/(\d+)\] (\w+)", flags=re.MULTILINE)
+
+
+def test_every_unit_is_announced_with_its_place_in_the_run(script, data_dir, monkeypatch, capsys):
+    """A --full run is seven units and ~20 GB, and a unit cannot know its own place in it.
+
+    Without the counter there is no way to tell a long download from a hung one.  Which units
+    run is the test above's job; this one only reads the counters and the names back, so the
+    banners around them can be restyled without a test to fix.
+    """
+    units_run = record_every_unit(script, monkeypatch)
+
+    script.main(["--full"])
+
+    announced = []
+    for position, total, name in PROGRESS_LINE.findall(capsys.readouterr().out):
+        # Each unit is announced twice, as it starts and as it finishes, and both lines carry
+        # the same counter, so the second one has nothing new to check.
+        if (int(position), int(total), name) not in announced:
+            announced.append((int(position), int(total), name))
+
+    assert announced == [(position, len(units_run), name) for position, name in enumerate(units_run, start=1)]
 
 
 @pytest.mark.parametrize(

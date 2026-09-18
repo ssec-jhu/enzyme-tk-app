@@ -14,6 +14,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_success
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
@@ -308,13 +309,11 @@ def submit_sequence_similarity_job(
         session_id=g.session_id,
     )
 
-    # Format the message to include the job ID and any applied filters.
-    msg = f"Job submitted — ID: {job_id} (searching for top {top_n} results"
-    # Only mention filters if they are applied, to avoid cluttering the message.
+    detail = f"top {top_n}"
+    # Only mention filters if they are applied, to avoid cluttering the row.
     if ec_filter:
-        msg += f", filtered by {len(ec_filter)} EC number(s)"
+        detail += f" · {len(ec_filter)} EC filter(s)"
     if cofactor_filter:
-        msg += f", filtered by {len(cofactor_filter)} cofactor(s)"
-    msg += ")"
+        detail += f" · {len(cofactor_filter)} cofactor(s)"
 
-    return msg
+    return build_submission_success(job_id, detail)

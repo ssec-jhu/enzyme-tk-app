@@ -25,6 +25,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_success
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
 from enzyme_tk_app.app.utils.captcha import validate_captcha
@@ -237,5 +238,6 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
         session_id=g.session_id,
     )
 
-    fail_note = " (will simulate failure)" if simulate_failure else ""
-    return f"Job submitted — ID: {job_id} (will run for {seconds}s{fail_note})"
+    fail_note = " · will simulate failure" if simulate_failure else ""
+    detail = f"{seconds}s{fail_note}"
+    return build_submission_success(job_id, detail)

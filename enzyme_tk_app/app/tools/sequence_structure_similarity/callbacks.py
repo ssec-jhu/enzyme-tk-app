@@ -16,6 +16,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_success
 from enzyme_tk_app.app.paths import STRUCTURES_DIR
 from enzyme_tk_app.app.tools.sequence_structure_similarity import ALLOWED_EXTENSIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_structure_similarity.modal import _get_example_entries
@@ -271,7 +272,8 @@ def submit_structure_similarity_job(
         session_id=g.session_id,
     )
 
-    # common feedback to the user amongst all tools
-    db_list = ", ".join(databases)
-    msg = f"Job submitted — ID: {job_id} ({mode} mode, databases: {db_list})"
-    return msg
+    # A count rather than the names on purpose: joined database names ran to 488px of the
+    # confirmation row's ~720px budget and wrapped it onto a second line.  The names stay
+    # on the job's own results page, where they are shown exactly as they are in data/.
+    detail = f"{mode} mode · {len(databases)} database(s)"
+    return build_submission_success(job_id, detail)

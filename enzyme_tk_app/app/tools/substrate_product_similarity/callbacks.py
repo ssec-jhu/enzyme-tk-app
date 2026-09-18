@@ -12,6 +12,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_success
 from enzyme_tk_app.app.tools.substrate_product_similarity import TOOL_DEF, MoleculeRole
 from enzyme_tk_app.app.tools.substrate_product_similarity.modal import _get_example_smiles
 from enzyme_tk_app.app.utils.captcha import validate_captcha
@@ -234,8 +235,7 @@ def submit_substrate_product_similarity_job(
         session_id=g.session_id,
     )
 
-    # Construct a user-friendly message that includes the job ID and a
-    # summary of the search parameters.
     n_dbs = len(databases) if databases else 0
     role_label = role.capitalize() if role else MoleculeRole.SUBSTRATE.value.capitalize()
-    return f"Job submitted — ID: {job_id} ({role_label} search across {n_dbs} database(s) for top {top_n} results)"
+    detail = f"{role_label} · {n_dbs} database(s) · top {top_n}"
+    return build_submission_success(job_id, detail)

@@ -20,7 +20,7 @@ The minimal set is what a clone cannot ship: model weights. The large foldseek d
 the full EnzymeMap reference are not in it because data/foldseek_db/ and data/reactions/
 already carry demo sets that make those tools runnable, and ESM3 is only needed by
 build_enzyme_db.py. The Func-E checkpoints and the EnzymeMap set come from this project's own
-Hugging Face dataset (ETK_HUGGING_FACE_DATASET_REPO); the rest come from their upstreams.
+Hugging Face dataset (HUGGING_FACE_DATASET_REPO); the rest come from their upstreams.
 
 Nothing here is gated -- no Hugging Face account, token or login is needed.
 
@@ -158,7 +158,7 @@ def download_prostt5_weights() -> None:
 
 # Everything this project publishes itself lives in one Hugging Face dataset repository, and
 # nowhere else -- the Func-E checkpoints and the full EnzymeMap reference today, more later.
-ETK_HUGGING_FACE_DATASET_REPO = "arianemora/enzyme-tk"
+HUGGING_FACE_DATASET_REPO = "arianemora/enzyme-tk"
 
 
 def fetch_dataset_file_from_hugging_face(filename: str, destination: Path) -> Path:
@@ -184,7 +184,7 @@ def fetch_dataset_file_from_hugging_face(filename: str, destination: Path) -> Pa
     destination.mkdir(parents=True, exist_ok=True)
     return Path(
         hf_hub_download(
-            repo_id=ETK_HUGGING_FACE_DATASET_REPO,
+            repo_id=HUGGING_FACE_DATASET_REPO,
             filename=filename,
             repo_type="dataset",
             local_dir=str(destination),

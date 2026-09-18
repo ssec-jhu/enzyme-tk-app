@@ -12,6 +12,7 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_success
 from enzyme_tk_app.app.tools.funce import EXAMPLE_REACTIONS, TOOL_DEF
 from enzyme_tk_app.app.utils.captcha import validate_captcha
 from enzyme_tk_app.app.utils.data_loading import get_sequence_embedding_database_options, validate_db_names
@@ -203,4 +204,5 @@ def submit_funce_job(submit_clicks, launch_clicks, task_name, smiles, databases,
         session_id=g.session_id,
     )
 
-    return f"Job submitted — ID: {job_id} (scoring {len(databases)} database(s) for top {top_n} results)"
+    detail = f"{len(databases)} database(s) · top {top_n}"
+    return build_submission_success(job_id, detail)
