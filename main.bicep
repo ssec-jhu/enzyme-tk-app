@@ -232,6 +232,14 @@ resource web 'Microsoft.App/containerApps@2024-03-01' = {
           env: concat(sharedEnv, [
             { name: 'ETK_ADMIN_TOKEN', secretRef: 'admin-token' }
             { name: 'ETK_SECRET_KEY', secretRef: 'secret-key' }
+            // The production switch, hardcoded because this file IS the production
+            // deployment. Nothing from .env reaches Azure, so without this line the
+            // per-session job cap and the submission captcha would both ship
+            // permanently off. It also makes the ETK_SECRET_KEY secretRef above
+            // mandatory rather than merely advisable: the captcha derives its signing
+            // key from it and the app refuses to start without one. web only — the
+            // worker serves no HTTP and never gates a submission.
+            { name: 'APP_IN_PRODUCTION_MODE', value: 'true' }
           ])
           volumeMounts: sharedVolumeMounts
         }
