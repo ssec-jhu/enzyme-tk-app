@@ -276,20 +276,27 @@ filter, and gitignored is not excluded. Secrets (`.env`, `.env.*`) are listed th
 build cannot bake them into a published layer; see [Admin Secrets](#admin-secrets-env). Add or
 widen a `COPY` and re-read that file in the same change.
 
-### Refetching `enzymetk` (branch-tracked)
+### Bumping `enzymetk` (commit-pinned)
 
-`requirements/prd.txt` installs `enzymetk` from a **branch** (`@funce-updates`), not a pinned
-commit, until it has a release. Both pip and the Docker layer cache key on the branch *name*
-rather than the commit it resolves to, so a plain `docker compose build` reuses whatever copy
-it already has. To pick up new commits from the branch:
+`requirements/prd.txt` installs `enzymetk` from a **pinned commit** on `main`, not a branch or
+a released version — the library has no release yet, and an immutable ref is what lets a built
+image record which `enzymetk` it actually holds. Moving to a newer upstream commit is an edit,
+not a build flag:
 
-```bash
-docker compose build --no-cache
-docker compose up -d
-```
+1. Replace the SHA in [`requirements/prd.txt`](../requirements/prd.txt).
+2. Replace it in [`scripts/db_build/Dockerfile`](../scripts/db_build/Dockerfile)'s
+   `ARG ENZYMETK_REF` as well — **the two must match**. Both images write the same `data/`
+   directory, so a drift means two `enzymetk` versions over one dataset.
+3. Rebuild normally:
 
-This is the same situation — and the same answer — as the builder image in
-[`scripts/db_build/`](../scripts/db_build/README.md), which tracks the same branch.
+   ```bash
+   docker compose build
+   docker compose up -d
+   ```
+
+No `--no-cache` is needed: changing the requirements file invalidates its own layer, which is
+exactly what a branch ref could not do (pip and the layer cache both saw an unchanged name).
+The builder image in [`scripts/db_build/`](../scripts/db_build/README.md) works the same way.
 
 ### GPU (optional)
 

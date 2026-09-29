@@ -23,10 +23,20 @@ running container until you rebuild:
 docker compose up -d --build web
 ```
 
-~60–90 s. That picks up any change in *this* repo, but **not new `enzymetk`
-commits** — `requirements/prd.txt` tracks a branch, so pip and the layer cache
-both see an unchanged branch name. When the behaviour you are verifying lives in
-the library, force the refetch:
+~60–90 s. **`web` alone is not enough when the change runs inside a job.** `web`,`worker` and `beat` each have their own `build: .` in `docker-compose.yml` with no
+shared `image:`, so compose builds three images and `--build web` leaves the worker
+on its old one — and the worker is what executes every tool's `run()`. Verifying a
+compute or library change against a stale worker proves nothing. Rebuild all three:
+
+```bash
+docker compose up -d --build
+```
+
+That picks up any change in *this* repo, **including an `enzymetk`
+bump**: the library is pinned by commit in `requirements/prd.txt`, so moving to a
+newer upstream commit edits that file and invalidates its own layer. No
+`--no-cache` needed. Reach for one only to rule out a stale layer as the cause of
+something you cannot otherwise explain:
 
 ```bash
 docker compose build --no-cache web && docker compose up -d web

@@ -70,16 +70,18 @@ RUN apt-get update && \
     apt-get purge -y --auto-remove build-essential && \
     rm -rf /var/lib/apt/lists/*
 
-# enzymetk last, and from a branch rather than a pinned commit: only funce-updates has the
-# EmbedESM3 that takes a device= and skips the interactive huggingface_hub login() — main
-# still hard-codes .to("cuda") and would raise on any CPU host. Its install_requires leaves
-# torch and transformers unpinned, so both stay exactly as installed above, and fair-esm is
-# absent from that list, so the ESM-2/ESM-3 collision over the top-level `esm/` package
-# cannot arise. Real deps, not --no-deps: enzymetk/__init__.py imports every step module.
+# enzymetk last, pinned to a commit on main. That commit is where EmbedESM3 gained the
+# device= argument and lost the interactive huggingface_hub login(); before it the step
+# hard-coded .to("cuda") and was unconstructable on any CPU host. Its install_requires
+# leaves torch and transformers unpinned, so both stay exactly as installed above, and
+# fair-esm is absent from that list, so the ESM-2/ESM-3 collision over the top-level
+# `esm/` package cannot arise. Real deps, not --no-deps: enzymetk/__init__.py imports
+# every step module.
 #
-# pip and the Docker layer cache both key on the ref, not the commit it resolves to, so
-# `docker build --no-cache` is what picks up newer commits on the branch.
-ARG ENZYMETK_REF=funce-updates
+# Keep this SHA equal to the one in requirements/prd.txt — the app image and this builder
+# write the same data/ directory, so a drift runs two enzymetk versions over one dataset.
+# Editing it invalidates this layer on its own; --no-cache is not needed to pick it up.
+ARG ENZYMETK_REF=147391717978a726b9d1db84e51ff2a6e41af141
 RUN pip install --no-cache-dir \
     "enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@${ENZYMETK_REF}"
 

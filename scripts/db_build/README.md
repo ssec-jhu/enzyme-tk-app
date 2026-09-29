@@ -273,10 +273,13 @@ of the total compute — and they cost nothing extra on disk, since every protei
   huggingface_hub at the cache. Their tests sit here beside them (`test_download_data.py`,
   `test_enzyme_db_build.py`, `conftest.py`) rather than in the app's suite, because `scripts/` is outside
   the app package; a bare `pytest` from the repo root collects them all the same.
-- `enzymetk` is installed from the `funce-updates` branch, not a pinned commit, because that is the only
-  branch whose ESM3 step runs on CPU without an interactive Hugging Face login. pip and the Docker layer
-  cache both key on the branch name rather than the commit it resolves to, so use `docker build
-  --no-cache` to pick up newer commits from it.
+- `enzymetk` is installed from a **pinned commit** on `main` (`ARG ENZYMETK_REF`), which is where its
+  ESM3 step gained a `device=` argument and stopped calling an interactive Hugging Face `login()` — before
+  it, the step hard-coded `.to("cuda")` and could not be constructed on a CPU host. **Keep that SHA equal
+  to the one in `requirements/prd.txt`**: the app image and this builder write the same `data/` directory,
+  so a drift runs two `enzymetk` versions over one dataset. Editing the SHA invalidates its own layer, so a
+  plain `docker build` picks it up — `--no-cache` is not needed (see the deployment guide,
+  *Bumping `enzymetk`*).
 - Running outside Docker works too (`python download_data.py`, `python build_enzyme_db.py`) if `foldseek`
   is on your `PATH`; with no `ETK_DATA_DIR` set, both default to this repo's own
   `enzyme_tk_app/app/data`. The ESM3 step additionally needs `torch`, `esm` and `enzymetk` installed. The
