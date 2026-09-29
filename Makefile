@@ -44,6 +44,12 @@ clean:
 deploy-azure:
 	@echo "Deploying to Azure..."
 	@set -eu; set -a; . ./.env; set +a; \
+	if [ -z "$${ETK_SECRET_KEY:-}" ]; then \
+		echo "ERROR: ETK_SECRET_KEY is empty in .env." >&2; \
+		echo "  main.bicep hardcodes APP_IN_PRODUCTION_MODE=true, and in production the app" >&2; \
+		echo "  refuses to start without this key." >&2; \
+		exit 1; \
+	fi; \
 	params="$$(mktemp)"; trap 'rm -f "$$params"' EXIT; \
 	printf '{"ghcrUsername":{"value":"%s"},"ghcrPat":{"value":"%s"},"adminToken":{"value":"%s"},"secretKey":{"value":"%s"}}' \
 		"$$GH_USERNAME" "$$GH_PAT" "$${ETK_ADMIN_TOKEN:-}" "$${ETK_SECRET_KEY:-}" > "$$params"; \
