@@ -337,6 +337,31 @@ def _tools_with_callbacks():
             continue
 
 
+def test_every_tool_checks_its_data_before_running():
+    """Every tool's callbacks must import the data-availability guard.
+
+    A tool that skips it is a submission endpoint that accepts jobs it cannot run:
+    Run stays enabled, the job is queued, and the failure surfaces minutes later in
+    the worker as a stack trace about a missing file — instead of one line in the
+    modal, before anything is submitted.  Walking the live registry means tool #7
+    is held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot see
+    *where* the guard is called.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_tool_data", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_tool_data from "
+            "utils.data_availability — this tool accepts jobs it has no data to run"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
 def test_every_tool_enforces_the_active_job_limit():
     """Every tool's submit path must import the per-session job cap.
 
@@ -354,6 +379,101 @@ def test_every_tool_enforces_the_active_job_limit():
         assert getattr(module, "validate_active_job_limit", None) is not None, (
             f"{slug}: callbacks.py does not import validate_active_job_limit from "
             "utils.submission_limits — this tool is an uncapped submission endpoint"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
+def test_every_tool_verifies_the_captcha():
+    """Every tool's submit path must import the production captcha guard.
+
+    Same reasoning as the job cap above, one bypass further out.  The cap is keyed on a session
+    cookie the client can simply discard; the captcha is what makes discarding it cost a proof
+    of work.  A tool that skips it is exactly the endpoint the cap was trying to close.
+
+    An import check has teeth because ``tox run -e format`` removes unused imports (F401), so
+    the symbol cannot survive as decoration — but it cannot tell a guard placed before
+    ``submit_job`` from one placed after it.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "validate_captcha", None) is not None, (
+            f"{slug}: callbacks.py does not import validate_captcha from utils.captcha — "
+            "this tool can be submitted by a bot that discards its session cookie"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
+def test_every_modal_carries_a_captcha_store():
+    """Every tool modal must render the Store its submit callback reads as State.
+
+    The guard above is only reachable if the modal actually supplies a payload.  A tool that
+    imports ``validate_captcha`` but renders no Store would pass the import walk and then, in
+    production, refuse every submission forever — and in *local* mode it is worse than that: a
+    ``State`` pointing at a component absent from the layout stops the callback firing at all,
+    so Run would be dead for everyone.  That is why the Store is rendered unconditionally while
+    the widget holder is production-only.
+    """
+    checked = 0
+    for modal in tool_modals().children or []:
+        slug = str(getattr(modal, "id", "")).removeprefix("id-modal-")
+        stores = [
+            s for s in find_components(modal, dcc.Store) if str(getattr(s, "id", "")) == f"id-store-{slug}-captcha"
+        ]
+        assert len(stores) == 1, f"{slug}: modal must render exactly one id-store-{slug}-captcha, found {len(stores)}"
+        checked += 1
+
+    assert checked, "No tool modal was found — discovery must have changed"
+
+
+def test_every_tool_links_to_my_tasks_on_success():
+    """Every tool's submit path must import the shared success block.
+
+    The job ID alone is a dead end: the modal stays open after Run, so without
+    the block's My Tasks link nothing on screen tells a first-time user their
+    job is now tracked anywhere.  Walking the live registry means tool #7 is
+    held to this the moment it appears.
+
+    An import check has teeth here because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot
+    see that the block is returned on the *success* path, nor that its link
+    points at ``/my-tasks``.  That half is covered behaviourally in
+    ``test_tools_timer.py``.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "build_submission_success", None) is not None, (
+            f"{slug}: callbacks.py does not import build_submission_success from "
+            "components.modal_helpers — this tool's submit message is a dead end"
+        )
+        checked += 1
+
+    assert checked, "No tool with callbacks was found — discovery must have changed"
+
+
+def test_every_tool_wraps_its_submit_errors():
+    """Every tool's submit path must import the shared error row.
+
+    The results div carries no styling of its own, so a validator message
+    returned bare renders as ordinary body text — no box, no colour, no icon.
+    A tool that skips the helper silently degrades every one of its validation
+    messages, which is exactly the class of bug nothing else would report.
+
+    An import check has teeth because ``tox run -e format`` removes unused
+    imports (F401), so the symbol cannot survive as decoration — but it cannot
+    see that *every* error branch is wrapped.  That half is covered
+    behaviourally in each tool's own test file, via
+    ``conftest.submission_error_text``, which asserts the row's class.
+    """
+    checked = 0
+    for slug, module in _tools_with_callbacks():
+        assert getattr(module, "build_submission_error", None) is not None, (
+            f"{slug}: callbacks.py does not import build_submission_error from "
+            "components.modal_helpers — this tool's validation messages render unstyled"
         )
         checked += 1
 

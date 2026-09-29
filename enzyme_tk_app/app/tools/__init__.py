@@ -67,11 +67,18 @@ class ToolDef(TypedDict):
 TOOLS: list[ToolDef] = []  # Accumulated ToolDef dicts, one per discovered tool
 _modal_funcs: list = []  # Callables (Modal factories) that return dbc.Modal components
 RESULTS_LAYOUTS: dict[str, Callable] = {}  # slug → ResultsLayout callable
-# slug → check_data() callable returning a list of human-readable labels
-# describing missing data items (empty list = data check passes).  Tools opt
-# in by adding a ``check_data.py`` submodule; tools without one are treated
-# as "no data dependencies" and never show a missing-data warning.
+# slug → check_data() callable returning a list of human-readable labels naming
+# what the tool *needs and does not have* (empty list = the tool can run).  This
+# is the blocking channel: a non-empty list disables the tool's Run button and
+# puts the reason in its modal.  Tools opt in by adding a ``check_data.py``
+# submodule; tools without one are treated as "no data dependencies" and are
+# never gated.
 CHECK_DATA: dict[str, Callable[[], list[str]]] = {}
+# slug → check_data_warnings() callable, the advisory twin of CHECK_DATA: data
+# that is present but unusable while the tool still runs (e.g. one malformed
+# file beside a good one).  Reported on the card, never gates anything —
+# ``check_data_warnings`` is optional even for a tool that has ``check_data``.
+CHECK_DATA_WARNINGS: dict[str, Callable[[], list[str]]] = {}
 
 
 def _discover_tools() -> None:
@@ -190,15 +197,19 @@ def _discover_tools() -> None:
 
         # --- Step 5: Import check_data.py (optional) ---
         # If present, ``check_data.py`` must expose a ``check_data()`` callable
-        # that returns a list of human-readable labels describing missing data
-        # items (empty list = data check passes).  Used by the home-page card
-        # to render a "Missing data" badge.  Tools without this module are
-        # treated as having no data dependencies.
+        # returning labels for what the tool needs and does not have (empty list
+        # = the tool can run), and may expose ``check_data_warnings()`` for data
+        # that is present but unusable while the tool still runs.  The first
+        # gates the tool's Run button; both are listed on the home-page card.
+        # Tools without this module have no data dependencies.
         try:
             check_mod = importlib.import_module(f"{full_name}.check_data")
             check_fn = getattr(check_mod, "check_data", None)
             if check_fn is not None:
                 CHECK_DATA[tool_def["slug"]] = check_fn
+            warnings_fn = getattr(check_mod, "check_data_warnings", None)
+            if warnings_fn is not None:
+                CHECK_DATA_WARNINGS[tool_def["slug"]] = warnings_fn
         except ModuleNotFoundError as exc:
             expected_module = f"{full_name}.check_data"
             if exc.name != expected_module:

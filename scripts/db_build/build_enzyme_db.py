@@ -41,12 +41,13 @@ from download_data import (
     HF_CACHE_DIR,
     PROSTT5_WEIGHTS_FILE,
     SEQUENCE_EMBEDDINGS_DIR,
+    SEQUENCES_DIR,
     esm3_is_cached,
     require_foldseek,
 )
 
 # ---- CONFIG: edit these ----
-INPUT_FILE = "enzymes_sample_10.tsv"  # CSV/TSV of sequences (.gz ok), relative to this file
+INPUT_FILE = "enzymes_demo_set.tsv"  # CSV/TSV of sequences (.gz ok); see resolve_input()
 LIMIT = 0  # 0 = every sequence; >0 = first N only (quick test)
 DEVICE = ""  # ESM3 only: "" = auto (GPU if present), or "cpu" / "cuda"
 FORCE = False  # True = rebuild the foldseek DB even if it already exists
@@ -59,6 +60,18 @@ HERE = Path(__file__).resolve().parent
 ID_COLUMN = "Entry"
 SEQUENCE_COLUMN = "Sequence"
 PICKLE_COLUMNS = [ID_COLUMN, SEQUENCE_COLUMN, "esm3_mean"]
+
+
+def resolve_input(name: str) -> Path:
+    """Locate INPUT_FILE beside this script, else in the app's ``sequences/`` directory.
+
+    The shipped demo set lives in ``data/sequences/`` because that is where the app discovers it,
+    and a second copy here would be committed twice and drift: the builder would read the stale
+    one while the dropdown reads the fresh one, leaving a foldseek ``.lookup`` naming entries the
+    table no longer has. An absolute path still wins, so a one-off file anywhere works too.
+    """
+    local = HERE / name
+    return local if local.exists() else SEQUENCES_DIR / name
 
 
 def read_sequences(path: Path) -> list[tuple[str, str]]:
@@ -284,7 +297,7 @@ def embed_worker() -> None:
     """
     import pandas as pd
 
-    records = read_sequences(HERE / INPUT_FILE)
+    records = read_sequences(resolve_input(INPUT_FILE))
     done = load_embeddings(pd)
     pending = select_pending(records, set(done[ID_COLUMN]))
 
@@ -352,7 +365,7 @@ def weights_only_redirect() -> None:
 
 
 def main() -> None:
-    records = read_sequences(HERE / INPUT_FILE)
+    records = read_sequences(resolve_input(INPUT_FILE))
     print(f"Read {len(records)} sequences from {INPUT_FILE}")
 
     build_enzyme_db_foldseek(records)  # comment out to skip the foldseek database

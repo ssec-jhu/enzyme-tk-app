@@ -14,9 +14,12 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.paths import SEQUENCES_DIR
 from enzyme_tk_app.app.tools.sequence_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.sequence_similarity.modal import _get_example_sequences
+from enzyme_tk_app.app.utils.captcha import validate_captcha
+from enzyme_tk_app.app.utils.data_availability import validate_tool_data
 from enzyme_tk_app.app.utils.data_loading import (
     get_cofactors,
     get_ec_numbers,
@@ -204,8 +207,9 @@ def validate_sequence_form(task_name, sequence, databases):
     has_name = task_name and task_name.strip()
     has_sequence = sequence and sequence.strip()
     has_databases = databases and len(databases) > 0
-    # Disable the submit button if any required field is missing or empty.
-    return not (has_name and has_sequence and has_databases)
+    # Disable the submit button if any required field is missing or empty — or if the tool's
+    # reference data is absent, which no entry here can fix.
+    return not (has_name and has_sequence and has_databases) or validate_tool_data(TOOL_DEF["slug"]) is not None
 
 
 @callback(
@@ -219,6 +223,7 @@ def validate_sequence_form(task_name, sequence, databases):
     State(f"id-dropdown-{TOOL_DEF['slug']}-cofactor-filter", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
     State(f"id-check-{TOOL_DEF['slug']}-predict-catalytic", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
 def submit_sequence_similarity_job(
@@ -231,6 +236,7 @@ def submit_sequence_similarity_job(
     cofactor_filter,
     top_n,
     predict_catalytic,
+    captcha_payload,
 ):
     """Submit a sequence similarity job or clear stale results on modal reopen.
 
@@ -250,14 +256,24 @@ def submit_sequence_similarity_job(
         cofactor_filter: List of selected cofactors (or None).
         top_n: Number of top results to return.
         predict_catalytic: Whether to predict catalytic residues.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
-        A status message with the submitted job ID, or an empty string
-        when clearing stale state.
+        A status message with the submitted job ID; on reopen, an empty string —
+        or a missing-data error row when the tool has no data to run against.
     """
     # Clear stale results when the modal is freshly opened.
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""
+        # ...or, when the tool cannot run at all, say why: the card's badge is the first
+        # warning, this is the second, beside the Run button the same check disables.
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
+
+    # First, ahead of every field validator: missing data is a property of the deployment and
+    # no correction to the form can fix it.  (The job cap is last, for the opposite reason.)
+    error = validate_tool_data(TOOL_DEF["slug"])
+    if error:
+        return build_submission_error(error)
 
     # Server-side validation — the client disables the submit button
     # when fields are empty, but a crafted request could bypass that.
@@ -267,19 +283,25 @@ def submit_sequence_similarity_job(
     # Database names become file paths on the backend.
     error = validate_db_names(databases, get_sequence_database_options())
     if error:
-        return error
+        return build_submission_error(error)
 
     # Validate top_n.
     error = validate_top_n(top_n)
     if error:
-        return error
+        return build_submission_error(error)
     top_n = int(top_n)
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return build_submission_error(error)
+
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
@@ -298,13 +320,11 @@ def submit_sequence_similarity_job(
         session_id=g.session_id,
     )
 
-    # Format the message to include the job ID and any applied filters.
-    msg = f"Job submitted — ID: {job_id} (searching for top {top_n} results"
-    # Only mention filters if they are applied, to avoid cluttering the message.
+    detail = f"top {top_n}"
+    # Only mention filters if they are applied, to avoid cluttering the row.
     if ec_filter:
-        msg += f", filtered by {len(ec_filter)} EC number(s)"
+        detail += f" · {len(ec_filter)} EC filter(s)"
     if cofactor_filter:
-        msg += f", filtered by {len(cofactor_filter)} cofactor(s)"
-    msg += ")"
+        detail += f" · {len(cofactor_filter)} cofactor(s)"
 
-    return msg
+    return build_submission_success(job_id, detail)

@@ -85,7 +85,15 @@ sequenceDiagram
   Empty default = **fail-closed**: login can never succeed.
 - `ETK_SECRET_KEY` → `SECRET_KEY` — signs the Flask session cookie so the
   `is_admin` flag cannot be forged. Unset → random per-process key in `app.py`
-  (dev convenience; admins are logged out on restart).
+  (dev convenience; admins are logged out on restart). **It is no longer
+  admin-only:** `utils/captcha.py` derives the submission captcha's HMAC key from
+  it with `blake2b(person=b"etk-altcha")`, so the two uses share a source but never
+  key material. Consequences worth knowing: `app.py` **refuses to start** when
+  `APP_IN_PRODUCTION_MODE` is on and this key is unset (previously it only
+  insisted alongside `ETK_ADMIN_TOKEN`), and the key must be *stable across
+  processes* — the random per-process fallback would have gunicorn's two workers
+  minting challenges the other cannot verify, which is exactly the state that
+  startup check rules out.
 
 `scripts/generate-env.sh` mints **fresh** values for both on every run — no flag
 and no existing `.env` can preserve a secret, so re-running the script *is* the
@@ -93,7 +101,20 @@ rotation procedure. Its `--production` / `--local` flags, and the production mod
 it carries forward from an existing `.env`, move `APP_IN_PRODUCTION_MODE` alone
 and never touch either secret. Expect a rotation to log every admin out: the new
 `ETK_SECRET_KEY` invalidates every outstanding session cookie and the new
-`ETK_ADMIN_TOKEN` invalidates the old password.
+`ETK_ADMIN_TOKEN` invalidates the old password. Since the captcha derives from
+`ETK_SECRET_KEY`, a rotation now also invalidates captcha challenges in flight —
+a user mid-modal gets one verification failure and succeeds on a retry. The
+upgrade path, if the captcha ever needs rotating independently of admin login, is
+a dedicated `ETK_CAPTCHA_HMAC_KEY`; it was deliberately not added, to keep this
+feature out of the four-place environment-variable sync rule.
+
+**Env-only is literal.** Neither secret is ever read from a file: there is no
+`python-dotenv` in the repo, `config.py` reads both with `os.environ.get`, and
+Docker Compose substitutes `${VAR}` from `.env` on the **host** before the
+container starts. `.dockerignore` keeps `.env` and `.env.*` out of the build
+context for the same reason, so the `Dockerfile`'s closing `COPY . .` cannot bake
+a live deployment's secrets into a published image layer — see
+[Deployment Guide → Admin Secrets](deployment-guide.md#admin-secrets-env).
 
 ### Auth flow (all in `pages/admin.py`)
 
@@ -125,10 +146,12 @@ one are always `Secure` + `HttpOnly` + `SameSite=Lax`. There is no
 auto-detection and no env var — `session.py`'s `request.is_secure` fallback
 exists only to keep `init_session` reusable elsewhere, and never runs here.
 
-`APP_IN_PRODUCTION_MODE` is no exception: it gates the per-session job cap in
-`utils/submission_limits.py` and nothing else, and must never gate these flags —
-making them conditional would silently weaken every deployment that forgets to set
-it, to spare local dev a tradeoff it already accepts (below).
+`APP_IN_PRODUCTION_MODE` is no exception. It gates exactly two things — the
+per-session job cap in `utils/submission_limits.py` and the submission captcha in
+`utils/captcha.py`, each reading the variable through its **own** module-level
+binding — and must never gate these flags. Making them conditional would silently
+weaken every deployment that forgets to set it, to spare local dev a tradeoff it
+already accepts (below).
 
 Browsers treat `http://localhost` and `http://127.0.0.1` as trustworthy
 origins and accept `Secure` cookies there, which is the only reason local
@@ -165,7 +188,8 @@ still sees real job data.
 | --- | --- |
 | Login page, callbacks, auth helpers | `enzyme_tk_app/app/pages/admin.py` |
 | Secrets & TTL config | `enzyme_tk_app/app/backend/config.py` |
-| Flask `secret_key` wiring | `enzyme_tk_app/app/app.py` |
+| Flask `secret_key` wiring, and the production-mode startup check | `enzyme_tk_app/app/app.py` |
+| Captcha key derived from `ETK_SECRET_KEY` | `enzyme_tk_app/app/utils/captcha.py`, `enzyme_tk_app/app/tests/test_captcha.py` |
 | Tests | `enzyme_tk_app/app/tests/test_admin.py` |
 | Browser check (login, cookie, grids, idle expiry) | `.claude/skills/check-admin/`, `docker-compose.check-admin.yml` |
 | Env template / generator | `scripts/template.env`, `scripts/generate-env.sh` |

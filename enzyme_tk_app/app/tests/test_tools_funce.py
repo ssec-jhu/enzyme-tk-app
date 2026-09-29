@@ -23,10 +23,11 @@ lives in ``utils/smiles_validation.py`` and is tested in
 only pins that Func-E *applies* it — in the form callback, on submit, and in
 ``run()``.
 
-Nothing here touches ``data/sequence_embeddings/``.  That directory is git-ignored (the
-shipped pickle and the ~3 GB checkpoint ensemble are not in the repository), so
-every compute test writes the database pickles it needs into ``tmp_path`` and
-repoints ``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
+Nothing here touches ``data/sequence_embeddings/``.  Everything in that directory is
+git-ignored bar the ~640 KB ``enzymes_demo_set.pkl`` demo set (the full reference
+pickles and the ~1.5 GB checkpoint ensemble are not in the repository), so every
+compute test writes the database pickles it needs into ``tmp_path`` and repoints
+``SEQUENCE_EMBEDDINGS_DIR`` at it — otherwise these tests would pass only on a
 machine that happens to have the real data.
 
 ``compute.py`` imports ``torch``/``enzymetk`` inside the functions that use them
@@ -59,7 +60,7 @@ import pytest
 from dash import html, no_update
 from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import find_components, make_job
+from enzyme_tk_app.app.tests.conftest import find_components, make_job, submission_error_text
 from enzyme_tk_app.app.tools.funce import DEHP_MEHP_SMILES, EXAMPLE_REACTIONS, TOOL_DEF
 from enzyme_tk_app.app.tools.funce.callbacks import (
     populate_example_reaction,
@@ -882,7 +883,7 @@ def test_submit_returns_error_when_smiles_invalid(smiles):
         patch("enzyme_tk_app.app.tools.funce.callbacks.get_task_scheduler", return_value=mock_scheduler),
     ):
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10)
+        result = submit_funce_job(1, 0, "My Task", smiles, ["db.pkl"], 10, None)
 
-    assert isinstance(result, str) and result.strip(), "Expected a non-empty error message string"
+    assert submission_error_text(result)
     mock_scheduler.submit_job.assert_not_called()

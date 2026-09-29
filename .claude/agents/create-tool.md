@@ -20,7 +20,7 @@ To add a tool, create a folder with:
 | `callbacks.py` | No | *(side-effect)* | `@callback` decorators auto-register on import |
 | `compute.py` | No | `run(params) → dict` | Core algorithm executed by the Celery worker |
 | `results.py` | No | `results_layout(job) → html.Div` | Custom results page; falls back to raw JSON if absent |
-| `check_data.py` | No | `check_data() → list[str]` | Reports missing bundled data; non-empty list renders a "Missing data" badge on the tool card (see §2b) |
+| `check_data.py` | No | `check_data() → list[str]`, optionally `check_data_warnings() → list[str]` | Reports data the tool needs and lacks (non-empty ⇒ red "Missing data" badge **and** the modal's Run button disabled) and, optionally, data present but unusable while the tool still runs (amber "N file(s) skipped" badge, gates nothing) — see §2b |
 
 - `TOOL_DEF` requires an `order: int` field that controls the card's position in the grid.
 - Import icon constants from `enzyme_tk_app.app.components.icons` and the `ToolDef` type from `enzyme_tk_app.app.tools`.
@@ -41,15 +41,22 @@ To add a tool, create a folder with:
 ### Folder-name invariant
 - The folder name **must** equal `slug.replace("-", "_")`. If you change the slug, rename the folder to match.
 
-## 2b. Missing-Data Badge — `check_data.py`
-If a tool depends on bundled data (model weights, prebuilt databases, reference files), add an **optional** `check_data.py` exporting `check_data() -> list[str]`:
-- Return an **empty list** when all data prerequisites are satisfied.
-- Return a list of **human-readable labels** (one per item) when data is absent — these render as tooltip lines under a "Missing data" badge on the tool card.
-- **A file that is present but unusable is reported here too**, with the reason. `sequence_similarity/check_data.py` lists every `data/sequences/` file that fails the column contract (§3b.9) — `"badfile.csv — missing columns: Sequence, EC number"` — because such a file is filtered out of the dropdown, so this card is the only place the scientist who dropped it in learns why it vanished.
-- Auto-discovery in `tools/__init__.py` registers the callable into the `CHECK_DATA` dict keyed by `TOOL_DEF["slug"]`. Tools **without** this module are treated as having no data dependencies and never show a badge.
+## 2b. Data Availability — `check_data.py`
+If a tool depends on bundled data (model weights, prebuilt databases, reference files), add an **optional** `check_data.py`. It has **two channels**, and only one of them gates anything:
+
+| Export | Means | Effect |
+|--------|-------|--------|
+| `check_data() -> list[str]` | what the tool **needs and does not have** | non-empty ⇒ the tool cannot run: red **"Missing data"** badge, a visible note under the card naming the path, and the modal's Run button disabled |
+| `check_data_warnings() -> list[str]` | what is **present but unusable** while the tool still runs | amber **"N file(s) skipped"** badge and tooltip. Gates nothing, ever |
+
+- Return an **empty list** from either when there is nothing to report. `check_data_warnings` is optional even for a tool that has `check_data`.
+- Return **human-readable labels**, one per item, worded the way a user looks for the thing on disk — `"Func-E ensemble checkpoints (data/funce_models/)"`. The badge tooltip shows the whole label; the card note and the modal message show only the `data/...` fragment lifted out of the parentheses, so **keep the path parenthesised**.
+- **Do not put a present-but-unusable file in the blocking channel.** `sequence_similarity/check_data.py` is the only tool with both, and it is the case that makes the split matter: one malformed `data/sequences/` file beside a good one (§3b.9) is reported as `"badfile.csv — missing columns: Sequence, EC number"` through `check_data_warnings()`, because such a file is filtered out of the dropdown and the card is the only place the scientist who dropped it in learns why it vanished — while the tool still searches the databases that are left. Put it in `check_data()` and one bad file switches off a working tool.
+- Auto-discovery in `tools/__init__.py` registers the two callables into `CHECK_DATA` and `CHECK_DATA_WARNINGS`, keyed by `TOOL_DEF["slug"]`. Tools **without** this module are treated as having no data dependencies and never show a badge.
+- **Nothing in your tool reads those registries.** `utils/data_availability.py` is the single source of truth both consumers go through: `check_tool_data(slug) -> (blocking, warnings)` for the card, and `validate_tool_data(slug) -> str | None` for the modal — which every `callbacks.py` wires into three places (see `write-callback` §4 and the contract bullet in `AGENTS.md`). That is why the card and the form can never disagree about what is missing.
 - Resolve data locations via the `Path` constants in `enzyme_tk_app.app.paths` — never hardcode paths. Add a constant there only for a directory that is shared, large, or plausibly reusable by a future tool; a path only your tool reads stays in your tool module and derives from `paths.DATA_DIR` itself (see the `paths.py` module docstring).
 - **Whatever you check here, check again in `scripts/db_build/download_data.py`'s `report()`** — in the same commit. That script pre-flights the data directory from its own image and cannot import this package, so its checks are deliberate hand-copies of every `check_data.py`; a `report()` that disagrees with yours tells a user their data is `OK` when the app will refuse to offer it, which is worse than no pre-flight check at all. Its tests live beside it in `scripts/db_build/`, not in the app suite.
-- Keep checks cheap and side-effect-free: `check_data()` runs at home-page render time, on every render. Existence/non-empty checks are free; a check that must open a file reads only the header (`nrows=0`) and is cached on `(path, mtime, size)` so a re-dropped database is still picked up without an app restart — that is what `scan_sequence_databases()` does. Never read a full column here. The `data_warning_badge` helper catches exceptions defensively, but a buggy check still degrades to a generic "Data check failed" badge — so keep it robust.
+- Keep checks cheap and side-effect-free: `check_data()` runs at home-page render time, on every render. Existence/non-empty checks are free; a check that must open a file reads only the header (`nrows=0`) and is cached on `(path, mtime, size)` so a re-dropped database is still picked up without an app restart — that is what `scan_sequence_databases()` does. Never read a full column here. `utils/data_availability.py` catches exceptions defensively, but a check that raises degrades to a blocking **"Data check failed"** badge and a modal message naming no path (downloading data cannot fix a raising check) — so keep it robust.
 
 ## 3. UI & Modal Conventions
 > [!IMPORTANT]
@@ -163,10 +170,12 @@ own database identifiers) and `funce_models/` (Func-E's EC-level checkpoints).
    `utils/data_loading.py` is the one parser for such a cell, shared by dropdown and worker — a
    filter matching on names the dropdown never offered would silently return nothing.
    `scan_sequence_databases()` in `utils/data_loading.py` is the single scan:
-   `get_sequence_database_options()` takes its names, `check_data()` takes its `problems` lines
-   (`"badfile.csv — missing columns: Sequence, EC number"`). A non-compliant file is
+   `get_sequence_database_options()` takes its names, `check_data_warnings()` takes its `problems`
+   lines (`"badfile.csv — missing columns: Sequence, EC number"`). A non-compliant file is
    therefore **not offered at all** and is named on the home-page card instead — silently
-   omitting it would leave the scientist who dropped it in with no explanation. `compute.run()`
+   omitting it would leave the scientist who dropped it in with no explanation. It goes to the
+   **advisory** channel, not the blocking one (§2b): the tool still searches whatever databases
+   remain, and only an empty usable set blocks it. `compute.run()`
    re-derives the usable set itself (the worker reads `params` from Redis, so it trusts no
    submit-time check) and skips a name that is no longer in it, which is the same
    skip-and-name / all-bad-raises policy as items 5 and 6. Use
@@ -243,6 +252,8 @@ before touching any of this.
   downloads a checkpoint. Write the equivalent for your tool, and pin whatever a reader could get
   wrong with a test in `tests/test_tools_<slug>.py`.
 - **Your `submit_*` callback must end with the per-session job cap.** `validate_active_job_limit(g.session_id)` from `enzyme_tk_app.app.utils.submission_limits`, as the **last** guard — after every field validator, immediately before `get_task_scheduler()` — so a malformed submit still shows its own field error first. It returns a message or `None` like `validate_db_names`/`validate_top_n`, and is a no-op unless the deployment set `APP_IN_PRODUCTION_MODE`. Omit it and your tool is an uncapped submission endpoint one bot can use to starve the workers; `test_every_tool_enforces_the_active_job_limit` in `tests/test_tools.py` walks the live registry and fails the build. Full rationale in `write-callback` §4.
+- **And it must verify the captcha immediately before that cap.** `validate_captcha(captcha_payload, g.session_id)` from `enzyme_tk_app.app.utils.captcha`, reading a **last** `State` on `f"id-store-{TOOL_DEF['slug']}-captcha"` into a **last** parameter (document it in the docstring's Args like any other). You do not build that `dcc.Store` — `create_modal_footer()` renders it for every tool, always, even locally, because a `State` pointing at a component that is not in the layout stops the callback firing at all. The guard is the twin of the cap: message-or-`None`, never raises, no-op unless `APP_IN_PRODUCTION_MODE` is set. It goes *before* the cap because it costs no Redis round trip, and *after* every field validator so a typo still shows its own error rather than "tick the box". Omit it and your tool is an unverified submission endpoint that a cookie-rotating script can hammer for free; `test_every_tool_verifies_the_captcha` and `test_every_modal_carries_a_captcha_store` in `tests/test_tools.py` fail the build. Full rationale in `write-callback` §4.
+- **And it must return the shared success block, not an f-string.** `build_submission_success(job_id, detail)` from `enzyme_tk_app.app.components.modal_helpers`, where `detail` is a **terse fragment**, not a sentence (`"2 database(s) · top 10"`). The whole block is **one line** — id through the shared `truncate_id()` with the full value in its tooltip, detail, and the `/my-tasks` link right-aligned. Keep `detail` short: every tool modal already overruns a laptop viewport, and the row has ~720px to work with, so a joined list of database names will wrap it (which is why Sequence+Structure shows a count instead). It supplies the job id, that detail, and the `/my-tasks` link — the only thing telling a user their job is now tracked somewhere, since the modal stays open after Run. **And every error return goes through its twin,** `build_submission_error(message)`: the results div is a plain slot with no styling of its own, so `return error` would render the message as ordinary body text with no box, colour or icon. The pattern is `if error: return build_submission_error(error)` for every validator; only the clear-on-reopen branch returns `""`. Both rows share the `modal-submission-row` base class, so they are the same height and differ only in colour and icon. `test_every_tool_links_to_my_tasks_on_success` and `test_every_tool_wraps_its_submit_errors` in `tests/test_tools.py` walk the live registry and fail the build. Full rationale in `create-modal` §9.
 - For callback implementation patterns (guard clauses, decorator syntax, naming), read and follow `.claude/agents/write-callback.md`, and examine existing tools.
 
 ## 5. Reference Material

@@ -44,7 +44,8 @@ FOLDSEEK_WEIGHTS_DIR: Path = FOLDSEEK_MODELS_DIR / "weights"
 # these, and Func-E is only the first one that does.
 SEQUENCE_EMBEDDINGS_DIR: Path = DATA_DIR / "sequence_embeddings"
 
-# Func-E ensemble checkpoints — one model per EC level (~1.5 GB total).
+# Func-E ensemble checkpoints — one model per EC level (~925 MB for the eight files read here;
+# the published archive also unpacks its optimizer/history files, settling the dir at ~1.5 GB).
 FUNCE_MODELS_DIR: Path = DATA_DIR / "funce_models"
 
 # UniMol molecule-embedding checkpoint (~660 MB).  Named for the model, like

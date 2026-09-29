@@ -98,7 +98,7 @@
     box-shadow: none;
 }
 
-/* --- Missing-data pill badge --------------------------------------------- */
+/* --- Data-warning badge + note ------------------------------------------- */
 
 .card-data-badge {
     display: inline-flex;
@@ -118,4 +118,32 @@
 
 .card-data-badge i {
     font-size: 0.75rem;
+}
+
+/* Advisory variant: files were skipped but the tool still runs, so it must not
+   read as the blocking red badge.  Modifier only — it overrides the three
+   colour declarations and inherits the rest, and must stay below the base
+   rule, which it ties on specificity (0,1,0). */
+.card-data-badge-advisory {
+    background: color-mix(in srgb, var(--accent-color) 12%, white);
+    /* Not var(--accent-color) itself: #D69E2E on this fill is 2.2:1, and even
+       70% of it reaches only 4.2:1.  60% gives 5.3:1, clearing AA at 0.7rem. */
+    color: color-mix(in srgb, var(--accent-color) 60%, black);
+    border: 1px solid color-mix(in srgb, var(--accent-color) 35%, transparent);
+}
+
+/* The visible reason a blocked tool cannot run, under the card footer — the
+   badge's tooltip is invisible on a touch screen. */
+.card-data-note {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    margin-top: 0.5rem;
+    line-height: 1.5;
+}
+
+/* The html.Code holding the fetch script: smaller, but darker so the path
+   stays the thing the eye lands on. */
+.card-data-note code {
+    font-size: 0.7rem;
+    color: var(--text-primary);
 }

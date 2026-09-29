@@ -8,8 +8,10 @@ deploy without a manual build.
 
 The switch lives here rather than in an app-level ``config.py``: ``paths.py`` is the standing
 precedent that an app-layer module owns its own environment variable, and ``app.py`` already
-binds the name ``config`` to ``backend.config``.  Move it to a module of its own the day a
-second feature reads it.
+binds the name ``config`` to ``backend.config``.  ``utils/captcha.py`` is now the second
+feature to read it and parses it itself rather than importing this binding, so patching one
+module in a test cannot silently flip the other; a module of its own is the answer on the
+third reader, not the second.
 
 Reading it is a membership test so it **cannot raise**.  Every tool's ``callbacks.py`` imports
 this module and ``tools/__init__.py`` swallows an import error there *after* the tool is
@@ -30,7 +32,8 @@ from enzyme_tk_app.app.backend import get_task_scheduler
 
 # The one operator lever, and the only environment variable this module reads.  Default OFF:
 # a scientist who downloads the repo runs it locally with no submission limits and no code
-# edits.  Today it gates this cap and nothing else — not the cookie flags (always Secure),
+# edits.  It gates this cap and the submission captcha (utils/captcha.py reads the same
+# variable through its own binding) — and nothing else: not the cookie flags (always Secure),
 # not logging, not debug.
 PRODUCTION_MODE: bool = os.environ.get("APP_IN_PRODUCTION_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -54,16 +57,20 @@ def validate_active_job_limit(session_id: str) -> str | None:
     Deliberate limitations, each with its door:
 
     - **The session cookie is client-controlled.**  Drop it and ``session.py`` mints a fresh
-      UUID4 with fresh slots.  This stops the impatient user, the runaway script and the naive
-      bot — not a determined one.  CAPTCHA is the upgrade path, ideally challenge-at-threshold
-      reusing this cap as the trigger, so a scientist running twenty jobs never sees one.
+      UUID4 with fresh slots.  Alone this stops the impatient user, the runaway script and the
+      naive bot — not a determined one.  ``utils/captcha.py`` now **prices** that rotation
+      rather than closing it: its challenge is signed over the session id, so a fresh session
+      costs a fresh proof of work and 3N slots cost N solves.  It runs on *every* submit rather
+      than at a threshold, as this note once proposed — the widget solves in the background
+      while the modal is being filled in, so the threshold machinery would have bought the
+      scientist running twenty jobs nothing.
     - **Check-then-act.**  The count and the submit are separate round trips, so concurrent
       requests can each pass the check before any lands.  At the ``gunicorn --workers 2
       --threads 4`` and single web replica that the Dockerfile, ``docker-compose.yml`` and
       ``main.bicep`` ship, the ceiling is ``MAX_ACTIVE_JOBS_PER_SESSION + 7`` per session,
       refillable on each drain — a throttle, not a hard invariant.  That ``7`` is a deployment
       fact: re-derive it if the worker/thread/replica counts change.  A *different* hole from
-      the cookie one, which CAPTCHA does not close; the fix if the overshoot ever matters is an
+      the cookie one, and not one the captcha closes either; the fix if the overshoot matters is an
       atomic Redis INCR/DECR counter (a third key, so ``backend-agent``'s dual-key TTL
       invariant becomes three-way — deliberately not in this change).
     - **Nothing ages out PENDING.**  ``_is_timed_out`` only rescues STARTED, so with the worker

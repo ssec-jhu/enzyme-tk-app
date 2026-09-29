@@ -45,7 +45,10 @@ from enzyme_tk_app.app.utils.data_loading import get_sequence_database_options
 def _get_example_sequences():
     """Return a list of example protein sequences from the protein database.
 
-    These are real entries from ``protein.csv`` covering diverse EC classes.
+    These are real entries from the shipped ``sequences/enzymes_demo_set.tsv``,
+    covering diverse EC classes, so every example returns hits on a fresh clone.
+    ``test_demo_data.py`` pins that: changing one means checking its sequence --
+    and any EC or cofactor filter value it prefills -- is still in the demo set.
     The ``task_name`` is the name the example picker prefills into the Task
     Name field (see ``callbacks.populate_example_sequence``).
     """
@@ -194,8 +197,11 @@ def modal():
                                     ),
                                     dbc.Col(
                                         dbc.Input(
+                                            # debounce: validate_* now probes the data mount, so an
+                                            # un-debounced field would do it on every keystroke.
                                             id=f"id-input-{TOOL_DEF['slug']}-task-name",
                                             type="text",
+                                            debounce=300,
                                             placeholder="e.g. 'Kinase BLAST search'",
                                             className="themed-control",
                                         ),
@@ -220,6 +226,7 @@ def modal():
                                                     "Paste a protein amino-acid sequence (e.g. MKTIIALSYIFCLVFA...)"
                                                 ),
                                                 rows=4,
+                                                debounce=300,
                                                 className="themed-control",
                                                 style={"fontFamily": "monospace", "fontSize": "0.9rem"},
                                             ),

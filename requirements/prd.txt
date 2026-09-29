@@ -1,9 +1,16 @@
+# Self-hosted proof-of-work captcha on job submission.  Pure stdlib, zero
+# dependencies of its own, MIT.  Only the verification half lives here — the
+# widget is vendored into enzyme_tk_app/app/assets/.
+altcha==2.1.0
 celery[redis]==5.6.3
 dash==4.4.1
 dash-ag-grid==35.3.0
 dash-bootstrap-components==2.0.4
-# TODO: Pin the version of enzymetk once a stable release is available.
-enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@funce-updates
+# Pinned to the merge commit on main, not a branch: an immutable ref is what makes a
+# build reproducible and lets the image record which enzymetk it holds.  Bumping means
+# editing this SHA (and scripts/db_build/Dockerfile's ENZYMETK_REF, which must match).
+# TODO: switch to a version specifier once enzymetk has a release.
+enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@147391717978a726b9d1db84e51ff2a6e41af141
 gunicorn==26.2.0
 pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint

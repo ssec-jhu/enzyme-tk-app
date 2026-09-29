@@ -9,8 +9,22 @@ import pytest
 from dash import dcc, html, no_update
 from dash.exceptions import PreventUpdate
 
-from enzyme_tk_app.app.tests.conftest import find_components, get_text, make_job
+from enzyme_tk_app.app.tests.conftest import (
+    find_components,
+    get_text,
+    make_job,
+    patch_tool_checks,
+    submission_error_text,
+    submitted_job_id,
+)
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
+from enzyme_tk_app.app.utils.formatting import truncate_id
+
+# The timer template genuinely has no data dependencies, so the tests that exercise
+# its data gate register this label for it — the shape a real tool's check returns.
+MISSING_DATA_LABEL = "Timer schedules (data/timers/)"
+# What the user is shown is the path out of that label, not the label itself.
+MISSING_DATA_PATH = "data/timers/"
 
 # ---------------------------------------------------------------------------
 # Modal structure — timer-specific controls
@@ -143,12 +157,25 @@ def test_submit_requires_a_task_name():
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
         with pytest.raises(PreventUpdate):
-            submit_timer_job(1, 0, "   ", 5, False)
+            submit_timer_job(1, 0, "   ", 5, False, None)
 
 
-def test_submit_clears_results_on_launch():
-    """Re-opening the modal must clear the stale results placeholder without calling the scheduler."""
+@pytest.mark.parametrize(
+    "missing_data",
+    [[], [MISSING_DATA_LABEL]],
+    ids=["data-present-clears-stale-id", "data-missing-says-so"],
+)
+def test_launch_clears_the_results_slot_or_reports_missing_data(monkeypatch, missing_data):
+    """Re-opening the modal clears the stale job id — or explains why Run is dead.
+
+    Both branches must leave the scheduler alone: opening a form is not a
+    submission.  The missing-data branch is the only text on screen next to a Run
+    button this deployment will never enable, so returning a bare ``""`` there
+    leaves the user clicking a disabled button with no explanation.
+    """
     from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=missing_data)
 
     with (
         patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
@@ -157,8 +184,50 @@ def test_submit_clears_results_on_launch():
         ) as mock_get_sched,
     ):
         mock_ctx.triggered_id = f"id-btn-launch-{TOOL_DEF['slug']}"
-        result = submit_timer_job(0, 1, "smoke test", 5, False)
-    assert result == ""
+        result = submit_timer_job(0, 1, "smoke test", 5, False, None)
+
+    if missing_data:
+        assert MISSING_DATA_PATH in submission_error_text(result)
+    else:
+        assert result == "", "A freshly opened modal with its data in place must show an empty slot"
+    mock_get_sched.assert_not_called()
+
+
+def test_validate_disables_run_when_the_tool_has_no_data(monkeypatch):
+    """A complete form must still leave Run disabled when the data is not installed.
+
+    Every field is filled here, so the only thing that can keep the button off is
+    the data check — the gate a user meets before the submit-side one below.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import validate_timer_form  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=[MISSING_DATA_LABEL])
+
+    assert validate_timer_form("smoke test", 5) is True
+
+
+def test_submit_reports_missing_data_before_any_field_error(monkeypatch):
+    """Missing data is reported ahead of every field validator, blank Task Name included.
+
+    A blank Task Name normally ends this callback in ``PreventUpdate`` with nothing
+    on screen, so getting the data message back is proof the guard runs first.
+    That order is the point: no correction to the form can install a database, and
+    "enter a task name" would send the user round a loop they cannot finish.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    patch_tool_checks(monkeypatch, TOOL_DEF["slug"], blocking=[MISSING_DATA_LABEL])
+
+    with (
+        patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+        patch(
+            "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+        ) as mock_get_sched,
+    ):
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_timer_job(1, 0, "", 5, False, None)
+
+    assert MISSING_DATA_PATH in submission_error_text(result)
     mock_get_sched.assert_not_called()
 
 
@@ -185,8 +254,8 @@ def test_submit_rejects_bad_duration(duration, expected_fragment):
 
     with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
         mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-        result = submit_timer_job(1, 0, "smoke test", duration, False)
-    assert expected_fragment in result
+        result = submit_timer_job(1, 0, "smoke test", duration, False, None)
+    assert expected_fragment in submission_error_text(result)
 
 
 def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
@@ -226,10 +295,85 @@ def test_submit_is_refused_at_the_active_job_limit(monkeypatch):
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "at the cap", 10, False)
+            result = submit_timer_job(1, 0, "at the cap", 10, False, None)
 
-    assert "3" in result
-    assert "Cancel" in result
+    assert "3" in submission_error_text(result)
+    assert "Cancel" in submission_error_text(result)
+    tool_scheduler.submit_job.assert_not_called()
+
+
+def _submit_with_captcha_on(monkeypatch, payload, task_name="captcha test", duration=10):
+    """Run the timer submit with the captcha live, returning (result, tool_scheduler).
+
+    The captcha's own logic is covered in ``test_captcha.py``; what these tests pin is that the
+    guard is wired into the submit path at all, and *where* — which the import-presence walk in
+    ``test_tools.py`` deliberately cannot see.
+    """
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+    from enzyme_tk_app.app.utils import captcha  # noqa: PLC0415
+
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", True)
+    monkeypatch.setattr(captcha, "_HMAC_SECRET", "timer-test-secret")
+    monkeypatch.setattr(captcha, "COST", 100)
+
+    tool_scheduler = MagicMock()
+    tool_scheduler.submit_job.return_value = "job-captcha-1"
+
+    with server.test_request_context():
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-captcha"
+        with (
+            patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+                return_value=tool_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_timer_job(1, 0, task_name, duration, False, payload)
+
+    return result, tool_scheduler
+
+
+def test_submit_is_refused_without_a_captcha_solution(monkeypatch):
+    """With the captcha live, a submit carrying no payload must never reach the scheduler."""
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None)
+
+    assert "verification" in submission_error_text(result).lower()
+    tool_scheduler.submit_job.assert_not_called()
+
+
+def test_a_solved_captcha_lets_the_submit_through(monkeypatch):
+    """The guard must be passable — a real solved payload submits normally."""
+    import altcha  # noqa: PLC0415
+
+    from enzyme_tk_app.app.utils import captcha  # noqa: PLC0415
+
+    monkeypatch.setattr(captcha, "PRODUCTION_MODE", True)
+    monkeypatch.setattr(captcha, "_HMAC_SECRET", "timer-test-secret")
+    monkeypatch.setattr(captcha, "COST", 100)
+    challenge = altcha.Challenge.from_dict(captcha.new_challenge("sess-captcha"))
+    payload = altcha.Payload(challenge, altcha.solve_challenge(challenge)).to_base64()
+
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, payload)
+
+    assert submitted_job_id(result) == "job-captcha-1"
+    tool_scheduler.submit_job.assert_called_once()
+
+
+def test_a_malformed_submit_shows_its_own_error_before_the_captcha(monkeypatch):
+    """Field validators run first: a bad duration reports itself, not "tick the box".
+
+    This is the ordering rule the guard's comment states, and the only test that can catch a
+    future edit moving the captcha above the field validators — where every typo would be
+    reported as a failed verification.
+    """
+    result, tool_scheduler = _submit_with_captcha_on(monkeypatch, None, duration=500)
+
+    assert "Duration" in submission_error_text(result)
+    assert "verification" not in submission_error_text(result).lower()
     tool_scheduler.submit_job.assert_not_called()
 
 
@@ -254,7 +398,7 @@ def test_submit_calls_scheduler():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "  smoke test  ", 10, False)
+            result = submit_timer_job(1, 0, "  smoke test  ", 10, False, None)
 
     # Verify the scheduler was called with the right arguments — task_name is
     # stripped, and comes first so it heads the Input Parameters table.
@@ -263,8 +407,69 @@ def test_submit_calls_scheduler():
         params={"task_name": "smoke test", "seconds": 10, "simulate_failure": False},
         session_id="sess-test",
     )
-    assert "job-123" in result
-    assert "10s" in result
+    assert submitted_job_id(result) == "job-123"
+    assert "10s" in get_text(result)
+
+
+def test_submit_success_links_to_my_tasks():
+    """The success message must carry a working /my-tasks link, not just a job ID.
+
+    The import walk in ``test_tools.py`` can see that every tool imports the
+    shared block; only this can see that it is returned on the *success* path
+    and that its anchor actually points somewhere.  The href is the whole
+    feature — the modal stays open after Run, so this link is the only thing
+    telling the user their job is being tracked on another page.
+    """
+    from enzyme_tk_app.app.app import server  # noqa: PLC0415
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    mock_scheduler = MagicMock()
+    mock_scheduler.submit_job.return_value = "job-link-1"
+
+    with server.test_request_context():
+        from flask import g  # noqa: PLC0415
+
+        g.session_id = "sess-test"
+        with (
+            patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx,
+            patch(
+                "enzyme_tk_app.app.tools.timer_tool_template.callbacks.get_task_scheduler",
+                return_value=mock_scheduler,
+            ),
+        ):
+            mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+            result = submit_timer_job(1, 0, "smoke test", 10, False, None)
+
+    # The shared success row, not a bare string: a string would render with no box at all.
+    assert not isinstance(result, str), "Success must return the block, not a plain string"
+    assert "modal-submission-success" in result.className
+    links = [a for a in find_components(result, html.A) if a.href == "/my-tasks"]
+    assert len(links) == 1, f"Expected exactly one /my-tasks anchor, found {len(links)}"
+    assert "Track progress" in get_text(links[0])
+
+    # The id is truncated on screen so the row stays one line, with the full value in the
+    # tooltip.  Both halves are the contract: a full id rendered inline would wrap the row
+    # and undo the compaction, and a truncated tooltip would lose the only copyable handle.
+    assert submitted_job_id(result) == "job-link-1"
+    assert truncate_id("job-link-1") in get_text(result)
+    assert "job-link-1" not in get_text(result), "The full id must not be rendered inline"
+
+
+def test_submit_error_returns_the_shared_error_row():
+    """A validation error must come back as the shared error row, not a bare string.
+
+    Both outcomes are components sharing ``modal-submission-row`` and differing
+    only by their own class, so the results div styles nothing itself.  An error
+    returned as a plain string therefore renders with no box, no colour and no
+    icon — it would read as ordinary body text inside the modal.
+    """
+    from enzyme_tk_app.app.tools.timer_tool_template.callbacks import submit_timer_job  # noqa: PLC0415
+
+    with patch("enzyme_tk_app.app.tools.timer_tool_template.callbacks.ctx") as mock_ctx:
+        mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
+        result = submit_timer_job(1, 0, "smoke test", 99999, False, None)
+
+    assert submission_error_text(result)
 
 
 def test_submit_with_simulate_failure_flag():
@@ -287,9 +492,9 @@ def test_submit_with_simulate_failure_flag():
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "smoke test", 5, True)
+            result = submit_timer_job(1, 0, "smoke test", 5, True, None)
 
-    assert "simulate failure" in result
+    assert "simulate failure" in get_text(result)
     # Verify simulate_failure=True was passed through to the scheduler.
     call_kwargs = mock_scheduler.submit_job.call_args[1]
     assert call_kwargs["params"]["simulate_failure"] is True
@@ -536,7 +741,7 @@ def test_submit_accepts_boundary_duration(duration, job_id):
             ),
         ):
             mock_ctx.triggered_id = f"id-btn-{TOOL_DEF['slug']}-submit"
-            result = submit_timer_job(1, 0, "smoke test", duration, False)
+            result = submit_timer_job(1, 0, "smoke test", duration, False, None)
 
-    assert job_id in result
+    assert submitted_job_id(result) == job_id
     mock_scheduler.submit_job.assert_called_once()

@@ -3,12 +3,22 @@
 Each tool that has data dependencies ships a ``check_data.py`` submodule
 exporting ``check_data() -> list[str]``.  Returning a non-empty list means
 some required data is missing; an empty list means the data prerequisites
-are satisfied.
+are satisfied — and that list is *blocking*: it disables the tool's Run button.
+
+A tool may also export ``check_data_warnings()``, the advisory twin: data that is
+present but unusable while the tool still runs.  Which channel a problem belongs in
+is the distinction most of this file is about, because putting an advisory problem
+in the blocking one switches off a tool that works.
+
+Both registries are imported at module level on purpose.  ``conftest``'s autouse
+``_tool_data_checks_clean`` fixture replaces those *attributes* on the tools package
+for every test, so a lookup done inside a test body would see its empty stand-ins;
+a module-level ``from ... import`` binds the real dicts discovery built.
 """
 
 import pytest
 
-from enzyme_tk_app.app.tools import CHECK_DATA
+from enzyme_tk_app.app.tools import CHECK_DATA, CHECK_DATA_WARNINGS
 from enzyme_tk_app.app.tools.funce import check_data as funce_check
 from enzyme_tk_app.app.tools.funce.check_data import _CHECKPOINT_STEM, _UNIMOL_CHECKPOINT
 from enzyme_tk_app.app.tools.reaction_similarity import check_data as reaction_check
@@ -24,21 +34,39 @@ from enzyme_tk_app.app.tools.substrate_product_similarity import check_data as s
 def test_timer_tool_has_no_registered_check():
     """timer-tool-template intentionally has no data dependencies."""
     assert "timer-tool-template" not in CHECK_DATA
+    assert "timer-tool-template" not in CHECK_DATA_WARNINGS
 
 
 @pytest.mark.parametrize(
-    "slug",
+    ("slug", "has_advisory_channel"),
     [
+        ("reaction-similarity", False),
+        ("substrate-product-similarity", False),
+        ("sequence-similarity", True),
+        ("sequence-structure-similarity", False),
+        ("funce", False),
+    ],
+    ids=[
         "reaction-similarity",
         "substrate-product-similarity",
-        "sequence-similarity",
+        "sequence-similarity-also-warns",
         "sequence-structure-similarity",
         "funce",
     ],
 )
-def test_data_consuming_tools_have_registered_check(slug):
-    assert slug in CHECK_DATA
+def test_data_consuming_tools_register_the_checks_they_need(slug, has_advisory_channel):
+    """Every data-backed tool registers a blocking check; only some also warn.
+
+    ``check_data_warnings`` is optional by design, and today sequence-similarity is
+    the only tool that can use it: its databases are files a scientist drops into
+    ``data/sequences/`` themselves, so it is the only one that can find something
+    present-but-unusable.  The others check for data they either have or do not.
+    """
+    assert slug in CHECK_DATA, f"{slug}: no check_data() registered — this tool is never gated on its data"
     assert callable(CHECK_DATA[slug])
+    assert (slug in CHECK_DATA_WARNINGS) is has_advisory_channel, (
+        f"{slug}: registered advisory channel does not match what this tool can report"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -108,39 +136,56 @@ def test_sequence_check_returns_label_when_dir_empty(sequences_dir_for_check):
     ids=["csv", "tsv"],
 )
 def test_sequence_check_passes_for_a_compliant_database(sequences_dir_for_check, filename):
-    """A CSV or a TSV with the three required columns satisfies the check."""
+    """A CSV or a TSV with the three required columns satisfies the check.
+
+    Neither channel reports anything: a healthy directory must leave the card
+    completely clean, badge included.
+    """
     body = _SEQUENCE_DB_ROWS.replace(",", "\t") if filename.endswith(".tsv") else _SEQUENCE_DB_ROWS
     (sequences_dir_for_check / filename).write_text(body)
 
     assert sequence_check.check_data() == []
+    assert sequence_check.check_data_warnings() == []
 
 
 def test_sequence_check_reports_a_file_that_is_not_a_database(sequences_dir_for_check):
-    """With no usable database, both the missing-data label and the reason are returned."""
+    """With no usable database the tool is blocked, and the reason is advisory.
+
+    Two channels, one situation: the blocking label says what the tool needs (so
+    the card can point at the download script), while the advisory line says why
+    the file already sitting in the directory is not it.  Folding the reason into
+    the blocking list would make the card claim two things are missing when one
+    file is simply malformed.
+    """
     (sequences_dir_for_check / "bad.csv").write_text("Entry,Sequence\nE1,MKTAY\n")
 
     missing = sequence_check.check_data()
+    warnings = sequence_check.check_data_warnings()
 
-    assert len(missing) == 2
-    # First the "what you need" label, then why this particular file is not it.
+    assert len(missing) == 1
     assert "EC number" in missing[0]
-    assert "bad.csv" in missing[1]
-    assert "EC number" in missing[1]
+    assert len(warnings) == 1
+    assert "bad.csv" in warnings[0]
+    assert "EC number" in warnings[0]
 
 
-def test_sequence_check_still_reports_a_bad_file_beside_a_good_one(sequences_dir_for_check):
-    """A usable database exists, so only the offending file is reported.
+def test_sequence_check_does_not_block_on_a_bad_file_beside_a_good_one(sequences_dir_for_check):
+    """One malformed file next to a usable database must leave the tool runnable.
 
-    Without this the scientist gets no explanation for why the file they
-    dropped in never appears in the dropdown.
+    This is the whole point of the split.  A non-empty ``check_data()`` here would
+    disable a tool that searches ``good.csv`` perfectly well — the user loses the
+    database they do have because of one they never needed.  The malformed file is
+    still named, as an advisory: without it the scientist who dropped it in gets no
+    explanation for why it never appears in the dropdown.
     """
     (sequences_dir_for_check / "good.csv").write_text(_SEQUENCE_DB_ROWS)
     (sequences_dir_for_check / "bad.csv").write_text("Entry,Sequence\nE1,MKTAY\n")
 
-    missing = sequence_check.check_data()
+    assert sequence_check.check_data() == []
 
-    assert len(missing) == 1
-    assert "bad.csv" in missing[0]
+    warnings = sequence_check.check_data_warnings()
+    assert len(warnings) == 1
+    assert "bad.csv" in warnings[0]
 
 
 # ---------------------------------------------------------------------------

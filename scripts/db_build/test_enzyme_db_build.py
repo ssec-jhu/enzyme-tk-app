@@ -88,9 +88,17 @@ def test_read_sequences_rejects_an_empty_file(script, tmp_path):
 
 
 def test_read_sequences_rejects_a_missing_file(script, tmp_path):
-    """A mistyped INPUT_FILE exits with the path, rather than raising FileNotFoundError."""
-    with pytest.raises(SystemExit):
-        script.read_sequences(tmp_path / "nope.csv")
+    """A mistyped INPUT_FILE exits with the path, rather than raising FileNotFoundError.
+
+    The path is most of the message: `resolve_input` looks in two places, so a bare
+    "not found" would leave someone checking the directory the script did not use.
+    """
+    missing = tmp_path / "nope.csv"
+
+    with pytest.raises(SystemExit) as excinfo:
+        script.read_sequences(missing)
+
+    assert str(missing) in str(excinfo.value)
 
 
 def test_read_sequences_skips_blank_and_duplicate_rows(script, tmp_path):
@@ -178,6 +186,95 @@ def test_select_pending_orders_shortest_first(script):
 def test_pickle_columns_match_the_app_contract(script):
     """Func-E requires exactly these three columns of an embeddings pickle (funce/compute.py)."""
     assert script.PICKLE_COLUMNS == ["Entry", "Sequence", "esm3_mean"]
+
+
+# ── Finding the input file ───────────────────────────────────────────────────
+
+
+@pytest.fixture
+def two_places_to_look(script, tmp_path, monkeypatch):
+    """Point the script's two search locations at empty directories under tmp_path.
+
+    Returns ``(beside_the_script, sequences_directory)`` — the folder holding the script
+    and the app's ``data/sequences/``, in the order ``resolve_input`` tries them.
+    """
+    beside_the_script = tmp_path / "db_build"
+    sequences_directory = tmp_path / "sequences"
+    beside_the_script.mkdir()
+    sequences_directory.mkdir()
+    monkeypatch.setattr(script, "HERE", beside_the_script)
+    monkeypatch.setattr(script, "SEQUENCES_DIR", sequences_directory)
+    return beside_the_script, sequences_directory
+
+
+@pytest.mark.parametrize(
+    "dropped_beside_the_script",
+    [True, False],
+    ids=["a-local-copy-wins", "otherwise-the-data-directory"],
+)
+def test_resolve_input_prefers_a_local_copy_over_the_apps_data_directory(
+    script, two_places_to_look, dropped_beside_the_script
+):
+    """A file beside the script wins; without one, the app's sequences/ is where to look.
+
+    The shipped demo set lives in data/sequences/ because that is where the app discovers
+    it, and a second copy here would be committed twice and drift — the builder reading the
+    stale one while the dropdown reads the fresh one, leaving a foldseek .lookup naming
+    entries the table no longer has.  A local copy still wins, for a one-off file.
+    """
+    beside_the_script, sequences_directory = two_places_to_look
+    (sequences_directory / "enzymes.tsv").write_text("")
+    if dropped_beside_the_script:
+        (beside_the_script / "enzymes.tsv").write_text("")
+
+    expected_directory = beside_the_script if dropped_beside_the_script else sequences_directory
+    assert script.resolve_input("enzymes.tsv") == expected_directory / "enzymes.tsv"
+
+
+@pytest.mark.parametrize("file_exists", [True, False], ids=["an-existing-file", "a-mistyped-path"])
+def test_resolve_input_returns_an_absolute_path_unchanged(script, two_places_to_look, tmp_path, file_exists):
+    """An absolute INPUT_FILE is taken at its word, so a file anywhere on the host works.
+
+    Both cases matter: joining an absolute path onto either search directory yields the
+    absolute path itself, so a typo is reported against what was typed rather than against
+    a data directory the user never named.
+
+    ``two_places_to_look`` is taken for its patching alone — both search directories are
+    left empty, so nothing but the absolute path itself can be what comes back.
+    """
+    absolute_path = tmp_path / "elsewhere" / "enzymes.tsv"
+    if file_exists:
+        absolute_path.parent.mkdir()
+        absolute_path.write_text("")
+
+    assert script.resolve_input(str(absolute_path)) == absolute_path
+
+
+def test_both_entry_points_read_the_same_resolved_input(script, tmp_path, monkeypatch):
+    """`main()` and the embedding worker must end up reading the same file.
+
+    The worker is a separate process — this same file re-run with a flag — so it resolves
+    INPUT_FILE all over again rather than being handed the answer.  If the two ever
+    disagreed, the foldseek database would be built from one table and the embeddings from
+    another, and the mismatch would surface only as hits with no metadata behind them.
+    """
+    resolved_paths = []
+
+    def record_input(path):
+        """Stand in for read_sequences: note the path, and report nothing to embed."""
+        resolved_paths.append(path)
+        return []  # nothing pending, so the worker returns before it reaches ESM3
+
+    monkeypatch.setattr(script, "read_sequences", record_input)
+    monkeypatch.setattr(script, "build_enzyme_db_foldseek", lambda records: None)
+    monkeypatch.setattr(script, "build_enzyme_db_esm3", lambda records: None)
+    monkeypatch.setattr(script, "SEQUENCE_EMBEDDINGS_DIR", tmp_path)  # no pickle, so nothing is done yet
+
+    script.main()
+    script.embed_worker()
+
+    expected_path = script.resolve_input(script.INPUT_FILE)
+    assert resolved_paths == [expected_path, expected_path]
 
 
 # ── The models, which download_data.py now supplies ──────────────────────────

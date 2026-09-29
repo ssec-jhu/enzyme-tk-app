@@ -12,8 +12,11 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.tools.reaction_similarity import TOOL_DEF
 from enzyme_tk_app.app.tools.reaction_similarity.modal import _get_example_reactions
+from enzyme_tk_app.app.utils.captcha import validate_captcha
+from enzyme_tk_app.app.utils.data_availability import validate_tool_data
 from enzyme_tk_app.app.utils.data_loading import get_reaction_database_options, validate_db_names
 from enzyme_tk_app.app.utils.formatting import validate_top_n
 
@@ -112,7 +115,10 @@ def validate_reaction_form(task_name, smiles, selected_databases, selected_algor
     has_name = task_name and task_name.strip()
     has_databases = selected_databases and len(selected_databases) > 0
     has_algorithms = selected_algorithms and len(selected_algorithms) > 0
-    disabled = not (has_name and not smiles_error and has_databases and has_algorithms)
+    # A tool whose reference data is absent cannot run whatever is typed, so the gate lives
+    # here too — the modal's results row names the missing files.
+    has_fields = has_name and not smiles_error and has_databases and has_algorithms
+    disabled = not has_fields or validate_tool_data(TOOL_DEF["slug"]) is not None
 
     return disabled, show_error, smiles_error if show_error else ""
 
@@ -126,9 +132,12 @@ def validate_reaction_form(task_name, smiles, selected_databases, selected_algor
     State(f"id-textarea-{TOOL_DEF['slug']}-smiles", "value"),
     State(f"id-dropdown-{TOOL_DEF['slug']}-algorithms", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-top-n", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
-def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, databases, smiles, algorithms, top_n):
+def submit_reaction_similarity_job(
+    submit_clicks, launch_clicks, task_name, databases, smiles, algorithms, top_n, captcha_payload
+):
     """Submit a reaction similarity job or clear stale results on modal reopen.
 
     When triggered by the launch button, clears the results placeholder
@@ -145,14 +154,24 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
         smiles: The reaction SMILES to search.
         algorithms: List of selected algorithm values.
         top_n: Number of top results to return.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
-        A status message with the submitted job ID, or an empty string
-        when clearing stale state.
+        A status message with the submitted job ID; on reopen, an empty string —
+        or a missing-data error row when the tool has no data to run against.
     """
     # Clear stale results when the modal is freshly opened
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""
+        # ...or, when the tool cannot run at all, say why: the card's badge is the first
+        # warning, this is the second, beside the Run button the same check disables.
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
+
+    # First, ahead of every field validator: missing data is a property of the deployment and
+    # no correction to the form can fix it.  (The job cap is last, for the opposite reason.)
+    error = validate_tool_data(TOOL_DEF["slug"])
+    if error:
+        return build_submission_error(error)
 
     # Server-side validation — the client disables the submit button when
     # fields are empty, but a crafted request could bypass that.
@@ -165,24 +184,30 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
     # that message.
     error = validate_reaction_smiles(smiles)
     if error:
-        return error
+        return build_submission_error(error)
 
     # Database names become file paths on the backend.
     error = validate_db_names(databases, get_reaction_database_options())
     if error:
-        return error
+        return build_submission_error(error)
 
     # Validate top_n
     error = validate_top_n(top_n)
     if error:
-        return error
+        return build_submission_error(error)
     top_n = int(top_n)
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return build_submission_error(error)
+
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     scheduler = get_task_scheduler()
     job_id = scheduler.submit_job(
@@ -200,4 +225,5 @@ def submit_reaction_similarity_job(submit_clicks, launch_clicks, task_name, data
     )
 
     n_dbs = len(databases) if databases else 0
-    return f"Job submitted — ID: {job_id} (searching {n_dbs} database(s) for top {top_n} results)"
+    detail = f"{n_dbs} database(s) · top {top_n}"
+    return build_submission_success(job_id, detail)

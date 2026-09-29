@@ -10,7 +10,7 @@ from dash import Dash, html
 from enzyme_tk_app.app.backend import config
 from enzyme_tk_app.app.components.footer import footer
 from enzyme_tk_app.app.components.navbar import navbar
-from enzyme_tk_app.app.utils import submission_limits
+from enzyme_tk_app.app.utils import captcha, submission_limits
 
 # Initialize the app
 # We include FontAwesome for icons and Bootstrap for dbc component functionality.
@@ -55,6 +55,19 @@ elif config.ADMIN_TOKEN:
 else:
     server.config["SECRET_KEY"] = secrets.token_hex(32)
 
+# The captcha derives its signing key from ETK_SECRET_KEY, so production mode without one is a
+# deployment that would reject every Run click.  Refusing to start is the same call the branch
+# above makes for ETK_ADMIN_TOKEN: a deployment that looks healthy and silently refuses all work
+# is the worse failure.  The check cannot live in utils/captcha.py — tools/__init__.py logs and
+# continues past a raising callbacks import, so every tool card would render with a dead Run
+# button behind an HTTP 200 and one log line.
+if captcha.PRODUCTION_MODE and not config.SECRET_KEY:
+    raise RuntimeError(
+        "APP_IN_PRODUCTION_MODE is on but ETK_SECRET_KEY is not set. "
+        "The submission captcha derives its signing key from it and cannot verify without one. "
+        "Run scripts/generate-env.sh to generate it."
+    )
+
 # This tells the browser that the cookie should only be sent in HTTP requests
 # and should not be accessible via client-side scripts (like JavaScript's document.cookie).
 server.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -79,17 +92,23 @@ from enzyme_tk_app.app.backend.session import init_session  # noqa: E402
 
 init_session(server)
 
+# Registered after init_session so the before_request hook that populates g.session_id is
+# already installed.  A no-op unless production mode is on.
+captcha.init_captcha(server)
+
+
 # Deliberately WARNING, not INFO: the app calls no ``logging.basicConfig`` and the
 # Dockerfile's gunicorn CMD sets no ``--log-level``, so an INFO record is dropped by
 # ``logging.lastResort`` and never reaches ``docker compose logs web``.  This line is an
 # operator's only confirmation that the production switch took — including when a typo'd
 # value resolved to False instead of raising.  Prints once per gunicorn worker.
 logging.warning(
-    "EnzymeTK starting — production mode: %s, concurrent-job cap per session: %s",
+    "EnzymeTK starting — production mode: %s, concurrent-job cap per session: %s, submission captcha: %s",
     submission_limits.PRODUCTION_MODE,
     # The cap only applies in production mode, so print what is actually in force
     # rather than a number that is being ignored.
     submission_limits.MAX_ACTIVE_JOBS_PER_SESSION if submission_limits.PRODUCTION_MODE else "off",
+    "on" if captcha.PRODUCTION_MODE else "off",
 )
 
 if __name__ == "__main__":

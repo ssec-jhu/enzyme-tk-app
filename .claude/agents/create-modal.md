@@ -163,6 +163,7 @@ from enzyme_tk_app.app.components.modal_helpers import (
 - **Row layout:** Use `dbc.Row([dbc.Col(label, width=3), dbc.Col(control, width=9)], className="mb-2", align="center")` for label ↔ control alignment.
 - **New CSS:** Prefer existing `className`/Bootstrap utilities and the shared theme classes. If a modal genuinely needs a new rule in `enzyme_tk_app/app/assets/`, follow the `write-css` subagent for banner/section-comment style and 4-space indentation.
 - **A SMILES `dbc.Textarea` gets `debounce=300`** — a *number* of milliseconds, never `True`. Validating on every keystroke puts several callback round-trips in flight at once and the field ends up showing whichever verdict landed last, so a corrected structure stays marked invalid; `True` would defer to blur and strand Run disabled under a click. See `write-callback` §4.
+- **So does the Task Name `dbc.Input`, and any sequence `dbc.Textarea`** — same `debounce=300`, same reason, different trigger: every `validate_*` callback now calls `validate_tool_data()`, which probes the data mount, so an un-debounced field is a filesystem round trip per keystroke (a *network* round trip where `data/` is an Azure Files share). Every field whose `validate_*` does nothing but read values in memory still needs no debounce.
 - **A SMILES field carries a `dbc.FormFeedback` directly after its `dbc.Textarea`**, inside the same `dbc.Col`:
 
   ```python
@@ -185,12 +186,61 @@ from enzyme_tk_app.app.components.modal_helpers import (
 ## 8. Footer
 Use `create_modal_footer(TOOL_DEF["slug"])` to generate the standard `dbc.ModalFooter` with Close (secondary outline) and Run (primary) buttons.
 
+It also emits the **submission captcha** pair, and you must not hand-roll or reorder either:
+
+- `html.Div(id=f"id-div-{slug}-captcha", className=CAPTCHA_HOLDER_CLASS)` — an empty holder, rendered **only in production mode**. `assets/12-altcha-bridge.js` finds it by that class and mounts the `<altcha-widget>` custom element into it (Dash cannot emit an arbitrary tag, and `dbc.Modal` unmounts its children into a portal, which is why a MutationObserver does the mounting rather than a clientside callback). It is a **JS mount target**, the third exception to "only give a component an id if a callback uses it". `.etk-captcha` in `07-modals.css` parks it at the left end of the footer row and maps ALTCHA's CSS custom properties onto the app's design tokens — a new footer layout must keep `margin-right: auto` working.
+- `dcc.Store(id=f"id-store-{slug}-captcha")` — rendered **always, including locally**. A `State` pointing at a component that is not in the layout stops the submit callback from firing at all, which would dead-button Run for every local checkout.
+
+Renaming the class, either id, or the challenge path means editing `assets/12-altcha-bridge.js` in the same change — it mirrors all three as constants. The submit callback reads that Store as its last `State` (`create-tool` §4, `write-callback` §4).
+
 ## 9. Results Placeholder
 After the last section `html.Div` inside `dbc.ModalBody`, add:
 ```python
 create_modal_submission_results(TOOL_DEF["slug"])
 ```
 This empty div is populated by the submit callback with a job-ID confirmation or validation error.
+
+**It is a plain slot with no styling of its own**, and the submit callback fills it with one of
+exactly two shared blocks from `modal_helpers`, each carrying its own box:
+`build_submission_success(job_id, detail)` (green, with the `/my-tasks` link) or
+`build_submission_error(message)` (red, with a cross). Both share the `modal-submission-row`
+base class in `07-modals.css`, so the two states are the same height and shape by construction
+and differ only in colour and icon. So:
+
+- Never return a bare string — with no styling on the slot it renders as ordinary body text,
+  losing the box, the colour and the icon. Wrap every validator message in
+  `build_submission_error()`.
+- The clear-on-reopen branch is the only one that returns a bare string, and only in its clear
+  case: `""` leaves the slot empty and invisible. When the tool has no data to run against it
+  returns a `build_submission_error()` row instead, so a freshly opened form explains itself
+  rather than looking ready (`write-callback` §3, §4).
+- The link is an `html.A`, not a `dcc.Link`: every other `/my-tasks` link in the app is a
+  plain anchor, and a full load leaves no open modal mounted behind it.
+
+**Each row is one 41px line, and that is a height budget, not a style preference.** Every
+tool modal already overruns a laptop viewport — measured at 1366x660, a modal is ~715px with
+this div *empty*, so the Run button is already below the fold. The row therefore holds the id
+through the shared `truncate_id()` from `utils/formatting.py` — the same helper the My Tasks
+table and `/admin` use, so all three show the same string — with the full value in its `title`
+(the full uuid measures 416px and wraps), a terse `detail` fragment rather than a sentence, and the link right-aligned by
+`margin-left: auto`. It has roughly **720px** to work with on a laptop, so:
+
+- Pass `detail` as a fragment (`"2 database(s) · top 10"`), never a sentence. A joined list of
+  database names will wrap the row — Sequence+Structure shows a count for exactly that reason.
+- `flex-wrap` plus the link's `margin-left: auto` is what degrades gracefully on a narrow
+  viewport: the link drops to its own right-aligned line rather than stretching the row.
+- **The error row's message is the one child allowed to exceed the line**, and only because
+  `.modal-submission-error > span { flex: 1; min-width: 0 }` lets it wrap *inside itself*. Without
+  that, `flex-wrap` breaks the message off whole and strands the ✖ on the line above it. The
+  data-gate message (`Requires data/funce_models/. Download using scripts/db_build/download_data.py.`)
+  is what forced it. Add another flex child to that row and re-check both — a second `flex: 1`
+  child splits the width instead.
+
+`test_every_tool_links_to_my_tasks_on_success` in `tests/test_tools.py` walks the live
+registry for the import; `test_submit_success_links_to_my_tasks` and
+`test_submit_error_returns_the_shared_error_row` in `test_tools_timer.py` pin both return
+shapes, which an import walk cannot see. The modal deliberately stays open after Run, which is why "submit
+another" needs no affordance of its own (`toggle_*_modal`'s docstring).
 
 ## 10. Canonical Reference
 The **canonical example** is `enzyme_tk_app/app/tools/timer_tool_template/modal.py`, and it is a real one — it follows every rule above with nothing tool-specific in the way: the §1 docstring in full, Task Name as the first row of Section 1, the example picker (`dcc.Dropdown` with id `f"id-dropdown-{TOOL_DEF['slug']}-example"`, `searchable=False`, under the `ICON_MODAL_EXAMPLE` + "Try an example:" `html.Small`) nested beneath the input it fills, both section headers, the results placeholder and the shared footer. When in doubt, mirror its structure, docstring, and commenting style exactly.

@@ -25,8 +25,11 @@ from dash.exceptions import PreventUpdate
 from flask import g
 
 from enzyme_tk_app.app.backend import get_task_scheduler
+from enzyme_tk_app.app.components.modal_helpers import build_submission_error, build_submission_success
 from enzyme_tk_app.app.tools.timer_tool_template import TOOL_DEF
 from enzyme_tk_app.app.tools.timer_tool_template.modal import _get_example_durations
+from enzyme_tk_app.app.utils.captcha import validate_captcha
+from enzyme_tk_app.app.utils.data_availability import validate_tool_data
 from enzyme_tk_app.app.utils.submission_limits import validate_active_job_limit
 
 # Build lookup dict: example duration (the dropdown value) -> task name.
@@ -119,6 +122,11 @@ def populate_example_duration(example_value):
 def validate_timer_form(task_name, duration):
     """Enable the Run button only once every required field has a value.
 
+    A tool whose reference data is absent never enables it at all — see
+    ``utils/data_availability.py``.  The template has no data dependencies, so that
+    check is always ``None`` here; it is wired in so a tool copied from this file
+    inherits the gate rather than forgetting it.
+
     Check **presence, not validity**.  ``dbc.Input(type="number", min=1,
     max=300)`` makes the browser mark an out-of-range entry invalid, and Dash
     then hands this callback ``None`` — so 0 or 500 disables the button here
@@ -137,7 +145,7 @@ def validate_timer_form(task_name, duration):
     has_name = task_name and task_name.strip()
     # Deliberately not `bool(duration)` — a bare 0 is present, just out of range.
     has_duration = duration is not None and str(duration).strip() != ""
-    return not (has_name and has_duration)
+    return not (has_name and has_duration) or validate_tool_data(TOOL_DEF["slug"]) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -157,9 +165,10 @@ def validate_timer_form(task_name, duration):
     State(f"id-input-{TOOL_DEF['slug']}-task-name", "value"),
     State(f"id-input-{TOOL_DEF['slug']}-duration", "value"),
     State(f"id-check-{TOOL_DEF['slug']}-fail", "value"),
+    State(f"id-store-{TOOL_DEF['slug']}-captcha", "data"),
     prevent_initial_call=True,
 )
-def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate_failure):
+def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate_failure, captcha_payload):
     """Submit a timer job or clear stale results when the modal reopens.
 
     **Pattern:** Every submit callback should also listen for the
@@ -173,14 +182,24 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
         task_name: The user-supplied name for this job.
         duration: The requested duration in seconds.
         simulate_failure: Whether to simulate a mid-run failure.
+        captcha_payload: Solved proof-of-work payload from the modal's captcha Store.
 
     Returns:
-        A status message with the submitted job ID, or an empty string
-        when clearing stale state.
+        A status message with the submitted job ID; on reopen, an empty string —
+        or a missing-data error row when the tool has no data to run against.
     """
     # ── Clear stale results on modal reopen (intentional DOM write, not a guard) ──
     if ctx.triggered_id == f"id-btn-launch-{TOOL_DEF['slug']}":
-        return ""
+        # ...or, when the tool cannot run at all, say why: the card's badge is the first
+        # warning, this is the second, beside the Run button the same check disables.
+        error = validate_tool_data(TOOL_DEF["slug"])
+        return build_submission_error(error) if error else ""
+
+    # First, ahead of every field validator: missing data is a property of the deployment and
+    # no correction to the form can fix it.  (The job cap is last, for the opposite reason.)
+    error = validate_tool_data(TOOL_DEF["slug"])
+    if error:
+        return build_submission_error(error)
 
     # ── Re-validate server-side ─────────────────────────────────────
     # validate_timer_form already disables the button, but a crafted request
@@ -194,16 +213,22 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
     try:
         seconds = int(duration)
     except (TypeError, ValueError):
-        return "Invalid duration — please enter a number between 1 and 300."
+        return build_submission_error("Invalid duration — please enter a number between 1 and 300.")
 
     if seconds < 1 or seconds > 300:
-        return "Duration must be between 1 and 300 seconds."
+        return build_submission_error("Duration must be between 1 and 300 seconds.")
 
-    # Last guard, so a malformed submit still shows its own field error first.
-    # No-op unless the deployment switched the limit on.
+    # Both no-ops unless the deployment switched production mode on, and both sit after the
+    # field validators so a malformed submit still shows its own error rather than "tick the
+    # box".  The captcha goes first: it costs no Redis round-trip, so an unverified caller
+    # never gets the cap's O(N) read for free.
+    error = validate_captcha(captcha_payload, g.session_id)
+    if error:
+        return build_submission_error(error)
+
     error = validate_active_job_limit(g.session_id)
     if error:
-        return error
+        return build_submission_error(error)
 
     # ── Submit to the backend ───────────────────────────────────────
     # get_task_scheduler() returns the singleton TaskScheduler
@@ -228,5 +253,6 @@ def submit_timer_job(submit_clicks, launch_clicks, task_name, duration, simulate
         session_id=g.session_id,
     )
 
-    fail_note = " (will simulate failure)" if simulate_failure else ""
-    return f"Job submitted — ID: {job_id} (will run for {seconds}s{fail_note})"
+    fail_note = " · will simulate failure" if simulate_failure else ""
+    detail = f"{seconds}s{fail_note}"
+    return build_submission_success(job_id, detail)

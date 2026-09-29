@@ -10,7 +10,7 @@ changes needed here.  See ``enzyme_tk_app.app.tools`` for details.
 import dash_bootstrap_components as dbc
 from dash import html
 
-from enzyme_tk_app.app.components.data_warning import data_warning_badge
+from enzyme_tk_app.app.components.data_warning import data_warning
 from enzyme_tk_app.app.tools import TOOLS
 
 # Matches the old .badge-lib CSS — kept co-located with the only consumer.
@@ -49,6 +49,10 @@ def tool_card(slug, title, description, icon_class, libraries=None):
         else None
     )
 
+    # One call, so the tool's checks run once per card and the badge, the note
+    # and the modal's Run gate all read the same answer.
+    warning = data_warning(slug)
+
     return html.Div(
         className="card",
         children=[
@@ -64,10 +68,13 @@ def tool_card(slug, title, description, icon_class, libraries=None):
             ),
             # --- Card body: description ---
             html.P(description, className="card-desc"),
-            # --- Card footer: missing-data badge (left) | launch action (right) ---
+            # --- Card footer: data badge (left) | launch action (right) ---
+            # Launch is never disabled: it only opens the form, and a tool that
+            # cannot run needs a screen that explains itself, not a dead control.
+            # The gate is the modal's Run button — see utils/data_availability.py.
             html.Div(
                 children=[
-                    html.Div(data_warning_badge(slug)),
+                    html.Div(warning.badge),
                     dbc.Button(
                         "Launch →",
                         id=f"id-btn-launch-{slug}",
@@ -88,6 +95,8 @@ def tool_card(slug, title, description, icon_class, libraries=None):
                     "marginTop": "0.75rem",
                 },
             ),
+            # --- Visible reason, only when the tool cannot run ---
+            warning.note,
         ],
     )
 

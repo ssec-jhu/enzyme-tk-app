@@ -10,8 +10,12 @@ license = {file = "LICENSE"}
 
 requires-python = ">=3.12"
 dependencies = [
+    "altcha>=2.1,<3",
     "celery[redis]>=5.3",
-    "dash>=2.0",
+    # 2.17 is the floor, not 2.0: assets/12-altcha-bridge.js publishes the solved captcha
+    # payload through dash_clientside.set_props, added in 2.17.0 (the 2.16 spelling,
+    # dash_clientside.clientSide_setProps, no longer exists).  requirements/prd.txt pins 4.4.1.
+    "dash>=2.17",
     "dash-ag-grid>=31.0",
     "dash-bootstrap-components",
     #"enzymetk>=0.0.9",
