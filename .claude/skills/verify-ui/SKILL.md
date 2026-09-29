@@ -132,14 +132,15 @@ to look at until you create one. Submit through the UI:
 
 1. `http://localhost:8050/` → click a card's `Launch →`.
 2. Fill the modal (see the native-setter note above) and click
-   `id-btn-<slug>-submit`. The modal stays open and answers in place: an
-   accepted submit renders `div.modal-submission-success` (green, with a
-   `/my-tasks` link), while a refusal is a bare red string in
-   `div.modal-submission-results` — read it before concluding the click did
-   nothing, since it names *which* guard rejected the submit. The green block
-   is one line and shows only the `truncate_id()` prefix of the job id: the full
-   value is the `title` of `span.modal-submission-success-id`, so take it from
-   there rather than from the visible text.
+   `id-btn-<slug>-submit`. The modal stays open and answers in place: both
+   outcomes are one-line rows sharing `div.modal-submission-row` inside the
+   `div.modal-submission-results` slot, so they differ only in colour and icon —
+   an accepted submit adds `modal-submission-success` (green, with a `/my-tasks`
+   link), a refusal adds `modal-submission-error` (red, with a cross). Read the
+   red row before concluding the click did nothing, since it names *which* guard
+   rejected the submit. The green row shows only the `truncate_id()` prefix of the
+   job id: the full value is the `title` of `span.modal-submission-success-id`, so
+   take it from there rather than from the visible text.
 3. Poll `http://localhost:8050/my-tasks` until the badge reads `SUCCESS`, then
    follow the `/my-tasks/<job_id>` link.
 

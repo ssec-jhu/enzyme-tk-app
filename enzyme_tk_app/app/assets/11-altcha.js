@@ -7,8 +7,13 @@
  * Licence: MIT — Copyright (c) 2023-2026 Daniel Regeci, BAU Software s.r.o.
  *
  * Do not edit. To upgrade, re-download the same dist path at the new version and
- * update this banner; then check the major still matches the "altcha" PyPI package
- * in requirements/prd.txt, since widget v3 and v2 speak different payload formats.
+ * update this banner; then re-check the *protocol*, not the version numbers. The
+ * widget emits the nested {challenge: {parameters, signature}, solution} payload
+ * unless the fetched challenge carries `_version: 1`, which selects the flat legacy
+ * shape instead. The "altcha" PyPI package in requirements/prd.txt speaks that same
+ * protocol (module altcha.v2, what create_challenge/verify_solution use) and never
+ * emits `_version`, so the two match. Its major and the widget's are unrelated
+ * version lines -- do not compare them.
  *
  * The UMD build is deliberate: Dash emits a plain non-module <script src> for every
  * assets/*.js, so an ESM build would throw "Cannot use import statement outside a
