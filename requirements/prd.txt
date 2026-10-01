@@ -16,5 +16,5 @@ pandas==3.0.5
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
 # Func-E reaction encoding.  rxnfp itself is installed in the Dockerfile, not here:
 # it needs --no-deps, which a requirements file cannot express per-package.
-transformers<5  # rxnfp calls encode_plus/batch_encode_plus, removed in transformers 5
+transformers<6  # rxnfp calls encode_plus/batch_encode_plus, removed in transformers 5
 unimol_tools
