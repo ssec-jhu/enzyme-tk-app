@@ -12,7 +12,7 @@ dash-bootstrap-components==2.0.4
 # TODO: switch to a version specifier once enzymetk has a release.
 enzymetk @ git+https://github.com/moragroup/enzyme-tk-agentic.git@147391717978a726b9d1db84e51ff2a6e41af141
 gunicorn==26.2.0
-pandas==3.0.5
+pandas==3.0.6
 redis==6.4.0  # capped at <6.5 by celery's kombu[redis] constraint
 # Func-E reaction encoding.  rxnfp itself is installed in the Dockerfile, not here:
 # it needs --no-deps, which a requirements file cannot express per-package.
