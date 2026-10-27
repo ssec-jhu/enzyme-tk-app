@@ -29,6 +29,17 @@
     background-color: var(--secondary-color) !important;
 }
 
+/* Info icon after headers that carry a headerTooltip (_HEADER_HELP_CLASS).
+   \f05a is fa-circle-info, the ICON_MODAL_INFO glyph; FA 6 solid = 900. */
+.ag-theme-balham .ag-header-has-help .ag-header-cell-text::after {
+    content: "\f05a";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    margin-left: 0.35em;
+    font-size: 0.8em;
+    opacity: 0.75;
+}
+
 /* Sort / filter icons — white to match header text */
 .ag-theme-balham .ag-header-icon .ag-icon {
     color: #fff;
@@ -209,7 +220,7 @@
 /* Shared class for protein/amino-acid sequence columns, so every tool
    renders sequences identically. Sequences can be hundreds of residues,
    so they are truncated to a single line to keep row heights uniform;
-   build_ag_grid sets a tooltipField on every column, so the full sequence
+   build_ag_grid sets a tooltipField on every text column, so the full sequence
    shows on hover, and enableCellTextSelection keeps it copy-pasteable. */
 .ag-cell-sequence {
     font-family: monospace;

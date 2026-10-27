@@ -242,6 +242,14 @@ while (el && el !== document.body) {
 Sweeping that over an element's bounding box gives you real hit-area coverage,
 which is how you catch a tooltip that only fires over the glyphs.
 
+**AG Grid tooltips are the opposite: real DOM, so they do screenshot.** Header
+help and cell-value tooltips render as `div.ag-tooltip` (header ones add
+`.ag-header-tooltip`) once the pointer has rested `tooltipShowDelay` (500 ms)
+on the target. Hover with `computer` by coordinate, wait ~1 s, then read
+`document.querySelector(".ag-tooltip")?.innerText` or take the screenshot.
+What a column *will* show is already in `getColumnDefs()` (`headerTooltip`,
+`tooltipField`), no hover needed.
+
 ### Capturing a download
 
 AG Grid sets the filename with `setAttribute("download", …)`, **not** the

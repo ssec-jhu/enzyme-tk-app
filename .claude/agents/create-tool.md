@@ -64,6 +64,7 @@ If a tool depends on bundled data (model weights, prebuilt databases, reference 
 >
 > - Creating or modifying a `modal.py` file? You **MUST** read `.claude/agents/create-modal.md` and apply its layout/styling rules (§1–10 — module docstring, section headers, `themed-control` inputs, footer, results placeholder).
 > - Creating or modifying CSS in `enzyme_tk_app/app/assets/` (e.g. a tool-specific badge or status style)? You **MUST** read `.claude/agents/write-css.md` and apply its banner/section-comment and 4-space-indent conventions.
+> - Creating or modifying a `results.py` grid? You **MUST** read `.claude/agents/create-ag-grid.md` and apply its column rules — including §2.9: every column you declare needs a one-sentence description, registered with `_col(name, description)` in `utils/columns.py`, or `test_every_results_column_has_a_description` fails the build.
 
 ### Modal dropdowns, inputs, and form controls
 - All dropdowns must use `dcc.Dropdown` (from `dash`), never `dbc.Select`.

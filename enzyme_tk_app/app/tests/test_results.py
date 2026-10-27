@@ -1,3 +1,4 @@
+
 import dash_ag_grid as dag
 import dash_bootstrap_components as dbc
 import pytest
@@ -6,9 +7,11 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.backend.models import JobStatus
 from enzyme_tk_app.app.components.results_helpers import (
+    _TIP_IMAGES,
     GRID_ID,
     SCOPE_ALL,
     SCOPE_FILTERED,
+    STYLE_RESULTS_TIP,
     _csv_export_params,
     _pretty_label,
     build_ag_grid,
@@ -17,6 +20,7 @@ from enzyme_tk_app.app.components.results_helpers import (
     build_status_badge,
     download_results_csv,
 )
+from enzyme_tk_app.app.utils import columns as col
 
 from .conftest import find_components, get_text, make_job
 
@@ -180,7 +184,7 @@ def test_pretty_label(raw, expected):
 
 
 # ---------------------------------------------------------------------------
-# build_ag_grid — CSV export toolbar
+# build_ag_grid — export toolbar and usage tip
 # ---------------------------------------------------------------------------
 
 _PAYLOAD = {"columns": ["a"], "data": [{"a": 1}]}
@@ -204,6 +208,82 @@ def test_build_ag_grid_wraps_grid_with_export_toolbar():
     assert [opt["value"] for opt in radios[0].options] == [SCOPE_FILTERED, SCOPE_ALL]
     # Each option explains itself through a native tooltip on its label.
     assert all(opt["label"].title for opt in radios[0].options)
+
+
+@pytest.mark.parametrize(
+    ("column_defs", "expect_compare_hint"),
+    [
+        ([{"field": "a"}], False),
+        ([{"field": "a", "cellRenderer": "SvgRenderer"}], True),
+        # The image column is declared but the payload has no such field, so the grid
+        # drops it — and a hint about clicking a structure would point at nothing.
+        ([{"field": "a"}, {"field": col.COL_RXN_SVG, "cellRenderer": "SvgRenderer"}], False),
+    ],
+    ids=["no-image-column", "image-column", "image-column-not-in-payload"],
+)
+def test_build_ag_grid_tip_mentions_compare_only_when_a_structure_is_shown(column_defs, expect_compare_hint):
+    """The toolbar tip offers click-to-compare only when the rendered grid actually draws a structure."""
+    table = build_ag_grid(column_defs, _PAYLOAD)
+
+    # Found by its style rather than its wording, so rephrasing the tip does not break this.
+    tips = []
+    for span in find_components(table, html.Span):
+        if span.style == STYLE_RESULTS_TIP:
+            tips.append(span)
+    assert len(tips) == 1, "Expected exactly one usage tip in the toolbar"
+
+    # get_text, not .children: if the tip is ever split into parts, `in` on a list would test membership.
+    assert (_TIP_IMAGES in get_text(tips[0])) is expect_compare_hint
+
+
+# ---------------------------------------------------------------------------
+# build_ag_grid — header help
+# ---------------------------------------------------------------------------
+def test_build_ag_grid_adds_header_help_only_to_described_columns():
+    """A described column gets its sentence as header help; a tool's own tooltip wins; others get none.
+
+    An image column is described too, but its cells show no value tooltip: the value is a
+    base64 data URI, which would only cover the structure the user is looking at.
+    """
+    own_wording = "The tool's own wording."
+    source_defs = [
+        {"field": col.COL_TANIMOTO},
+        # "a" is not in COLUMN_DESCRIPTIONS.
+        {"field": "a"},
+        # A described column whose def brings its own tooltip — the def must win.
+        {"field": col.COL_COSINE, "headerTooltip": own_wording},
+        # An undescribed column with its own tooltip still earns the info icon.
+        {"field": "b", "headerTooltip": own_wording},
+        # A described image column: header help yes, cell-value tooltip no.
+        {"field": col.COL_RXN_SVG, "cellRenderer": "SvgRenderer"},
+    ]
+    payload = {
+        "columns": [col.COL_TANIMOTO, "a", col.COL_COSINE, "b", col.COL_RXN_SVG],
+        "data": [{col.COL_TANIMOTO: 0.9, "a": 1, col.COL_COSINE: 0.8, "b": 2, col.COL_RXN_SVG: "data:..."}],
+    }
+
+    grid = find_components(build_ag_grid(source_defs, payload), dag.AgGrid)[0]
+    described, undescribed, overridden, own_only, image = grid.columnDefs
+
+    assert described["headerTooltip"] == col.COLUMN_DESCRIPTIONS[col.COL_TANIMOTO]
+    # A literal, not the constant: it is the class 09-ag-grid.css draws the info icon for,
+    # so renaming the Python side alone must fail here rather than silently lose the icon.
+    assert described["headerClass"] == "ag-header-has-help"
+
+    assert "headerTooltip" not in undescribed
+    assert "headerClass" not in undescribed
+
+    for column_def in (overridden, own_only):
+        assert column_def["headerTooltip"] == own_wording, f"{column_def['field']}: the def's tooltip was replaced"
+        assert column_def["headerClass"] == "ag-header-has-help"
+
+    assert image["headerTooltip"] == col.COLUMN_DESCRIPTIONS[col.COL_RXN_SVG]
+    assert "tooltipField" not in image
+    # A text column keeps its value tooltip, so the line above is not every tooltip vanishing.
+    assert described["tooltipField"] == col.COL_TANIMOTO
+
+    # AG Grid's own default is 2000 ms, long enough that header help goes unnoticed.
+    assert grid.dashGridOptions["tooltipShowDelay"] < 2000
 
 
 # ---------------------------------------------------------------------------
