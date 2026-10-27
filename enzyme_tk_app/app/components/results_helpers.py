@@ -17,7 +17,9 @@ descriptors, etc.
 
 ``build_ag_grid`` also renders the shared CSV-download toolbar above the
 grid, so every tool's results table gets the same export control without
-any per-tool code.
+any per-tool code.  The same goes for header help: every column described
+in ``utils/columns.py``'s ``COLUMN_DESCRIPTIONS`` gets a header tooltip and
+info icon, and the toolbar ends with a one-line usage tip.
 
 Usage (AG Grid)::
 
@@ -94,10 +96,25 @@ STATUS_ICONS: dict[JobStatus, str] = {
 STYLE_RESULTS_TOOLBAR: dict = {
     "display": "flex",
     "alignItems": "center",
+    # The radios are inline, but the toolbar wraps on a narrow screen.
+    "flexWrap": "wrap",
     "gap": "0.75rem",
     "marginBottom": "0.5rem",
 }
 """Download button + scope radios row sitting above every results grid."""
+
+STYLE_RESULTS_TIP: dict = {
+    "marginLeft": "auto",
+    "color": "var(--text-secondary)",
+    "fontSize": "0.8rem",
+}
+"""Usage tip at the right end of the results toolbar; wraps below it on a narrow screen."""
+
+# Marks a header that has a ``headerTooltip``; 09-ag-grid.css draws an info icon after its text.
+_HEADER_HELP_CLASS = "ag-header-has-help"
+
+_TIP_GRID = "Hover a header for what it means · click a header to sort · click its funnel to filter"
+_TIP_IMAGES = " · click a structure to compare it with your query"
 
 
 def build_status_badge(status: JobStatus) -> html.Span:
@@ -384,9 +401,11 @@ def shared_col_defs() -> list[dict]:
     """
     return [
         # ── Similarity scores ────────────────────────────────────────
-        {"field": col.COL_TANIMOTO, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": col.COL_COSINE, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": col.COL_RUSSELL, "width": 100, "filter": "agNumberColumnFilter"},
+        # 140 = 48px of padding + funnel, plus "Similarity" with its info icon (80px) and a
+        # little slack, so the header wraps between words.  Below ~128 it breaks mid-word.
+        {"field": col.COL_TANIMOTO, "width": 140, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_COSINE, "width": 140, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_RUSSELL, "width": 140, "filter": "agNumberColumnFilter"},
         # ── Reaction metadata ────────────────────────────────────────
         {"field": col.COL_DATABASE, "wrapText": True, "width": 120},
         {"field": col.COL_ID, "width": 120},
@@ -434,12 +453,16 @@ def shared_col_defs() -> list[dict]:
     ]
 
 
-def _build_export_toolbar() -> html.Div:
-    """Build the CSV download button and export-scope radios shown above the grid.
+def _build_export_toolbar(has_images: bool) -> html.Div:
+    """Build the CSV download button, export-scope radios and usage tip shown above the grid.
+
+    Args:
+        has_images: Whether the grid has a structure-image column, which
+            adds the click-to-compare hint to the tip.
 
     Returns:
-        An ``html.Div`` flex row with the download button on the left and
-        the vertically stacked scope radios beside it.
+        An ``html.Div`` flex row with the download button on the left, the
+        scope radios beside it, and the usage tip at the right end.
     """
     return html.Div(
         style=STYLE_RESULTS_TOOLBAR,
@@ -474,6 +497,8 @@ def _build_export_toolbar() -> html.Div:
                     },
                 ],
             ),
+            # The tip is a single line of text that wraps below the toolbar on a narrow screen.
+            html.Span(_TIP_GRID + (_TIP_IMAGES if has_images else ""), style=STYLE_RESULTS_TIP),
         ],
     )
 
@@ -533,9 +558,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
 
     Filters *column_defs* to only those whose ``field`` exists in
     ``df_payload["columns"]``, sets a default ``tooltipField`` on
-    every column, and returns the configured grid wrapped together with
-    :func:`_build_export_toolbar` so every tool gets the same download
-    control for free.
+    every non-image column and a ``headerTooltip`` (plus the info-icon header class)
+    on every column ``COLUMN_DESCRIPTIONS`` describes, and returns the
+    configured grid wrapped together with :func:`_build_export_toolbar` so
+    every tool gets the same download control and usage tip for free.
 
     Non-field column defs (e.g. selection or row-number columns without
     a ``field`` key) are passed through unmodified.
@@ -580,11 +606,18 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         # Copy to avoid mutating the caller's dicts.
         filtered_defs.append(dict(cd))
 
-    # Ensure every field column shows its own value as a hover tooltip.
+    # Ensure every field column shows its own value as a hover tooltip, and its
+    # header says what the column means.  A def's own headerTooltip wins.
     for cd in filtered_defs:
         field = cd.get("field")
         if field is not None:
-            cd.setdefault("tooltipField", field)
+            # An image cell's value is a ~20 KB base64 data URI; as a tooltip it is noise.
+            if cd.get("cellRenderer") != "SvgRenderer":
+                cd.setdefault("tooltipField", field)
+            if field in col.COLUMN_DESCRIPTIONS:
+                cd.setdefault("headerTooltip", col.COLUMN_DESCRIPTIONS[field])
+        if cd.get("headerTooltip"):
+            cd.setdefault("headerClass", _HEADER_HELP_CLASS)
 
     # Floor every column at the width its def asked for, so the responsiveSizeToFit
     # pass below can only ever grow columns.  How wide a table ends up is decided by
@@ -621,6 +654,8 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
             "domLayout": "autoHeight",
             "enableCellTextSelection": True,
             "ensureDomOrder": True,
+            # AG Grid waits 2000 ms by default, long enough that header help goes unnoticed.
+            "tooltipShowDelay": 500,
         },
         # Spend leftover width on the columns instead of leaving a grey gutter to the
         # right of a short table.  Paired with the minWidth floors above this only ever
@@ -632,5 +667,8 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         style={"width": "100%"},
         className="ag-theme-balham",
     )
+    # The toolbar radios and download button are always shown,
+    # but the click-to-compare tip is only added when the grid has a structure-image column.
+    has_images = any(cd.get("cellRenderer") == "SvgRenderer" for cd in filtered_defs)
 
-    return html.Div(children=[_build_export_toolbar(), grid])
+    return html.Div(children=[_build_export_toolbar(has_images), grid])
