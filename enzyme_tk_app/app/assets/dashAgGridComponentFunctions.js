@@ -191,9 +191,12 @@ dagcomponentfuncs.SvgRenderer = function (props) {
                 height: "100%",
                 display: "flex",
                 alignItems: "center",
-                cursor: "pointer",
+                cursor: "zoom-in",
             },
-            title: "Click to enlarge",
+            // Say what a click does: _openSvgOverlay compares only when the page shows a query.
+            title: document.querySelector("img." + _QUERY_PREVIEW_CLASS)
+                ? "Click to compare with your query"
+                : "Click to enlarge",
         },
         React.createElement("img", {
             src: props.value,

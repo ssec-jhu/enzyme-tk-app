@@ -19,7 +19,7 @@ descriptors, etc.
 grid, so every tool's results table gets the same export control without
 any per-tool code.  The same goes for header help: every column described
 in ``utils/columns.py``'s ``COLUMN_DESCRIPTIONS`` gets a header tooltip and
-info icon, and the toolbar ends with a one-line usage tip.
+info icon, and a one-line usage tip sits between the toolbar and the grid.
 
 Usage (AG Grid)::
 
@@ -41,6 +41,7 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
+    ICON_RESULTS_COMPARE,
     ICON_RESULTS_DOWNLOAD,
     ICON_STATUS_FAILURE,
     ICON_STATUS_PENDING,
@@ -108,13 +109,33 @@ STYLE_RESULTS_TIP: dict = {
     "color": "var(--text-secondary)",
     "fontSize": "0.8rem",
 }
-"""Usage tip at the right end of the results toolbar; wraps below it on a narrow screen."""
+"""Usage tip at the right end of the help row; wraps below the compare hint on a narrow screen."""
+
+STYLE_RESULTS_HELP_ROW: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "flexWrap": "wrap",
+    "gap": "0.75rem",
+    "marginBottom": "0.5rem",
+}
+"""Row between the toolbar and the grid: compare hint (image grids only) on the left, usage tip on the right."""
+
+STYLE_RESULTS_COMPARE_HINT: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "0.4rem",
+    "color": "var(--primary-color)",
+    "fontSize": "0.85rem",
+    "fontWeight": 600,
+}
+"""Click-to-compare hint at the left of the help row, for a grid that draws structures."""
 
 # Marks a header that has a ``headerTooltip``; 09-ag-grid.css draws an info icon after its text.
 _HEADER_HELP_CLASS = "ag-header-has-help"
 
 _TIP_GRID = "Hover a header for what it means · click a header to sort · click its funnel to filter"
-_TIP_IMAGES = " · click a structure to compare it with your query"
+# Styled apart from the muted tip: tacked onto the end of it, nobody found the compare view.
+_TIP_IMAGES = "Click any structure to compare it side by side with your query."
 
 
 def build_status_badge(status: JobStatus) -> html.Span:
@@ -453,16 +474,11 @@ def shared_col_defs() -> list[dict]:
     ]
 
 
-def _build_export_toolbar(has_images: bool) -> html.Div:
-    """Build the CSV download button, export-scope radios and usage tip shown above the grid.
-
-    Args:
-        has_images: Whether the grid has a structure-image column, which
-            adds the click-to-compare hint to the tip.
+def _build_export_toolbar() -> html.Div:
+    """Build the CSV download button and export-scope radios shown above the grid.
 
     Returns:
-        An ``html.Div`` flex row with the download button on the left, the
-        scope radios beside it, and the usage tip at the right end.
+        An ``html.Div`` flex row with the download button and the scope radios beside it.
     """
     return html.Div(
         style=STYLE_RESULTS_TOOLBAR,
@@ -497,8 +513,6 @@ def _build_export_toolbar(has_images: bool) -> html.Div:
                     },
                 ],
             ),
-            # The tip is a single line of text that wraps below the toolbar on a narrow screen.
-            html.Span(_TIP_GRID + (_TIP_IMAGES if has_images else ""), style=STYLE_RESULTS_TIP),
         ],
     )
 
@@ -569,6 +583,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
     Every column is floored at its declared ``width`` and the grid is sized
     with ``responsiveSizeToFit``, so the columns share out any width a short
     table leaves over; tools never set ``minWidth`` themselves.
+
+    The grid is a fixed ``75vh`` box that scrolls inside itself, so its header
+    and pager stay on screen however many rows a page holds.  A grid that
+    draws structures also gets a click-to-compare hint line above it.
 
     Cell text selection is enabled (``enableCellTextSelection`` +
     ``ensureDomOrder``) so users can copy/paste string content.
@@ -651,7 +669,6 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
             "pagination": True,
             "paginationPageSize": 20,
             "paginationPageSizeSelector": True,
-            "domLayout": "autoHeight",
             "enableCellTextSelection": True,
             "ensureDomOrder": True,
             # AG Grid waits 2000 ms by default, long enough that header help goes unnoticed.
@@ -664,11 +681,18 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         # does nothing here — dash-ag-grid 35.3.0 records it in the column state and
         # never applies it.)
         columnSize="responsiveSizeToFit",
-        style={"width": "100%"},
+        # A fixed height (AG Grid's default "normal" domLayout) keeps the header and pager on screen; with
+        # autoHeight a 20-row page of structures ran ~3000px and both scrolled away.  A short table leaves blank
+        # space below it; switch to autoHeight under a row count if that ever matters.
+        style={"width": "100%", "height": "75vh"},
         className="ag-theme-balham",
     )
-    # The toolbar radios and download button are always shown,
-    # but the click-to-compare tip is only added when the grid has a structure-image column.
-    has_images = any(cd.get("cellRenderer") == "SvgRenderer" for cd in filtered_defs)
+    # One help row: the click-to-compare hint (only when the grid draws a structure) beside the usage tip.
+    help_row = [html.Span(_TIP_GRID, style=STYLE_RESULTS_TIP)]
+    if any(cd.get("cellRenderer") == "SvgRenderer" for cd in filtered_defs):
+        hint = html.Div(
+            style=STYLE_RESULTS_COMPARE_HINT, children=[html.I(className=ICON_RESULTS_COMPARE), _TIP_IMAGES]
+        )
+        help_row.insert(0, hint)
 
-    return html.Div(children=[_build_export_toolbar(has_images), grid])
+    return html.Div(children=[_build_export_toolbar(), html.Div(style=STYLE_RESULTS_HELP_ROW, children=help_row), grid])

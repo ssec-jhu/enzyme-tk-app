@@ -10,6 +10,7 @@ from enzyme_tk_app.app.components.results_helpers import (
     GRID_ID,
     SCOPE_ALL,
     SCOPE_FILTERED,
+    STYLE_RESULTS_COMPARE_HINT,
     STYLE_RESULTS_TIP,
     _csv_export_params,
     _pretty_label,
@@ -220,19 +221,30 @@ def test_build_ag_grid_wraps_grid_with_export_toolbar():
     ],
     ids=["no-image-column", "image-column", "image-column-not-in-payload"],
 )
-def test_build_ag_grid_tip_mentions_compare_only_when_a_structure_is_shown(column_defs, expect_compare_hint):
-    """The toolbar tip offers click-to-compare only when the rendered grid actually draws a structure."""
+def test_build_ag_grid_shows_compare_hint_only_when_a_structure_is_shown(column_defs, expect_compare_hint):
+    """The click-to-compare hint appears only when the rendered grid actually draws a structure."""
     table = build_ag_grid(column_defs, _PAYLOAD)
 
-    # Found by its style rather than its wording, so rephrasing the tip does not break this.
-    tips = []
-    for span in find_components(table, html.Span):
-        if span.style == STYLE_RESULTS_TIP:
-            tips.append(span)
+    # Found by style rather than wording, so rephrasing either line does not break this.
+    tips = [span for span in find_components(table, html.Span) if span.style == STYLE_RESULTS_TIP]
     assert len(tips) == 1, "Expected exactly one usage tip in the toolbar"
+    hints = [
+        div for div in find_components(table, html.Div) if getattr(div, "style", None) == STYLE_RESULTS_COMPARE_HINT
+    ]
+    assert len(hints) == int(expect_compare_hint)
+    # The hint has a line of its own; repeating it in the muted tip is how it went unnoticed before.
+    assert _TIP_IMAGES not in get_text(tips[0])
 
-    # get_text, not .children: if the tip is ever split into parts, `in` on a list would test membership.
-    assert (_TIP_IMAGES in get_text(tips[0])) is expect_compare_hint
+
+def test_build_ag_grid_has_a_fixed_height():
+    """A fixed-height grid scrolls inside itself, so its header and pager stay on screen.
+
+    With ``domLayout: "autoHeight"`` a page of structure rows ran ~3000px and both scrolled away.
+    """
+    grid = find_components(build_ag_grid([{"field": "a"}], _PAYLOAD), dag.AgGrid)[0]
+
+    assert "domLayout" not in grid.dashGridOptions
+    assert grid.style["height"].endswith("vh")
 
 
 # ---------------------------------------------------------------------------

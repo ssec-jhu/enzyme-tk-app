@@ -14,7 +14,7 @@ This agent defines the rules for building AG Grid tables in the app. All grids u
 
 | File | Responsibility |
 |---|---|
-| `components/results_helpers.py` | `shared_col_defs()` (shared columns), `build_ag_grid()` (grid factory, cell + header tooltips), `_build_export_toolbar(has_images)` + `download_results_csv` (CSV export, usage tip) |
+| `components/results_helpers.py` | `shared_col_defs()` (shared columns), `build_ag_grid()` (grid factory, cell + header tooltips), `_build_export_toolbar()` + `download_results_csv` (CSV export), the help row (compare hint + usage tip) |
 | `utils/columns.py` | `COL_*` field-name constants, each declared with its header help in one `_col(name, description)` line that fills `COLUMN_DESCRIPTIONS` (§2.9) |
 | `tools/<tool>/results.py` | Tool-specific column defs + `results_layout()` |
 | `assets/09-ag-grid.css` | Theme overrides (header, header info icon, rows, icons, pagination) |
@@ -28,8 +28,9 @@ tool results.py
   └─ _get_column_defs()          # tool-specific cols + shared_col_defs()
   └─ results_layout(job)         # calls build_ag_grid(col_defs, df_payload)
        └─ build_ag_grid()        # filters cols, sets cell + header tooltips, returns html.Div
-            ├─ _build_export_toolbar(has_images)  # Download CSV button + scope radios + usage tip
-            └─ dag.AgGrid(id=GRID_ID)
+            ├─ _build_export_toolbar()  # Download CSV button + scope radios
+            ├─ help row                 # compare hint (SvgRenderer column only) + usage tip, one line
+            └─ dag.AgGrid(id=GRID_ID)   # fixed 75vh box: header + pager stay on screen
                  └─ defaultColDef           # global defaults (sort, filter, resize)
                  └─ 09-ag-grid.css          # visual theme
 ```
@@ -37,7 +38,8 @@ tool results.py
 ### 1.1 — What `build_ag_grid()` returns
 
 **`build_ag_grid(column_defs, df_payload)` returns an `html.Div`, not a `dag.AgGrid`** — the
-Div wraps the shared CSV-export toolbar and the grid. The signature is unchanged, so a
+Div wraps the shared CSV-export toolbar, the help row (usage tip, plus the click-to-compare
+hint when an image column is shown — §2.9), and the grid. The signature is unchanged, so a
 `results.py` that does `results_table = build_ag_grid(column_defs, df_payload)` needs no
 edit; just do not annotate or assert the return as `dag.AgGrid`.
 
@@ -48,7 +50,7 @@ button, `csvExportParams`, or `dcc.Download`** to a `results.py` — put the cha
 | Piece | Detail |
 |---|---|
 | Grid id | `GRID_ID = "id-grid-results"` — set by `build_ag_grid()`, static |
-| Toolbar | `STYLE_RESULTS_TOOLBAR` flex row (`flexWrap: "wrap"`): `html.Button` (`className="btn-toolbar"`, `ICON_RESULTS_DOWNLOAD`, "Download CSV") on the left, inline `dbc.RadioItems` (`className="jobs-toolbar-radios"`) beside it, and the one-line usage tip (`STYLE_RESULTS_TIP`) at the right end — see §2.9 |
+| Toolbar | `STYLE_RESULTS_TOOLBAR` flex row (`flexWrap: "wrap"`): `html.Button` (`className="btn-toolbar"`, `ICON_RESULTS_DOWNLOAD`, "Download CSV") on the left, inline `dbc.RadioItems` (`className="jobs-toolbar-radios"`) beside it. The usage tip lives in the help row below — see §2.9 |
 | Scopes | `SCOPE_FILTERED` ("Filtered", the default) → `exportedRows: "filteredAndSorted"`; `SCOPE_ALL` ("Unfiltered") → `exportedRows: "all"`. Each radio label is an `html.Span` with a native `title` tooltip |
 | File name | `enzymetk-<job_id[:6]>-<scope>.csv`, from `_csv_export_params()` — the same 6-char prefix the My Tasks table shows |
 | Job id source | `State(JOB_ID_SPAN_ID, "title")` — `my_tasks_view_results._build_job_info_header()` puts `id=JOB_ID_SPAN_ID` on the task-id span whose `title` is the bare job id. **A page↔component contract**: renaming or dropping that `title` breaks the download filename (guarded by a test in `test_my_tasks.py`) |
@@ -118,7 +120,9 @@ column_defs = [
 
 The `SvgRenderer` is defined in `dashAgGridComponentFunctions.js`. It:
 - Renders a base64 `data:image/svg+xml;base64,...` URI as an `<img>` thumbnail (max-height 150px).
-- Wraps it in a flex container for vertical centering.
+- Wraps it in a flex container for vertical centering, with a `zoom-in` cursor and a hover
+  title that says what a click does — "Click to compare with your query" when the page has a
+  query image (`_QUERY_PREVIEW_CLASS`, below), "Click to enlarge" when it does not.
 - Opens a **compare lightbox** on click (`.svg-overlay` + `.svg-compare*` CSS): the job's query
   structure and this row's, each labelled and captioned with its SMILES — side by side for a
   compact structure, stacked query-over-result for a wide one (see below). Closes on backdrop
@@ -162,7 +166,7 @@ with the source SMILES in the grid so the picture stays reproducible from the CS
 It also **switches off the cell tooltip**: `build_ag_grid()` gives every other field column a
 `tooltipField`, but not one with that renderer — its value is the same ~20 KB data URI, which as
 a tooltip would only cover the structure the user is looking at. The header still gets its help
-(§2.9), and it is what adds the compare hint to the toolbar tip.
+(§2.9), and it is what adds the compare hint to the help row above the grid.
 
 ### 2.3 — Long text that must wrap (multi-line)
 
@@ -350,12 +354,15 @@ rename of the Python constant alone fails — and the glyph does **not** follow 
 **Delay.** `dashGridOptions` sets `tooltipShowDelay: 500` (§5); AG Grid's 2000 ms default is long
 enough that header help goes unnoticed. It applies to cell tooltips too.
 
-**Usage tip.** `_build_export_toolbar(has_images)` ends the toolbar with one muted line,
-`STYLE_RESULTS_TIP` (`marginLeft: auto`, so it sits at the right end; the toolbar's
-`flexWrap: "wrap"` drops it below on a narrow screen). It is `_TIP_GRID` (hover a header, click
-to sort, funnel to filter), plus `_TIP_IMAGES` (click a structure to compare) **only when a def
-that survived the payload filter has `cellRenderer == "SvgRenderer"`** — a declared image column
-the payload lacks is dropped, and a hint about it would point at nothing. No per-tool tip text.
+**Help row.** `build_ag_grid()` puts one `STYLE_RESULTS_HELP_ROW` flex row (`flexWrap: "wrap"`)
+between the toolbar and the grid. At its right end (`marginLeft: auto`) is the muted usage tip,
+`STYLE_RESULTS_TIP`: `_TIP_GRID` (hover a header, click to sort, funnel to filter). At its left,
+**only when a def that survived the payload filter has `cellRenderer == "SvgRenderer"`**, is the
+click-to-compare hint: `ICON_RESULTS_COMPARE` + `_TIP_IMAGES` in a `STYLE_RESULTS_COMPARE_HINT`
+div (primary colour, bold). A declared image column the payload lacks is dropped, and a hint about
+it would point at nothing. The hint is styled apart from the tip on purpose — tacked onto the end
+of the muted text, nobody found the compare view. The two share a line on a laptop-width window
+and stack below ~1000 px. No per-tool tip text.
 
 **Enforced.** `test_every_results_column_has_a_description` in `tests/test_results.py` walks the
 live tool registry, collects every `field` from each tool's `_get_column_defs()` plus
@@ -453,7 +460,6 @@ dag.AgGrid(
         "pagination": True,
         "paginationPageSize": 20,
         "paginationPageSizeSelector": True,
-        "domLayout": "autoHeight",
         "enableCellTextSelection": True,
         "ensureDomOrder": True,
         "tooltipShowDelay": 500,
@@ -461,7 +467,11 @@ dag.AgGrid(
 )
 ```
 
-- `domLayout: "autoHeight"` — the grid's outer container grows to fit all visible rows (no internal scroll).
+- **No `domLayout`** — AG Grid's default `"normal"` layout, paired with `style={"height": "75vh"}`, makes the
+  grid a fixed box that scrolls inside itself, so the header and pager stay on screen. With `"autoHeight"`
+  a 20-row page of structures ran ~3000px, both scrolled away, and macOS's hidden scrollbars left no
+  sign there was more. The known cost: a short table leaves blank space below it.
+  `test_build_ag_grid_has_a_fixed_height` pins it.
 - `enableCellTextSelection` + `ensureDomOrder` — lets users select and copy cell text.
 - `tooltipShowDelay: 500` — AG Grid waits 2000 ms by default, long enough that the header help (§2.9) goes unnoticed. Covers cell tooltips too; the test pins it below 2000.
 
@@ -480,8 +490,8 @@ dag.AgGrid(
 4. In the column def, set `"cellRenderer": "YourRendererName"`, `"autoHeight": True`, `"filter": False`, `"sortable": False`.
 5. **Prefer reusing `SvgRenderer` over naming a new renderer.** Three checks match the
    literal string `"SvgRenderer"`: the CSV-export exclusion in `_csv_export_params()`, and
-   in `build_ag_grid()` the cell-tooltip skip and the `has_images` test behind the toolbar's
-   compare hint (§2.9). A column using `"MyStructureRenderer"` would export its base64 data
+   in `build_ag_grid()` the cell-tooltip skip and the test behind the compare hint
+   (§2.9). A column using `"MyStructureRenderer"` would export its base64 data
    URIs, show one as a hover tooltip, and lose the hint. If a genuinely different renderer is
    needed, widen all three in the same change (e.g. one shared set of image renderer names) —
    do not leave them keyed on one name.
@@ -492,7 +502,7 @@ dag.AgGrid(
 
 - **`autoHeight`** forces AG Grid to measure every cell to compute row heights. Only enable it on columns that truly need it (images, multi-line wrap).
 - For tables with > 500 rows, consider whether `autoHeight` on any column is justified — fixed row heights are significantly faster.
-- `domLayout: "autoHeight"` means pagination controls the visible set; the grid doesn't virtualise rows beyond the page.
+- The normal `domLayout` (§5) virtualises rows inside the fixed-height box, so only the rows on screen are rendered — a 100-row page of structures stays cheap.
 
 ---
 

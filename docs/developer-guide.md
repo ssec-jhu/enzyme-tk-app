@@ -465,7 +465,7 @@ Your `results_layout(job: JobInfo) -> html.Div` function receives the completed 
 | `shared_col_defs()` | 25+ pre-defined column definitions for similarity scores, database metadata, and molecular descriptors. Only columns present in your data are displayed. |
 | `sequence_col_def(field, width=300, header=None)` | The column def for an amino-acid sequence column — truncated to one line with the full sequence on hover. Always use it instead of hand-rolling a `cellStyle`. |
 | `numeric_col_def(field, header=None, width=None, decimals=None, exponential=False)` | The column def for a numeric column. Always applies `agNumberColumnFilter`; formatting is opt-in — omit `decimals` for integers, `decimals=4` for fractions, `decimals=2` for percentages, `exponential=True` for e-values. Pick from the data, not by habit. |
-| `build_ag_grid(column_defs, df_payload)` | Standardized AG Grid with pagination (20 rows/page), Balham theme, cell tooltips (not on image columns), header help from `COLUMN_DESCRIPTIONS`, copy/paste, and column filtering — **plus the shared CSV-export toolbar and usage tip above it**. Returns an `html.Div` wrapping both, not a bare `dag.AgGrid`. |
+| `build_ag_grid(column_defs, df_payload)` | Standardized AG Grid with pagination (20 rows/page), Balham theme, cell tooltips (not on image columns), header help from `COLUMN_DESCRIPTIONS`, copy/paste, and column filtering — **plus the shared CSV-export toolbar above it and a help row beneath that** — the usage tip, with a click-to-compare hint beside it when an image column is shown. The grid is a fixed `75vh` box that scrolls inside itself, so its header and pager stay on screen. Returns an `html.Div` wrapping them, not a bare `dag.AgGrid`. |
 | `build_stat_card(value, label)` | One stat card in the shared `jobs-stat-card` style. You rarely call it — the results-page header renders your `_stat_cards` for you, merging them into its own strip alongside Duration and Expires In. |
 | `build_result_input_params(job)` | Auto-renders submitted parameters. Called by the framework, not by your code. |
 
@@ -499,7 +499,7 @@ Nothing is synthesised here — the names are read from the payload — so an un
 
 **Header labels:** `headerName` is optional — omit it and AG Grid humanises the field name; the `header=` argument of `numeric_col_def` / `sequence_col_def` sets it. Most tools pass a friendly label (`"Alignment Length"`), and new tools should. **Func-E is a deliberate exception:** `tools/funce/results.py` sets every `headerName` to its own `field`, so its headers are the raw enzymetk column names (`Funce_prediction`, `Funce_substrates_MolWt_mean`, `database`) — a number must be traceable to the exact enzymetk column, and humanisation misreports these names (`Funce_substrates_MolWt_mean` → "Funce_substrates Mol Wt_mean"). `enzyme_tk_app/app/tests/test_tools_funce.py` guards it; do not copy the pattern to other tools. The header tooltip below is how those raw names get their meaning, so never relabel one to explain it.
 
-**Describe every column.** Each field your `_get_column_defs()` declares needs a one-sentence, plain-English description in [`utils/columns.py`](../enzyme_tk_app/app/utils/columns.py), keyed by the field exactly as it arrives and registered with `_col(name, description)`: `COL_X = _col("name", "…")` for a constant, a bare `_col("fident", "…")` for a name that stays a library literal. `build_ag_grid()` does the rest: the sentence becomes the column's `headerTooltip` (a def's own `headerTooltip` wins), the header gets an info icon, and the toolbar ends with a one-line usage tip that mentions click-to-compare only when the grid shows a structure. A field several tools share means the same thing in each, so it has one entry — `_col` raises if a name is registered twice. `test_every_results_column_has_a_description` in `test_results.py` walks the live registry and fails the build on a missing entry. Full contract: the `create-ag-grid` agent, §2.9.
+**Describe every column.** Each field your `_get_column_defs()` declares needs a one-sentence, plain-English description in [`utils/columns.py`](../enzyme_tk_app/app/utils/columns.py), keyed by the field exactly as it arrives and registered with `_col(name, description)`: `COL_X = _col("name", "…")` for a constant, a bare `_col("fident", "…")` for a name that stays a library literal. `build_ag_grid()` does the rest: the sentence becomes the column's `headerTooltip` (a def's own `headerTooltip` wins), the header gets an info icon, a one-line usage tip sits between the toolbar and the grid, and a grid that shows a structure gets a click-to-compare hint beside it. A field several tools share means the same thing in each, so it has one entry — `_col` raises if a name is registered twice. `test_every_results_column_has_a_description` in `test_results.py` walks the live registry and fails the build on a missing entry. Full contract: the `create-ag-grid` agent, §2.9.
 
 ### 4.3 Result page layout schematic
 
@@ -533,8 +533,8 @@ The diagram below shows the full results page from top to bottom. Sections marke
 │  YOUR OUTPUT from results_layout(job) output            │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │  AUTO · export toolbar from build_ag_grid()       │  │
-│  │  [ Download CSV ]   (•) Filtered  Hover a header… │  │
-│  │                     ( ) Unfiltered                │  │
+│  │  [ Download CSV ]   (•) Filtered  ( ) Unfiltered  │  │
+│  │  (+) Click a structure… (images)  Hover a header… │  │
 │  │                                                   │  │
 │  │  Example: AG Grid (or any custom visualisation)   │  │
 │  │  ┌─────────┬──────────┬──────────┬────────────┐   │  │
