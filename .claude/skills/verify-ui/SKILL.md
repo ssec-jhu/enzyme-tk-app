@@ -198,10 +198,11 @@ production-mode run is not just the default run with a cap. What changes:
   div. The solve starts when the modal opens and takes ~2 s, so open the modal,
   fill the form, then check the widget says verified before clicking — a first
   click inside that window is a hiccup, not a regression. Poll for it rather
-  than sleeping blind:
+  than sleeping blind (widget 3.x keeps its state on an inner element, not on the
+  `altcha-widget` host, whose `state` attribute stays `null` even once verified):
 
   ```js
-  document.querySelector("div.etk-captcha altcha-widget")?.getAttribute("state");
+  document.querySelector("div.etk-captcha altcha-widget [data-state]")?.dataset.state;
   ```
 
 - The widget is mounted by `assets/12-altcha-bridge.js` into an empty holder div,
@@ -241,6 +242,14 @@ while (el && el !== document.body) {
 
 Sweeping that over an element's bounding box gives you real hit-area coverage,
 which is how you catch a tooltip that only fires over the glyphs.
+
+**AG Grid tooltips are the opposite: real DOM, so they do screenshot.** Header
+help and cell-value tooltips render as `div.ag-tooltip` (header ones add
+`.ag-header-tooltip`) once the pointer has rested `tooltipShowDelay` (500 ms)
+on the target. Hover with `computer` by coordinate, wait ~1 s, then read
+`document.querySelector(".ag-tooltip")?.innerText` or take the screenshot.
+What a column *will* show is already in `getColumnDefs()` (`headerTooltip`,
+`tooltipField`), no hover needed.
 
 ### Capturing a download
 

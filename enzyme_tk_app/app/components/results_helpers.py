@@ -17,7 +17,9 @@ descriptors, etc.
 
 ``build_ag_grid`` also renders the shared CSV-download toolbar above the
 grid, so every tool's results table gets the same export control without
-any per-tool code.
+any per-tool code.  The same goes for header help: every column described
+in ``utils/columns.py``'s ``COLUMN_DESCRIPTIONS`` gets a header tooltip and
+info icon, and a one-line usage tip sits between the toolbar and the grid.
 
 Usage (AG Grid)::
 
@@ -39,6 +41,7 @@ from dash.exceptions import PreventUpdate
 
 from enzyme_tk_app.app.backend.models import JobInfo, JobStatus
 from enzyme_tk_app.app.components.icons import (
+    ICON_RESULTS_COMPARE,
     ICON_RESULTS_DOWNLOAD,
     ICON_STATUS_FAILURE,
     ICON_STATUS_PENDING,
@@ -94,10 +97,45 @@ STATUS_ICONS: dict[JobStatus, str] = {
 STYLE_RESULTS_TOOLBAR: dict = {
     "display": "flex",
     "alignItems": "center",
+    # The radios are inline, but the toolbar wraps on a narrow screen.
+    "flexWrap": "wrap",
     "gap": "0.75rem",
     "marginBottom": "0.5rem",
 }
 """Download button + scope radios row sitting above every results grid."""
+
+STYLE_RESULTS_TIP: dict = {
+    "marginLeft": "auto",
+    "color": "var(--text-secondary)",
+    "fontSize": "0.8rem",
+}
+"""Usage tip at the right end of the help row; wraps below the compare hint on a narrow screen."""
+
+STYLE_RESULTS_HELP_ROW: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "flexWrap": "wrap",
+    "gap": "0.75rem",
+    "marginBottom": "0.5rem",
+}
+"""Row between the toolbar and the grid: compare hint (image grids only) on the left, usage tip on the right."""
+
+STYLE_RESULTS_COMPARE_HINT: dict = {
+    "display": "flex",
+    "alignItems": "center",
+    "gap": "0.4rem",
+    "color": "var(--primary-color)",
+    "fontSize": "0.85rem",
+    "fontWeight": 600,
+}
+"""Click-to-compare hint at the left of the help row, for a grid that draws structures."""
+
+# Marks a header that has a ``headerTooltip``; 09-ag-grid.css draws an info icon after its text.
+_HEADER_HELP_CLASS = "ag-header-has-help"
+
+_TIP_GRID = "Hover a header for what it means · click a header to sort · click its funnel to filter"
+# Styled apart from the muted tip: tacked onto the end of it, nobody found the compare view.
+_TIP_IMAGES = "Click any structure to compare it side by side with your query."
 
 
 def build_status_badge(status: JobStatus) -> html.Span:
@@ -384,9 +422,11 @@ def shared_col_defs() -> list[dict]:
     """
     return [
         # ── Similarity scores ────────────────────────────────────────
-        {"field": col.COL_TANIMOTO, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": col.COL_COSINE, "width": 100, "filter": "agNumberColumnFilter"},
-        {"field": col.COL_RUSSELL, "width": 100, "filter": "agNumberColumnFilter"},
+        # 140 = 48px of padding + funnel, plus "Similarity" with its info icon (80px) and a
+        # little slack, so the header wraps between words.  Below ~128 it breaks mid-word.
+        {"field": col.COL_TANIMOTO, "width": 140, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_COSINE, "width": 140, "filter": "agNumberColumnFilter"},
+        {"field": col.COL_RUSSELL, "width": 140, "filter": "agNumberColumnFilter"},
         # ── Reaction metadata ────────────────────────────────────────
         {"field": col.COL_DATABASE, "wrapText": True, "width": 120},
         {"field": col.COL_ID, "width": 120},
@@ -438,8 +478,7 @@ def _build_export_toolbar() -> html.Div:
     """Build the CSV download button and export-scope radios shown above the grid.
 
     Returns:
-        An ``html.Div`` flex row with the download button on the left and
-        the vertically stacked scope radios beside it.
+        An ``html.Div`` flex row with the download button and the scope radios beside it.
     """
     return html.Div(
         style=STYLE_RESULTS_TOOLBAR,
@@ -533,9 +572,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
 
     Filters *column_defs* to only those whose ``field`` exists in
     ``df_payload["columns"]``, sets a default ``tooltipField`` on
-    every column, and returns the configured grid wrapped together with
-    :func:`_build_export_toolbar` so every tool gets the same download
-    control for free.
+    every non-image column and a ``headerTooltip`` (plus the info-icon header class)
+    on every column ``COLUMN_DESCRIPTIONS`` describes, and returns the
+    configured grid wrapped together with :func:`_build_export_toolbar` so
+    every tool gets the same download control and usage tip for free.
 
     Non-field column defs (e.g. selection or row-number columns without
     a ``field`` key) are passed through unmodified.
@@ -543,6 +583,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
     Every column is floored at its declared ``width`` and the grid is sized
     with ``responsiveSizeToFit``, so the columns share out any width a short
     table leaves over; tools never set ``minWidth`` themselves.
+
+    The grid is a fixed ``75vh`` box that scrolls inside itself, so its header
+    and pager stay on screen however many rows a page holds.  A grid that
+    draws structures also gets a click-to-compare hint line above it.
 
     Cell text selection is enabled (``enableCellTextSelection`` +
     ``ensureDomOrder``) so users can copy/paste string content.
@@ -580,11 +624,18 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         # Copy to avoid mutating the caller's dicts.
         filtered_defs.append(dict(cd))
 
-    # Ensure every field column shows its own value as a hover tooltip.
+    # Ensure every field column shows its own value as a hover tooltip, and its
+    # header says what the column means.  A def's own headerTooltip wins.
     for cd in filtered_defs:
         field = cd.get("field")
         if field is not None:
-            cd.setdefault("tooltipField", field)
+            # An image cell's value is a ~20 KB base64 data URI; as a tooltip it is noise.
+            if cd.get("cellRenderer") != "SvgRenderer":
+                cd.setdefault("tooltipField", field)
+            if field in col.COLUMN_DESCRIPTIONS:
+                cd.setdefault("headerTooltip", col.COLUMN_DESCRIPTIONS[field])
+        if cd.get("headerTooltip"):
+            cd.setdefault("headerClass", _HEADER_HELP_CLASS)
 
     # Floor every column at the width its def asked for, so the responsiveSizeToFit
     # pass below can only ever grow columns.  How wide a table ends up is decided by
@@ -618,9 +669,10 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
             "pagination": True,
             "paginationPageSize": 20,
             "paginationPageSizeSelector": True,
-            "domLayout": "autoHeight",
             "enableCellTextSelection": True,
             "ensureDomOrder": True,
+            # AG Grid waits 2000 ms by default, long enough that header help goes unnoticed.
+            "tooltipShowDelay": 500,
         },
         # Spend leftover width on the columns instead of leaving a grey gutter to the
         # right of a short table.  Paired with the minWidth floors above this only ever
@@ -629,8 +681,18 @@ def build_ag_grid(column_defs: list[dict], df_payload: dict) -> html.Div:
         # does nothing here — dash-ag-grid 35.3.0 records it in the column state and
         # never applies it.)
         columnSize="responsiveSizeToFit",
-        style={"width": "100%"},
+        # A fixed height (AG Grid's default "normal" domLayout) keeps the header and pager on screen; with
+        # autoHeight a 20-row page of structures ran ~3000px and both scrolled away.  A short table leaves blank
+        # space below it; switch to autoHeight under a row count if that ever matters.
+        style={"width": "100%", "height": "75vh"},
         className="ag-theme-balham",
     )
+    # One help row: the click-to-compare hint (only when the grid draws a structure) beside the usage tip.
+    help_row = [html.Span(_TIP_GRID, style=STYLE_RESULTS_TIP)]
+    if any(cd.get("cellRenderer") == "SvgRenderer" for cd in filtered_defs):
+        hint = html.Div(
+            style=STYLE_RESULTS_COMPARE_HINT, children=[html.I(className=ICON_RESULTS_COMPARE), _TIP_IMAGES]
+        )
+        help_row.insert(0, hint)
 
-    return html.Div(children=[_build_export_toolbar(), grid])
+    return html.Div(children=[_build_export_toolbar(), html.Div(style=STYLE_RESULTS_HELP_ROW, children=help_row), grid])

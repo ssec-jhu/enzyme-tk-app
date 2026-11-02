@@ -140,9 +140,11 @@ def find_by_input(deps: list[dict], input_id: str) -> dict:
 
 def submit_job(client: DashClient, spec: dict, task_name: str, seconds: int, fail: bool) -> str:
     """Submit one Timer Tool job and return the response text (carries the id)."""
-    # State order mirrors the modal's field order: task name, duration, fail flag.
+    # State order mirrors the modal's field order: task name, duration, fail flag, then the
+    # captcha store every submit callback ends with.  None is an unsolved captcha, which only
+    # passes because the web-check side-car never sets APP_IN_PRODUCTION_MODE.
     # n_clicks 1 on submit, None on the launch button so ctx.triggered_id is submit.
-    return client.callback(spec, [1, None], [task_name, seconds, ["fail"] if fail else []])
+    return client.callback(spec, [1, None], [task_name, seconds, ["fail"] if fail else [], None])
 
 
 def run(base_url: str, n_users: int, *, isolation_check: bool) -> dict:
@@ -164,8 +166,9 @@ def run(base_url: str, n_users: int, *, isolation_check: bool) -> dict:
                 "session_id": session_id,
                 "task_name": task_name,
                 "profile": profile["label"],
-                # The callback echoes the job id into the modal's results div.
-                "submitted": "Job submitted" in response or "job" in response.lower(),
+                # build_submission_success's own wording.  Not a bare "job": the cap's
+                # rejection ("You already have 3 job(s)…") contains that word too.
+                "submitted": "Job submitted" in response,
                 "client": client,
             }
         )

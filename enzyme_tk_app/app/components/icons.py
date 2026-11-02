@@ -47,6 +47,7 @@ ICON_STATUS_TIMEOUT = "fa-solid fa-hourglass-end"
 
 # --- Results Tables ---
 ICON_RESULTS_DOWNLOAD = "fa-solid fa-download"
+ICON_RESULTS_COMPARE = "fa-solid fa-magnifying-glass-plus"
 
 # --- Admin Page ---
 ICON_ADMIN_PAGE = "fa-solid fa-user-shield"
