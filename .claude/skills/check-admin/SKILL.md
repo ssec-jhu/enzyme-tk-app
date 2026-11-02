@@ -193,6 +193,11 @@ poll returns their own job and none of the others'; it needs **≥ 2 users** and
 silently skips the isolation report below that. Exit code is non-zero on any
 failure.
 
+It sends **no captcha proof** (`None` for the modal's captcha store), so it only
+works against an app with `APP_IN_PRODUCTION_MODE` off — which the side-car always
+is, since `docker-compose.check-admin.yml` never sets it. Pointed at a
+production-mode `web` with `--base-url`, every submit is refused and it exits 1.
+
 Two things it deliberately does not do: N browser tabs share one cookie jar, so
 tabs are **not** users; and cross-session *refusal* (`_owns_job`) is already
 covered by `tests/test_backend_multisession.py` at the layer where it lives.
@@ -273,7 +278,8 @@ Run this **last** — it is the one step that deliberately kills your session.
 
 The window only slides while `/admin` is mounted (§3), so `navigate` to
 `http://localhost:8051/`, wait a little longer than the TTL **in a shell
-command** (`javascript_tool` aborts near 30 s), then navigate back:
+command** (`javascript_tool` aborts near 30 s; run the `sleep` with
+`run_in_background`, since a foreground one may be blocked), then navigate back:
 `id-input-admin-token` must be present and `id-div-admin-stats` `null`.
 
 If you raised `ETK_CHECK_ADMIN_SESSION_TTL_SECONDS` for §4–§6, either re-create
