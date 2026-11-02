@@ -11,7 +11,9 @@ work is a geometric draw of ~256 attempts, so the default 10 000 would make the 
 No network is involved at any point — ``altcha`` is pure stdlib.
 """
 
+import base64
 import importlib
+import json
 import re
 from pathlib import Path
 
@@ -93,10 +95,25 @@ def test_the_challenge_carries_the_session_and_an_expiry(captcha_on):
 # ── Rejection ───────────────────────────────────────────────────────────────────
 
 
+# Well-shaped enough to reach altcha's expiry check, which compared this string to a float and
+# raised before 2.3 — the reason pyproject.toml's altcha floor is 2.3.
+_NON_NUMERIC_EXPIRY = base64.b64encode(
+    json.dumps(
+        {
+            "challenge": {
+                "parameters": {"algorithm": "PBKDF2/SHA-256", "nonce": "00", "salt": "00", "cost": 1, "expiresAt": "x"},
+                "signature": "x",
+            },
+            "solution": {"counter": 0, "derivedKey": "00"},
+        }
+    ).encode()
+).decode()
+
+
 @pytest.mark.parametrize(
     "payload",
-    [None, "", "   ", "not-base64!!", "e30=", "eyJjaGFsbGVuZ2UiOiB7fX0="],
-    ids=["none", "blank", "whitespace", "garbage", "empty-json", "no-solution"],
+    [None, "", "   ", "not-base64!!", "e30=", "eyJjaGFsbGVuZ2UiOiB7fX0=", _NON_NUMERIC_EXPIRY],
+    ids=["none", "blank", "whitespace", "garbage", "empty-json", "no-solution", "non-numeric-expiry"],
 )
 def test_a_missing_or_malformed_payload_is_refused_without_raising(captcha_on, payload):
     """Every malformed client string returns a message and never raises.

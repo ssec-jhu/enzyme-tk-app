@@ -198,10 +198,11 @@ production-mode run is not just the default run with a cap. What changes:
   div. The solve starts when the modal opens and takes ~2 s, so open the modal,
   fill the form, then check the widget says verified before clicking — a first
   click inside that window is a hiccup, not a regression. Poll for it rather
-  than sleeping blind:
+  than sleeping blind (widget 3.x keeps its state on an inner element, not on the
+  `altcha-widget` host, whose `state` attribute stays `null` even once verified):
 
   ```js
-  document.querySelector("div.etk-captcha altcha-widget")?.getAttribute("state");
+  document.querySelector("div.etk-captcha altcha-widget [data-state]")?.dataset.state;
   ```
 
 - The widget is mounted by `assets/12-altcha-bridge.js` into an empty holder div,

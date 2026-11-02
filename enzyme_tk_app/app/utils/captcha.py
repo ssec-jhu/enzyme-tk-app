@@ -167,7 +167,9 @@ def validate_captcha(payload: str | None, session_id: str) -> str | None:
         return "Please complete the verification check in this dialog, then press Run."
 
     # verify_solution parses the payload itself and reports a malformed one as an unverified
-    # result carrying ``error`` — it does not raise, which is why there is no try/except here.
+    # result — it does not raise, which is why there is no try/except here.  That holds from
+    # altcha 2.3, pyproject.toml's floor: earlier releases raised on e.g. a non-numeric
+    # ``expiresAt``, which test_captcha.py's ``non-numeric-expiry`` case pins.
     result = altcha.verify_solution(payload, _HMAC_SECRET)
     if result.expired:
         return "Verification expired — tick the check box in this dialog again, then press Run."
